@@ -1,0 +1,98 @@
+version: "3"
+
+dotenv:
+  - .env
+
+vars:
+  GOLANGCI_LINT_VERSION:
+    sh: tr -d '[:space:]' < .golangci-lint-version
+
+tasks:
+  up:
+    desc: Start the local containers using existing images
+    cmds:
+      - docker compose up --detach --wait postgres redis
+      - docker compose run --rm migrate
+      - docker compose up --detach --wait api worker
+
+  up-build:
+    desc: Build images and start the local containers
+    cmds:
+      - docker compose build api worker
+      - task: up
+
+  down:
+    desc: Stop the local containers without deleting their data
+    cmds:
+      - docker compose down
+
+  logs:
+    desc: Follow local API, worker, and telemetry Collector logs
+    cmds:
+      - docker compose logs --follow api worker otel-collector
+
+  run-api:
+    desc: Run the Macro Terminal API
+    cmds:
+      - go run ./server/cmd/api
+
+  run-worker:
+    desc: Run the Macro Terminal worker
+    cmds:
+      - go run ./server/cmd/worker
+
+  format:
+    desc: Format Go source files
+    cmds:
+      - gofmt -w .
+
+  generate:
+    desc: Generate the OpenAPI document
+    cmds:
+      - go run ./server/cmd/openapi
+
+  migrate:
+    desc: Apply pending PostgreSQL migrations
+    cmds:
+      - go tool tern migrate --config server/internal/infra/database/tern.conf --migrations db/migrations
+
+  test:
+    desc: Run all tests
+    cmds:
+      - go test ./...
+
+  test-integration:
+    desc: Run tests against real infrastructure
+    cmds:
+      - go test -p 1 -tags=integration ./...
+
+  lint:
+    desc: Run the pinned Go linters
+    preconditions:
+      - sh: command -v golangci-lint >/dev/null
+        msg: Install golangci-lint {{.GOLANGCI_LINT_VERSION}} before running lint.
+      - sh: test "v$(golangci-lint version --short)" = "{{.GOLANGCI_LINT_VERSION}}"
+        msg: Install golangci-lint {{.GOLANGCI_LINT_VERSION}}; another version is currently active.
+    cmds:
+      - golangci-lint run ./...
+
+  check:
+    desc: Validate generation, formatting, tests, lint, and builds
+    cmds:
+      - go run ./server/cmd/openapi
+      - test -z "$(gofmt -l .)"
+      - go test ./...
+      - task: lint
+      - go build ./...
+
+  client-check:
+    desc: Lint and typecheck the client
+    dir: client
+    cmds:
+      - bun run check
+
+  client-build:
+    desc: Build the client
+    dir: client
+    cmds:
+      - bun run build

@@ -1,0 +1,135 @@
+name: macro-terminal
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${MACRO_TERMINAL_DATABASE_NAME:-macro_terminal}
+      POSTGRES_USER: ${MACRO_TERMINAL_DATABASE_USER:-macro_terminal}
+      POSTGRES_PASSWORD: ${MACRO_TERMINAL_DATABASE_PASSWORD:-macro_terminal}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready --username=$$POSTGRES_USER --dbname=$$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:8.2-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  otel-collector:
+    image: otel/opentelemetry-collector:0.161.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    ports:
+      - "4319:4317"
+      - "4320:4318"
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol/config.yaml:ro
+
+  migrate:
+    image: macro-terminal-local
+    profiles:
+      - tools
+    command:
+      - go
+      - tool
+      - tern
+      - migrate
+      - --config
+      - server/internal/infra/database/tern.conf
+      - --migrations
+      - db/migrations
+    environment:
+      MACRO_TERMINAL_DATABASE_HOST: postgres
+      MACRO_TERMINAL_DATABASE_PORT: 5432
+      MACRO_TERMINAL_DATABASE_NAME: ${MACRO_TERMINAL_DATABASE_NAME:-macro_terminal}
+      MACRO_TERMINAL_DATABASE_USER: ${MACRO_TERMINAL_DATABASE_USER:-macro_terminal}
+      MACRO_TERMINAL_DATABASE_PASSWORD: ${MACRO_TERMINAL_DATABASE_PASSWORD:-macro_terminal}
+      MACRO_TERMINAL_DATABASE_SSL_MODE: ${MACRO_TERMINAL_DATABASE_SSL_MODE:-disable}
+    volumes:
+      - .:/workspace
+      - go-modules:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    image: macro-terminal-local
+    build:
+      context: .
+    env_file:
+      - .env
+    environment:
+      MACRO_TERMINAL_DATABASE_HOST: postgres
+      MACRO_TERMINAL_DATABASE_PORT: 5432
+      MACRO_TERMINAL_REDIS_URL: redis://redis:6379/0
+      MACRO_TERMINAL_AUTH_BASE_URL: http://localhost:8081
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    ports:
+      - "8081:8081"
+    volumes:
+      - .:/workspace
+      - go-modules:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8081/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 3m
+    init: true
+    stop_grace_period: 20s
+
+  worker:
+    image: macro-terminal-local
+    command: ["go", "run", "./server/cmd/worker"]
+    env_file:
+      - .env
+    environment:
+      MACRO_TERMINAL_DATABASE_HOST: postgres
+      MACRO_TERMINAL_DATABASE_PORT: 5432
+      MACRO_TERMINAL_REDIS_URL: redis://redis:6379/0
+      MACRO_TERMINAL_AUTH_BASE_URL: http://localhost:8081
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    volumes:
+      - .:/workspace
+      - go-modules:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    init: true
+    stop_grace_period: 20s
+
+volumes:
+  postgres-data:
+  redis-data:
+  go-modules:
+  go-build-cache:
