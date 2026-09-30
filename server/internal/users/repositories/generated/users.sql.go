@@ -18,9 +18,18 @@ FROM users
 WHERE authlier_subject_id = $1
 `
 
-func (q *Queries) GetUserByAuthlierSubjectID(ctx context.Context, authlierSubjectID string) (User, error) {
+type GetUserByAuthlierSubjectIDRow struct {
+	ID                uuid.UUID
+	Username          string
+	AuthlierSubjectID string
+	Role              string
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
+func (q *Queries) GetUserByAuthlierSubjectID(ctx context.Context, authlierSubjectID string) (GetUserByAuthlierSubjectIDRow, error) {
 	row := q.db.QueryRow(ctx, getUserByAuthlierSubjectID, authlierSubjectID)
-	var i User
+	var i GetUserByAuthlierSubjectIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.Username,
@@ -38,9 +47,18 @@ FROM users
 WHERE id = $1
 `
 
-func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
+type GetUserByIDRow struct {
+	ID                uuid.UUID
+	Username          string
+	AuthlierSubjectID string
+	Role              string
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
+func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByIDRow, error) {
 	row := q.db.QueryRow(ctx, getUserByID, id)
-	var i User
+	var i GetUserByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.Username,
