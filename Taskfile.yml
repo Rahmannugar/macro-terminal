@@ -47,8 +47,9 @@ tasks:
       - gofmt -w .
 
   generate:
-    desc: Generate the OpenAPI document
+    desc: Generate type-safe database code and the OpenAPI document
     cmds:
+      - go tool sqlc generate
       - go run ./server/cmd/openapi
 
   migrate:
@@ -79,7 +80,7 @@ tasks:
   check:
     desc: Validate generation, formatting, tests, lint, and builds
     cmds:
-      - go run ./server/cmd/openapi
+      - task: generate
       - test -z "$(gofmt -l .)"
       - go test ./...
       - task: lint
