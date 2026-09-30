@@ -1,0 +1,343 @@
+package services
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/Rahmannugar/macro-terminal/server/internal/entities/models"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+)
+
+type fakeEntityRepository struct {
+	entities map[string]models.Entity
+	pairs    map[string]models.EntityPair
+	assets   map[string]models.UserAsset
+}
+
+func newFakeEntityRepository() *fakeEntityRepository {
+	return &fakeEntityRepository{
+		entities: map[string]models.Entity{},
+		pairs:    map[string]models.EntityPair{},
+		assets:   map[string]models.UserAsset{},
+	}
+}
+
+func (repository *fakeEntityRepository) ListEntities(context.Context) ([]models.Entity, error) {
+	return nil, nil
+}
+
+func (repository *fakeEntityRepository) EntityByCode(_ context.Context, code string) (models.Entity, error) {
+	entity, ok := repository.entities[code]
+	if !ok {
+		return models.Entity{}, pgx.ErrNoRows
+	}
+	return entity, nil
+}
+
+func (repository *fakeEntityRepository) CreateEntity(
+	_ context.Context,
+	entity models.Entity,
+) (models.Entity, error) {
+	repository.entities[entity.Code] = entity
+	return entity, nil
+}
+
+func (repository *fakeEntityRepository) UpsertEntity(
+	_ context.Context,
+	entity models.Entity,
+) (models.Entity, error) {
+	if existing, ok := repository.entities[entity.Code]; ok {
+		entity.ID = existing.ID
+		entity.CreatedAt = existing.CreatedAt
+	}
+	repository.entities[entity.Code] = entity
+	return entity, nil
+}
+
+func (repository *fakeEntityRepository) ListEntityPairs(context.Context) ([]models.EntityPair, error) {
+	return nil, nil
+}
+
+func (repository *fakeEntityRepository) EntityPairsContainingEntity(
+	context.Context,
+	uuid.UUID,
+) ([]models.EntityPair, error) {
+	return nil, nil
+}
+
+func (repository *fakeEntityRepository) EntityPairBySymbol(
+	_ context.Context,
+	symbol string,
+) (models.EntityPair, error) {
+	pair, ok := repository.pairs[symbol]
+	if !ok {
+		return models.EntityPair{}, pgx.ErrNoRows
+	}
+	return pair, nil
+}
+
+func (repository *fakeEntityRepository) CreateEntityPair(
+	_ context.Context,
+	pair models.EntityPair,
+) (models.EntityPair, error) {
+	repository.pairs[pair.Symbol] = pair
+	return pair, nil
+}
+
+func (repository *fakeEntityRepository) UpsertEntityPair(
+	_ context.Context,
+	pair models.EntityPair,
+) (models.EntityPair, error) {
+	if existing, ok := repository.pairs[pair.Symbol]; ok {
+		pair.ID = existing.ID
+		pair.CreatedAt = existing.CreatedAt
+	}
+	repository.pairs[pair.Symbol] = pair
+	return pair, nil
+}
+
+func (repository *fakeEntityRepository) EntityPairByID(
+	_ context.Context,
+	id uuid.UUID,
+) (models.EntityPair, error) {
+	for _, pair := range repository.pairs {
+		if pair.ID == id {
+			return pair, nil
+		}
+	}
+	return models.EntityPair{}, pgx.ErrNoRows
+}
+
+func (repository *fakeEntityRepository) EntityPairsByUser(context.Context, uuid.UUID) ([]models.EntityPair, error) {
+	return nil, nil
+}
+
+func (repository *fakeEntityRepository) UserIDsByEntityPair(context.Context, uuid.UUID) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
+func (repository *fakeEntityRepository) SubscribeUserAsset(
+	_ context.Context,
+	userID, entityPairID uuid.UUID,
+) error {
+	repository.assets[userID.String()+"/"+entityPairID.String()] = models.UserAsset{
+		UserID:       userID,
+		EntityPairID: entityPairID,
+	}
+	return nil
+}
+
+func (repository *fakeEntityRepository) UnsubscribeUserAsset(
+	_ context.Context,
+	userID, entityPairID uuid.UUID,
+) error {
+	delete(repository.assets, userID.String()+"/"+entityPairID.String())
+	return nil
+}
+
+func TestCreateEntityValidation(t *testing.T) {
+	service := NewEntityService(newFakeEntityRepository())
+
+	tests := []struct {
+		name       string
+		code       string
+		nameValue  string
+		entityType string
+		wantErr    error
+	}{
+		{name: "blank code", code: "  ", nameValue: "Euro", entityType: "currency", wantErr: ErrEntityCodeRequired},
+		{name: "blank name", code: "EUR", nameValue: "", entityType: "currency", wantErr: ErrEntityNameRequired},
+		{name: "blank type", code: "EUR", nameValue: "Euro", entityType: " ", wantErr: ErrEntityTypeRequired},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := service.CreateEntity(context.Background(), test.code, test.nameValue, test.entityType)
+			if !errors.Is(err, test.wantErr) {
+				t.Fatalf("CreateEntity() error = %v, want %v", err, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestCreateEntityRejectsDuplicateCode(t *testing.T) {
+	service := NewEntityService(newFakeEntityRepository())
+
+	if _, err := service.CreateEntity(context.Background(), "EUR", "Euro", "currency"); err != nil {
+		t.Fatalf("first CreateEntity: %v", err)
+	}
+	if _, err := service.CreateEntity(context.Background(), "EUR", "Euro alt", "currency"); !errors.Is(
+		err, ErrEntityCodeExists,
+	) {
+		t.Fatalf("duplicate CreateEntity error = %v, want %v", err, ErrEntityCodeExists)
+	}
+}
+
+func TestEnsureEntityIsIdempotent(t *testing.T) {
+	repository := newFakeEntityRepository()
+	service := NewEntityService(repository)
+
+	first, err := service.EnsureEntity(context.Background(), "USD", "United States Dollar", "currency")
+	if err != nil {
+		t.Fatalf("first EnsureEntity: %v", err)
+	}
+	second, err := service.EnsureEntity(context.Background(), "USD", "US Dollar", "currency")
+	if err != nil {
+		t.Fatalf("second EnsureEntity: %v", err)
+	}
+	if second.ID != first.ID {
+		t.Fatalf("re-seed created a new entity instead of updating in place")
+	}
+	if second.Name != "US Dollar" {
+		t.Fatalf("re-seed did not apply the name change, got %q", second.Name)
+	}
+	if len(repository.entities) != 1 {
+		t.Fatalf("entities = %d, want 1", len(repository.entities))
+	}
+}
+
+func TestCreateEntityPairValidation(t *testing.T) {
+	repository := newFakeEntityRepository()
+	service := NewEntityService(repository)
+
+	for _, code := range []string{"USD", "GBP", "EUR"} {
+		if _, err := service.EnsureEntity(context.Background(), code, code, "currency"); err != nil {
+			t.Fatalf("EnsureEntity(%s): %v", code, err)
+		}
+	}
+
+	tests := []struct {
+		name    string
+		base    string
+		quote   string
+		symbol  string
+		wantErr error
+	}{
+		{name: "blank symbol", base: "GBP", quote: "USD", symbol: "  ", wantErr: ErrPairSymbolRequired},
+		{name: "same entity", base: "USD", quote: "USD", symbol: "USD/USD", wantErr: ErrPairEntitiesMustDiffer},
+		{
+			name:    "unknown base entity",
+			base:    "CHF",
+			quote:   "USD",
+			symbol:  "CHF/USD",
+			wantErr: ErrEntityNotFound,
+		},
+		{
+			name:    "unknown quote entity",
+			base:    "GBP",
+			quote:   "CHF",
+			symbol:  "GBP/CHF",
+			wantErr: ErrEntityNotFound,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := service.CreateEntityPair(context.Background(), test.base, test.quote, test.symbol)
+			if !errors.Is(err, test.wantErr) {
+				t.Fatalf("CreateEntityPair() error = %v, want %v", err, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestCreateEntityPairRejectsDuplicateSymbol(t *testing.T) {
+	service := NewEntityService(newFakeEntityRepository())
+
+	for _, code := range []string{"USD", "GBP"} {
+		if _, err := service.EnsureEntity(context.Background(), code, code, "currency"); err != nil {
+			t.Fatalf("EnsureEntity(%s): %v", code, err)
+		}
+	}
+	if _, err := service.CreateEntityPair(context.Background(), "GBP", "USD", "GBP/USD"); err != nil {
+		t.Fatalf("first CreateEntityPair: %v", err)
+	}
+	if _, err := service.CreateEntityPair(
+		context.Background(), "USD", "GBP", "GBP/USD",
+	); !errors.Is(err, ErrPairSymbolExists) {
+		t.Fatalf("duplicate symbol error = %v, want %v", err, ErrPairSymbolExists)
+	}
+}
+
+func TestEnsureEntityPairIsIdempotent(t *testing.T) {
+	repository := newFakeEntityRepository()
+	service := NewEntityService(repository)
+
+	for _, code := range []string{"USD", "GBP"} {
+		if _, err := service.EnsureEntity(context.Background(), code, code, "currency"); err != nil {
+			t.Fatalf("EnsureEntity(%s): %v", code, err)
+		}
+	}
+
+	first, err := service.EnsureEntityPair(context.Background(), "GBP", "USD", "GBP/USD")
+	if err != nil {
+		t.Fatalf("first EnsureEntityPair: %v", err)
+	}
+	second, err := service.EnsureEntityPair(context.Background(), "GBP", "USD", "GBP/USD")
+	if err != nil {
+		t.Fatalf("second EnsureEntityPair: %v", err)
+	}
+	if second.ID != first.ID {
+		t.Fatalf("re-seed created a new pair instead of updating in place")
+	}
+	if len(repository.pairs) != 1 {
+		t.Fatalf("pairs = %d, want 1", len(repository.pairs))
+	}
+}
+
+func TestUserAssetServiceSubscribe(t *testing.T) {
+	repository := newFakeEntityRepository()
+	entityService := NewEntityService(repository)
+	assetService := NewUserAssetService(repository)
+
+	if _, err := entityService.EnsureEntity(context.Background(), "USD", "USD", "currency"); err != nil {
+		t.Fatalf("EnsureEntity: %v", err)
+	}
+	pair, err := entityService.EnsureEntityPair(context.Background(), "GBP", "USD", "GBP/USD")
+	if err == nil {
+		t.Fatalf("pair should not exist yet: %v", err)
+	}
+	if _, err := entityService.EnsureEntity(context.Background(), "GBP", "GBP", "currency"); err != nil {
+		t.Fatalf("EnsureEntity GBP: %v", err)
+	}
+	pair, err = entityService.EnsureEntityPair(context.Background(), "GBP", "USD", "GBP/USD")
+	if err != nil {
+		t.Fatalf("EnsureEntityPair: %v", err)
+	}
+
+	userID := uuid.New()
+	if err := assetService.Subscribe(context.Background(), userID, pair.ID); err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+	if err := assetService.Subscribe(context.Background(), userID, pair.ID); err != nil {
+		t.Fatalf("repeated Subscribe: %v", err)
+	}
+	if len(repository.assets) != 1 {
+		t.Fatalf("assets = %d, want 1 (subscribe must be idempotent)", len(repository.assets))
+	}
+
+	if err := assetService.Subscribe(context.Background(), uuid.Nil, pair.ID); !errors.Is(
+		err, ErrUserIDRequired,
+	) {
+		t.Fatalf("nil user error = %v, want %v", err, ErrUserIDRequired)
+	}
+	if err := assetService.Subscribe(context.Background(), userID, uuid.Nil); !errors.Is(
+		err, ErrEntityPairIDRequired,
+	) {
+		t.Fatalf("nil pair error = %v, want %v", err, ErrEntityPairIDRequired)
+	}
+	if err := assetService.Subscribe(context.Background(), userID, uuid.New()); !errors.Is(
+		err, ErrEntityPairNotFound,
+	) {
+		t.Fatalf("unknown pair error = %v, want %v", err, ErrEntityPairNotFound)
+	}
+
+	if err := assetService.Unsubscribe(context.Background(), userID, pair.ID); err != nil {
+		t.Fatalf("Unsubscribe: %v", err)
+	}
+	if len(repository.assets) != 0 {
+		t.Fatalf("assets = %d after unsubscribe, want 0", len(repository.assets))
+	}
+}

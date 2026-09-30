@@ -57,6 +57,11 @@ tasks:
     cmds:
       - go tool tern migrate --config server/internal/infra/database/tern.conf --migrations db/migrations
 
+  seed:
+    desc: Seed the initial source universe (idempotent)
+    cmds:
+      - go run ./server/cmd/seed
+
   test:
     desc: Run all tests
     cmds:

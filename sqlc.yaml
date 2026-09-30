@@ -16,3 +16,39 @@ sql:
             go_type:
               import: github.com/google/uuid
               type: UUID
+  - name: entities
+    engine: postgresql
+    schema: db/migrations
+    queries: server/internal/entities/queries
+    gen:
+      go:
+        package: entitydb
+        out: server/internal/entities/repositories/generated
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        omit_unused_structs: true
+        overrides:
+          - db_type: uuid
+            go_type:
+              import: github.com/google/uuid
+              type: UUID
+  - name: sources
+    engine: postgresql
+    schema: db/migrations
+    queries: server/internal/sources/queries
+    gen:
+      go:
+        package: sourcedb
+        out: server/internal/sources/repositories/generated
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        omit_unused_structs: true
+        overrides:
+          - db_type: uuid
+            go_type:
+              import: github.com/google/uuid
+              type: UUID
+          - db_type: jsonb
+            go_type:
+              import: encoding/json
+              type: RawMessage
