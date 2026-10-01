@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -15,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/safehttp"
 	"github.com/Rahmannugar/macro-terminal/server/internal/sources/models"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -58,6 +60,10 @@ type Fetcher struct {
 	maxDelay    time.Duration
 	sleep       func(context.Context, time.Duration) error
 	now         func() time.Time
+	// checkDestination validates configuration URLs before the first
+	// attempt: safehttp.CheckDestination in production, relaxed by tests
+	// to reach loopback fixtures.
+	checkDestination func(host, port string) error
 
 	spacingMu       sync.Mutex
 	lastHostRequest map[string]time.Time
@@ -79,6 +85,8 @@ func newFetcher(client HTTPDoer, breaker *Breaker, logger *slog.Logger) *Fetcher
 		maxDelay:    maxRetryDelay,
 		sleep:       sleepContext,
 		now:         time.Now,
+
+		checkDestination: safehttp.CheckDestination,
 
 		lastHostRequest: map[string]time.Time{},
 	}
@@ -160,6 +168,12 @@ func (fetcher *Fetcher) attempt(
 	if err != nil {
 		if ctx.Err() != nil {
 			return Result{}, ctx.Err()
+		}
+		if errors.Is(err, safehttp.ErrBlockedAddress) {
+			return Result{}, &fetchError{
+				cause:     fmt.Errorf("request blocked: %w", err),
+				retryable: false,
+			}
 		}
 		return Result{}, &fetchError{
 			cause:     fmt.Errorf("request failed: %w", err),
@@ -254,6 +268,11 @@ func (fetcher *Fetcher) buildRequest(
 	}
 	if target.Scheme != "http" && target.Scheme != "https" {
 		return nil, fmt.Errorf("%w: %s", ErrInsecureURL, target.Scheme)
+	}
+	if fetcher.checkDestination != nil {
+		if err := fetcher.checkDestination(target.Hostname(), target.Port()); err != nil {
+			return nil, err
+		}
 	}
 	existing := target.Query()
 	for key, values := range query {

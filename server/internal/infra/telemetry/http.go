@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/safehttp"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -216,7 +217,7 @@ func (runtime *Runtime) recordReadinessFailure(
 
 func NewHTTPClient(timeout time.Duration) *http.Client {
 	return &http.Client{
-		Transport: otelhttp.NewTransport(http.DefaultTransport),
+		Transport: otelhttp.NewTransport(safehttp.Transport()),
 		Timeout:   timeout,
 	}
 }

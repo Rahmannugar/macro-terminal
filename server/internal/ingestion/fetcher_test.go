@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -12,15 +13,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/safehttp"
 	"github.com/Rahmannugar/macro-terminal/server/internal/sources/models"
 	"github.com/google/uuid"
 )
 
 func asFailure(err error, target *Failure) bool { return errors.As(err, target) }
-func isMalformed(err error) bool                { return errors.Is(err, ErrMalformed) }
-func isSecretMissing(err error) bool            { return errors.Is(err, ErrSecretMissing) }
-func isInsecureURL(err error) bool              { return errors.Is(err, ErrInsecureURL) }
-func isCircuitOpen(err error) bool              { return errors.Is(err, ErrCircuitOpen) }
+
+type doerFunc func(*http.Request) (*http.Response, error)
+
+func (f doerFunc) Do(request *http.Request) (*http.Response, error) { return f(request) }
+func isMalformed(err error) bool                                    { return errors.Is(err, ErrMalformed) }
+func isSecretMissing(err error) bool                                { return errors.Is(err, ErrSecretMissing) }
+func isInsecureURL(err error) bool                                  { return errors.Is(err, ErrInsecureURL) }
+func isCircuitOpen(err error) bool                                  { return errors.Is(err, ErrCircuitOpen) }
 
 func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -51,6 +57,9 @@ func newTestFetcher(t *testing.T, handler http.HandlerFunc) (*Fetcher, *httptest
 	t.Cleanup(server.Close)
 
 	fetcher := newFetcher(server.Client(), NewBreaker(5, time.Minute), discardLogger())
+	// The address policy refuses loopback fixtures; tests reach them
+	// through the injected client instead.
+	fetcher.checkDestination = nil
 	fetcher.baseDelay = 10 * time.Millisecond
 	fetcher.maxDelay = time.Minute
 	var delays []time.Duration
@@ -59,6 +68,53 @@ func newTestFetcher(t *testing.T, handler http.HandlerFunc) (*Fetcher, *httptest
 		return nil
 	}
 	return fetcher, server, &requests, &delays
+}
+
+func TestFetcherBlocksRefusedConfigurationURLs(t *testing.T) {
+	fetcher, _, requests, _ := newTestFetcher(t, func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("refused destination should never be requested")
+	})
+	// This test verifies the production policy, so put it back after the
+	// helper relaxed it for loopback fixtures.
+	fetcher.checkDestination = safehttp.CheckDestination
+
+	refused := []string{
+		`{"url":"http://169.254.169.254/latest/meta-data/"}`,
+		`{"url":"http://127.0.0.1:6380/"}`,
+		`{"url":"http://[::1]/"}`,
+		`{"url":"http://example.com:5433/"}`,
+	}
+	for _, config := range refused {
+		_, err := fetcher.Fetch(context.Background(), testConfiguration("rss", config))
+		if !errors.Is(err, safehttp.ErrBlockedAddress) {
+			t.Errorf("config %s: err = %v, want ErrBlockedAddress", config, err)
+		}
+	}
+	if requests.Load() != 0 {
+		t.Errorf("provider requests = %d, want 0", requests.Load())
+	}
+}
+
+func TestFetcherDoesNotRetryBlockedDestinations(t *testing.T) {
+	var attempts atomic.Int64
+	blocked := doerFunc(func(*http.Request) (*http.Response, error) {
+		attempts.Add(1)
+		return nil, fmt.Errorf("dial tcp: %w", safehttp.ErrBlockedAddress)
+	})
+	fetcher := newFetcher(blocked, NewBreaker(5, time.Minute), discardLogger())
+	fetcher.checkDestination = nil
+
+	_, err := fetcher.Fetch(context.Background(), testConfiguration("rss", `{"url":"https://example.com/feed"}`))
+	if !errors.Is(err, safehttp.ErrBlockedAddress) {
+		t.Fatalf("Fetch = %v, want ErrBlockedAddress", err)
+	}
+	var failure Failure
+	if !asFailure(err, &failure) || failure.Retryable() {
+		t.Fatalf("blocked destination must fail permanently, got %+v", err)
+	}
+	if attempts.Load() != 1 {
+		t.Errorf("attempts = %d, want 1 (no retries)", attempts.Load())
+	}
 }
 
 func TestFetcherSuccessJSON(t *testing.T) {
