@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/sources/models"
 	sourcedb "github.com/Rahmannugar/macro-terminal/server/internal/sources/repositories/generated"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -108,12 +110,28 @@ func (repository *SourceRepository) ListSourceConfigurationsWithSource(
 				Config:    row.Config,
 				CreatedAt: row.CreatedAt.Time,
 				UpdatedAt: row.UpdatedAt.Time,
+				LastRunAt: nullableTime(row.LastRunAt),
 			},
 			SourceName: row.SourceName,
 			SourceType: row.SourceType,
 		})
 	}
 	return configurations, nil
+}
+
+func (repository *SourceRepository) MarkSourceConfigurationsRun(
+	ctx context.Context,
+	ids []uuid.UUID,
+	runAt time.Time,
+) error {
+	err := repository.queries.MarkSourceConfigurationsRun(ctx, sourcedb.MarkSourceConfigurationsRunParams{
+		RunAt: pgtype.Timestamptz{Time: runAt, Valid: true},
+		Ids:   ids,
+	})
+	if err != nil {
+		return fmt.Errorf("mark source configurations run: %w", err)
+	}
+	return nil
 }
 
 func (repository *SourceRepository) SourceConfigurationByURL(
@@ -187,5 +205,14 @@ func mapConfiguration(row sourcedb.SourceConfiguration) models.SourceConfigurati
 		Config:    row.Config,
 		CreatedAt: row.CreatedAt.Time,
 		UpdatedAt: row.UpdatedAt.Time,
+		LastRunAt: nullableTime(row.LastRunAt),
 	}
+}
+
+func nullableTime(value pgtype.Timestamptz) *time.Time {
+	if !value.Valid {
+		return nil
+	}
+	timestamp := value.Time
+	return &timestamp
 }

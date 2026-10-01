@@ -24,10 +24,9 @@ const (
 	mappingLogTitleLimit = 10
 )
 
-// ConfigurationSource loads the source configurations to schedule, one row
-// per configuration.
 type ConfigurationSource interface {
 	ListSourceConfigurationsWithSource(context.Context) ([]models.SourceConfigurationWithSource, error)
+	MarkSourceConfigurationsRun(context.Context, []uuid.UUID, time.Time) error
 }
 
 // SourceFetcher fetches one configuration; the fetcher implements it.
@@ -41,9 +40,9 @@ type DictionaryLoader interface {
 	Load(context.Context) (mapping.Dictionary, error)
 }
 
-// Runner is the schedule loop. It runs one pass immediately at boot so
-// restarts catch up, then wakes every tick. A source that fails never
-// stops the others.
+// Runner is the schedule loop. Dispatch times live in PostgreSQL, so a
+// restart resumes the cadence instead of refetching everything. A source
+// that fails never stops the others.
 type Runner struct {
 	configurations ConfigurationSource
 	fetcher        SourceFetcher
@@ -52,7 +51,7 @@ type Runner struct {
 	cadences       Cadences
 	tick           time.Duration
 	now            func() time.Time
-	lastDispatched map[uuid.UUID]time.Time
+	wake           chan struct{}
 	concurrency    int
 }
 
@@ -72,12 +71,13 @@ func NewRunner(
 		cadences:       cadences,
 		tick:           runnerTick,
 		now:            time.Now,
-		lastDispatched: map[uuid.UUID]time.Time{},
+		wake:           make(chan struct{}, 1),
 		concurrency:    runnerConcurrency,
 	}
 }
 
-// Run blocks until ctx is canceled and fetches due sources every tick.
+// Run blocks until ctx is canceled. The tick is the recovery path: a
+// missed notification costs at most one tick of delay.
 func (runner *Runner) Run(ctx context.Context) error {
 	runner.runDue(ctx)
 	ticker := time.NewTicker(runner.tick)
@@ -88,13 +88,28 @@ func (runner *Runner) Run(ctx context.Context) error {
 			return nil
 		case <-ticker.C:
 			runner.runDue(ctx)
+		case <-runner.wake:
+			runner.logger.InfoContext(ctx, "Schedule woken by change notification",
+				"event", "ingestion.schedule.woken",
+				"operation", "ingestion.schedule",
+			)
+			runner.runDue(ctx)
 		}
 	}
 }
 
-// runDue fetches every configuration whose cadence has passed. Last-run
-// times are recorded before fetching, so a slow provider cannot become due
-// again early.
+// Wake buffers a single re-check: a burst of calls still costs one extra
+// pass.
+func (runner *Runner) Wake() {
+	select {
+	case runner.wake <- struct{}{}:
+	default:
+	}
+}
+
+// runDue fetches configurations past their cadence. Dispatch times are
+// recorded before fetching, so a slow provider cannot become due again
+// early.
 func (runner *Runner) runDue(ctx context.Context) {
 	configurations, err := runner.configurations.ListSourceConfigurationsWithSource(ctx)
 	if err != nil {
@@ -112,14 +127,29 @@ func (runner *Runner) runDue(ctx context.Context) {
 	now := runner.now()
 	var due []models.SourceConfigurationWithSource
 	for _, configuration := range configurations {
-		last := runner.lastDispatched[configuration.ID]
-		if now.Sub(last) < runner.cadences.For(configuration.SourceName, configuration.SourceType) {
+		if configuration.LastRunAt != nil &&
+			now.Sub(*configuration.LastRunAt) < runner.cadences.For(configuration.SourceName, configuration.SourceType) {
 			continue
 		}
-		runner.lastDispatched[configuration.ID] = now
 		due = append(due, configuration)
 	}
 	if len(due) == 0 {
+		return
+	}
+
+	ids := make([]uuid.UUID, 0, len(due))
+	for _, configuration := range due {
+		ids = append(ids, configuration.ID)
+	}
+	if err := runner.configurations.MarkSourceConfigurationsRun(ctx, ids, now); err != nil {
+		if ctx.Err() != nil {
+			return
+		}
+		runner.logger.ErrorContext(ctx, "Failed to record schedule state",
+			"event", "ingestion.schedule.mark.failed",
+			"operation", "ingestion.run",
+			"error", err,
+		)
 		return
 	}
 

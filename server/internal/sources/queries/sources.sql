@@ -54,11 +54,17 @@ SELECT sc.id,
        sc.config,
        sc.created_at,
        sc.updated_at,
+       sc.last_run_at,
        s.name AS source_name,
        s.type AS source_type
 FROM source_configurations sc
 JOIN sources s ON s.id = sc.source_id
 ORDER BY s.name, sc.type;
+
+-- name: MarkSourceConfigurationsRun :exec
+UPDATE source_configurations
+SET last_run_at = sqlc.arg(run_at)
+WHERE id = ANY(sqlc.slice(ids));
 
 -- name: SourceConfigurationsByType :many
 SELECT *

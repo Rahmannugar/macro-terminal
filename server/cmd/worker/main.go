@@ -28,6 +28,9 @@ const (
 	// databasePoolDefault stays modest because ingestion slots wait on
 	// providers, not PostgreSQL.
 	databasePoolDefault int32 = 10
+	// scheduleChangeChannel must match the channel the database trigger
+	// notifies on configuration changes.
+	scheduleChangeChannel = "macro_terminal_source_configurations"
 )
 
 type workerResult struct {
@@ -110,24 +113,35 @@ func run() (runError error) {
 	workerContext, stopWorkers := context.WithCancel(signalContext)
 	defer stopWorkers()
 
-	results := make(chan workerResult, 1)
+	results := make(chan workerResult, 2)
 	go func() {
 		results <- workerResult{name: "ingestion-runner", err: ingestionRunner.Run(workerContext)}
 	}()
-	logger.Info("worker started", "jobs", 1)
+	go func() {
+		results <- workerResult{name: "schedule-listener", err: database.Listen(
+			workerContext,
+			logger,
+			cfg.Database.ConnectionString(),
+			scheduleChangeChannel,
+			ingestionRunner.Wake,
+		)}
+	}()
+	logger.Info("worker started", "jobs", 2)
 
 	<-workerContext.Done()
 	stopWorkers()
 	shutdownTimer := time.NewTimer(shutdownTimeout)
 	defer shutdownTimer.Stop()
-	select {
-	case result := <-results:
-		if result.err != nil && !errors.Is(result.err, context.Canceled) {
-			return fmt.Errorf("%s stopped: %w", result.name, result.err)
+	for completed := 0; completed < 2; completed++ {
+		select {
+		case result := <-results:
+			if result.err != nil && !errors.Is(result.err, context.Canceled) {
+				return fmt.Errorf("%s stopped: %w", result.name, result.err)
+			}
+		case <-shutdownTimer.C:
+			return fmt.Errorf("worker shutdown timed out after %s", shutdownTimeout)
 		}
-		logger.Info("worker shutdown completed")
-	case <-shutdownTimer.C:
-		return fmt.Errorf("worker shutdown timed out after %s", shutdownTimeout)
 	}
+	logger.Info("worker shutdown completed")
 	return runError
 }

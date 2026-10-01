@@ -27,6 +27,9 @@ type SourceConfiguration struct {
 	Config    json.RawMessage
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	// LastRunAt is nil until the scheduler first dispatches this
+	// configuration.
+	LastRunAt *time.Time
 }
 
 // SourceConfigurationWithSource joins a configuration with its logical source

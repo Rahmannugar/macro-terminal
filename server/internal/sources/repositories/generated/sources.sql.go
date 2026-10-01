@@ -16,7 +16,7 @@ import (
 const createSourceConfiguration = `-- name: CreateSourceConfiguration :one
 INSERT INTO source_configurations (id, source_id, type, config)
 VALUES ($1, $2, $3, $4)
-RETURNING id, source_id, type, config, created_at, updated_at
+RETURNING id, source_id, type, config, created_at, updated_at, last_run_at
 `
 
 type CreateSourceConfigurationParams struct {
@@ -41,6 +41,7 @@ func (q *Queries) CreateSourceConfiguration(ctx context.Context, arg CreateSourc
 		&i.Config,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LastRunAt,
 	)
 	return i, err
 }
@@ -84,7 +85,7 @@ func (q *Queries) GetSourceByName(ctx context.Context, name string) (Source, err
 }
 
 const getSourceConfigurationByURL = `-- name: GetSourceConfigurationByURL :one
-SELECT id, source_id, type, config, created_at, updated_at
+SELECT id, source_id, type, config, created_at, updated_at, last_run_at
 FROM source_configurations
 WHERE source_id = $1
   AND type = $2
@@ -108,12 +109,13 @@ func (q *Queries) GetSourceConfigurationByURL(ctx context.Context, arg GetSource
 		&i.Config,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LastRunAt,
 	)
 	return i, err
 }
 
 const listSourceConfigurations = `-- name: ListSourceConfigurations :many
-SELECT id, source_id, type, config, created_at, updated_at
+SELECT id, source_id, type, config, created_at, updated_at, last_run_at
 FROM source_configurations
 WHERE source_id = $1
 ORDER BY type, id
@@ -135,6 +137,7 @@ func (q *Queries) ListSourceConfigurations(ctx context.Context, sourceID uuid.UU
 			&i.Config,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.LastRunAt,
 		); err != nil {
 			return nil, err
 		}
@@ -153,6 +156,7 @@ SELECT sc.id,
        sc.config,
        sc.created_at,
        sc.updated_at,
+       sc.last_run_at,
        s.name AS source_name,
        s.type AS source_type
 FROM source_configurations sc
@@ -167,6 +171,7 @@ type ListSourceConfigurationsWithSourceRow struct {
 	Config     json.RawMessage
 	CreatedAt  pgtype.Timestamptz
 	UpdatedAt  pgtype.Timestamptz
+	LastRunAt  pgtype.Timestamptz
 	SourceName string
 	SourceType string
 }
@@ -187,6 +192,7 @@ func (q *Queries) ListSourceConfigurationsWithSource(ctx context.Context) ([]Lis
 			&i.Config,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.LastRunAt,
 			&i.SourceName,
 			&i.SourceType,
 		); err != nil {
@@ -232,8 +238,24 @@ func (q *Queries) ListSources(ctx context.Context) ([]Source, error) {
 	return items, nil
 }
 
+const markSourceConfigurationsRun = `-- name: MarkSourceConfigurationsRun :exec
+UPDATE source_configurations
+SET last_run_at = $1
+WHERE id = ANY($2)
+`
+
+type MarkSourceConfigurationsRunParams struct {
+	RunAt pgtype.Timestamptz
+	Ids   []uuid.UUID
+}
+
+func (q *Queries) MarkSourceConfigurationsRun(ctx context.Context, arg MarkSourceConfigurationsRunParams) error {
+	_, err := q.db.Exec(ctx, markSourceConfigurationsRun, arg.RunAt, arg.Ids)
+	return err
+}
+
 const sourceConfigurationsByType = `-- name: SourceConfigurationsByType :many
-SELECT id, source_id, type, config, created_at, updated_at
+SELECT id, source_id, type, config, created_at, updated_at, last_run_at
 FROM source_configurations
 WHERE source_id = $1
   AND type = $2
@@ -261,6 +283,7 @@ func (q *Queries) SourceConfigurationsByType(ctx context.Context, arg SourceConf
 			&i.Config,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.LastRunAt,
 		); err != nil {
 			return nil, err
 		}
@@ -277,7 +300,7 @@ UPDATE source_configurations
 SET config = $2,
     updated_at = now()
 WHERE id = $1
-RETURNING id, source_id, type, config, created_at, updated_at
+RETURNING id, source_id, type, config, created_at, updated_at, last_run_at
 `
 
 type UpdateSourceConfigurationParams struct {
@@ -295,6 +318,7 @@ func (q *Queries) UpdateSourceConfiguration(ctx context.Context, arg UpdateSourc
 		&i.Config,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LastRunAt,
 	)
 	return i, err
 }

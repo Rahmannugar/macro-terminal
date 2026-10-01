@@ -26,4 +26,6 @@ type SourceConfiguration struct {
 	Config    json.RawMessage
 	CreatedAt pgtype.Timestamptz
 	UpdatedAt pgtype.Timestamptz
+	// When the scheduler last dispatched this configuration; survives restarts so a boot pass fetches only overdue work.
+	LastRunAt pgtype.Timestamptz
 }

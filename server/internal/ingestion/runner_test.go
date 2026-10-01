@@ -15,6 +15,8 @@ import (
 type fakeConfigurationSource struct {
 	configurations []models.SourceConfigurationWithSource
 	err            error
+	markErr        error
+	marked         [][]uuid.UUID
 }
 
 func (source *fakeConfigurationSource) ListSourceConfigurationsWithSource(
@@ -24,6 +26,26 @@ func (source *fakeConfigurationSource) ListSourceConfigurationsWithSource(
 		return nil, source.err
 	}
 	return source.configurations, nil
+}
+
+func (source *fakeConfigurationSource) MarkSourceConfigurationsRun(
+	_ context.Context,
+	ids []uuid.UUID,
+	runAt time.Time,
+) error {
+	if source.markErr != nil {
+		return source.markErr
+	}
+	source.marked = append(source.marked, append([]uuid.UUID(nil), ids...))
+	for i := range source.configurations {
+		for _, id := range ids {
+			if source.configurations[i].ID == id {
+				timestamp := runAt
+				source.configurations[i].LastRunAt = &timestamp
+			}
+		}
+	}
+	return nil
 }
 
 type fakeFetchResult struct {
@@ -239,5 +261,79 @@ func TestRunnerFetchesWhenDictionaryLoadFails(t *testing.T) {
 
 	if fetcher.fetchCount() != 1 {
 		t.Fatalf("fetched = %d, want 1 (mapping failure must not block fetching)", fetcher.fetchCount())
+	}
+}
+
+func TestRunnerDurableStateSurvivesRestart(t *testing.T) {
+	news := configuration(uuid.New(), "CoinDesk", "news", "rss")
+	source := &fakeConfigurationSource{
+		configurations: []models.SourceConfigurationWithSource{news},
+	}
+	fetcher := &fakeSourceFetcher{byID: map[uuid.UUID]fakeFetchResult{}}
+
+	firstRunner, _ := newTestRunner(source, fetcher, &fakeDictionaryLoader{})
+	firstRunner.runDue(context.Background())
+	if fetcher.fetchCount() != 1 {
+		t.Fatalf("first runner fetched = %d, want 1", fetcher.fetchCount())
+	}
+
+	secondRunner, _ := newTestRunner(source, fetcher, &fakeDictionaryLoader{})
+	secondRunner.runDue(context.Background())
+	if fetcher.fetchCount() != 1 {
+		t.Fatalf("after restart fetched = %d, want 1 (schedule state lives in the database)", fetcher.fetchCount())
+	}
+}
+
+func TestRunnerSkipsRecentlyRunConfigurations(t *testing.T) {
+	news := configuration(uuid.New(), "CoinDesk", "news", "rss")
+	recent := time.Date(2026, 9, 30, 11, 58, 0, 0, time.UTC)
+	news.LastRunAt = &recent
+
+	source := &fakeConfigurationSource{
+		configurations: []models.SourceConfigurationWithSource{news},
+	}
+	fetcher := &fakeSourceFetcher{byID: map[uuid.UUID]fakeFetchResult{}}
+	runner, _ := newTestRunner(source, fetcher, &fakeDictionaryLoader{})
+
+	runner.runDue(context.Background())
+
+	if fetcher.fetchCount() != 0 {
+		t.Fatalf("fetched = %d, want 0 (2 minutes since last run is inside the 5m news cadence)", fetcher.fetchCount())
+	}
+}
+
+func TestRunnerAbortsPassWhenScheduleRecordingFails(t *testing.T) {
+	news := configuration(uuid.New(), "CoinDesk", "news", "rss")
+	source := &fakeConfigurationSource{
+		configurations: []models.SourceConfigurationWithSource{news},
+		markErr:        errors.New("database down"),
+	}
+	fetcher := &fakeSourceFetcher{byID: map[uuid.UUID]fakeFetchResult{}}
+	runner, _ := newTestRunner(source, fetcher, &fakeDictionaryLoader{})
+
+	runner.runDue(context.Background())
+
+	if fetcher.fetchCount() != 0 {
+		t.Fatalf("fetched = %d, want 0 (unrecorded dispatch must not fetch, or a crash would refetch the world)", fetcher.fetchCount())
+	}
+}
+
+func TestRunnerWakeCoalesces(t *testing.T) {
+	source := &fakeConfigurationSource{}
+	fetcher := &fakeSourceFetcher{byID: map[uuid.UUID]fakeFetchResult{}}
+	runner, _ := newTestRunner(source, fetcher, &fakeDictionaryLoader{})
+
+	runner.Wake()
+	runner.Wake()
+
+	select {
+	case <-runner.wake:
+	default:
+		t.Fatal("expected one buffered wake after Wake calls")
+	}
+	select {
+	case <-runner.wake:
+		t.Fatal("wakes must coalesce into a single buffered slot")
+	default:
 	}
 }
