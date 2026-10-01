@@ -1,7 +1,8 @@
-// Package ingestion implements the scheduled fetch layer of the pipeline:
-// adapters turn provider payloads into raw results, the fetcher applies
-// timeouts, retries, and circuit breaking, and the runner schedules each
-// source configuration at its cadence.
+// Package ingestion fetches source data on a schedule.
+//
+// The runner picks which sources are due, the fetcher performs the request
+// (with retries, host spacing, and a circuit breaker), and an adapter turns
+// the response body into a Result.
 package ingestion
 
 import (
@@ -10,25 +11,26 @@ import (
 )
 
 var (
-	// ErrMalformed marks a provider response that does not match the expected
-	// format. Malformed responses are not retried, unlike temporary provider
-	// failures (timeouts, rate limits, 5xx), which are.
+	// ErrMalformed means the provider answered, but the body is not the format
+	// we expect. Retrying cannot fix a wrong format, so malformed responses
+	// are never retried (timeouts, rate limits, and 5xx errors are).
 	ErrMalformed = errors.New("malformed provider response")
-	// ErrSecretMissing marks configuration referencing an environment variable
-	// that is not set; the source is skipped until the deployment provides it.
+	// ErrSecretMissing means the configuration names an environment variable
+	// that is not set. The fetch is skipped until the variable exists.
 	ErrSecretMissing = errors.New("required environment variable is not set")
-	// ErrCircuitOpen marks a fetch skipped because the provider's circuit
-	// breaker is open.
+	// ErrCircuitOpen means the fetch was skipped because this source kept
+	// failing and its breaker is cooling down.
 	ErrCircuitOpen = errors.New("circuit breaker is open")
-	// ErrUnsupportedAdapter marks a configuration type without an adapter.
+	// ErrUnsupportedAdapter means the configuration type has no adapter
+	// (known types: api, rss, web).
 	ErrUnsupportedAdapter = errors.New("unsupported source configuration type")
-	// ErrInsecureURL rejects configuration URLs outside http/https.
+	// ErrInsecureURL means the URL uses a scheme other than http or https.
 	ErrInsecureURL = errors.New("source URL must use http or https")
-	// ErrInvalidURL marks configuration whose URL cannot be parsed or has no host.
+	// ErrInvalidURL means the URL is missing, unparsable, or has no host.
 	ErrInvalidURL = errors.New("source URL is invalid")
 )
 
-// Item is one entry from a feed-shaped source (RSS/Atom).
+// Item is one entry from an RSS/Atom feed.
 type Item struct {
 	GUID      string
 	Title     string
@@ -37,7 +39,8 @@ type Item struct {
 	Published time.Time
 }
 
-// Result is a successful fetch of one source configuration.
+// Result is a successful fetch of one configuration. Feed adapters fill
+// Items; API and web adapters keep the raw bytes in Body.
 type Result struct {
 	Items      []Item
 	Body       []byte
@@ -46,9 +49,9 @@ type Result struct {
 	FetchedAt  time.Time
 }
 
-// Failure is the provider-failure classification carried by fetch errors.
-// The fetcher decides retries from these methods instead of matching on
-// strings; unknown (non-Failure) errors are treated as terminal.
+// Failure classifies fetch errors so the fetcher can decide what to retry
+// by asking Retryable() and RetryAfter() instead of matching error text.
+// Errors that do not implement Failure are treated as permanent.
 type Failure interface {
 	error
 	Retryable() bool

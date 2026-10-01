@@ -10,9 +10,9 @@ type apiAdapter struct{}
 
 func (apiAdapter) Kind() string { return "api" }
 
-// Parse accepts the payload families API adapters deliver — JSON and XML
-// (SDMX statistics services) — and rejects anything else as malformed.
-// Interpreting the payload is the normalization stage's responsibility.
+// Parse accepts JSON and XML (SDMX statistics services return XML) and
+// rejects anything else as malformed. Decoding the body into records
+// belongs to normalization.
 func (apiAdapter) Parse(body []byte) (Result, error) {
 	trimmed := bytes.TrimSpace(body)
 	if !json.Valid(body) && !bytes.HasPrefix(trimmed, []byte("<?xml")) {

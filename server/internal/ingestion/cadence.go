@@ -2,9 +2,7 @@ package ingestion
 
 import "time"
 
-// Cadences are the scheduled ingestion cadences expressed as configurable
-// constants — tunable per deployment without changing the scheduling
-// architecture.
+// Cadences is how often each kind of source is fetched.
 type Cadences struct {
 	News        time.Duration
 	Calendar    time.Duration
@@ -14,7 +12,8 @@ type Cadences struct {
 	Default     time.Duration
 }
 
-// DefaultCadences returns the standard cadences.
+// DefaultCadences is the standard schedule: news 5m, central banks 15m,
+// calendar and official data 30m, candles 1m.
 func DefaultCadences() Cadences {
 	return Cadences{
 		News:        5 * time.Minute,
@@ -26,9 +25,8 @@ func DefaultCadences() Cadences {
 	}
 }
 
-// centralBankSources run at the central-bank cadence (15m) instead of the
-// official-data cadence (30m): monetary-policy communications need fresher
-// polling.
+// centralBankSources are polled every 15 minutes instead of the 30-minute
+// official-data cadence — central bank news goes stale fast.
 var centralBankSources = map[string]bool{
 	"Federal Reserve":               true,
 	"Bank of England":               true,
@@ -41,8 +39,9 @@ var centralBankSources = map[string]bool{
 	"People's Bank of China (PBOC)": true,
 }
 
-// For resolves the cadence for a source. The candles cadence applies to
-// market-data feeds.
+// For returns how often one source is fetched: a named central bank gets
+// the central-bank cadence, then the source type decides, and everything
+// else gets Default.
 func (cadences Cadences) For(sourceName, sourceType string) time.Duration {
 	if centralBankSources[sourceName] {
 		return cadences.CentralBank

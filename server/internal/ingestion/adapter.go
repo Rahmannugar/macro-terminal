@@ -2,14 +2,15 @@ package ingestion
 
 import "fmt"
 
-// Adapter converts a successful provider response body into a Result.
-// Request construction (URL, parameters, headers) is shared in the fetcher.
+// Adapter turns a fetched response body into a Result. Building the request
+// itself (URL, query, headers) is the fetcher's job — adapters only parse.
 type Adapter interface {
 	Kind() string
 	Parse(body []byte) (Result, error)
 }
 
-// AdapterFor returns the adapter for a configuration type (api | rss | web).
+// AdapterFor returns the adapter for a configuration type: "api", "rss",
+// or "web".
 func AdapterFor(kind string) (Adapter, error) {
 	switch kind {
 	case "rss":
@@ -23,6 +24,8 @@ func AdapterFor(kind string) (Adapter, error) {
 	}
 }
 
+// acceptFor is the default Accept header per type; a configuration's
+// "accept" key overrides it.
 func acceptFor(kind string) string {
 	switch kind {
 	case "rss":

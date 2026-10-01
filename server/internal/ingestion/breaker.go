@@ -6,19 +6,20 @@ import (
 )
 
 const (
-	// breakerThreshold is the consecutive-failure count that opens a circuit.
+	// breakerThreshold is how many consecutive failures open the circuit.
 	breakerThreshold = 5
-	// breakerCooldown is the first open window; every failed half-open probe
-	// doubles the next one, capped at breakerMaxCooldown.
+	// breakerCooldown is the first cooldown. Every failed retry doubles the
+	// next one, up to breakerMaxCooldown.
 	breakerCooldown = time.Minute
-	// breakerMaxCooldown caps the escalation so a dead provider is still
-	// probed at least every 30 minutes.
+	// breakerMaxCooldown caps the cooldown so a dead provider is still tried
+	// again every 30 minutes.
 	breakerMaxCooldown = 30 * time.Minute
 )
 
-// Breaker is a per-configuration consecutive-failure circuit breaker.
-// It is safe for concurrent use: the runner fetches due configurations in
-// parallel.
+// Breaker stops calling a source that keeps failing: after too many
+// failures in a row, its fetches wait for a cooldown before trying again.
+// Every source configuration has its own state, and the methods are safe to
+// call from the runner's parallel fetches.
 type Breaker struct {
 	mu          sync.Mutex
 	states      map[string]*breakerState
@@ -36,8 +37,7 @@ type breakerState struct {
 }
 
 // NewBreaker builds a breaker that opens after threshold consecutive
-// failures. The first probe happens after cooldown; each failed probe
-// doubles the following window up to the maximum.
+// failures and lets one test request through after each cooldown.
 func NewBreaker(threshold int, cooldown time.Duration) *Breaker {
 	return &Breaker{
 		states:      map[string]*breakerState{},
@@ -48,14 +48,15 @@ func NewBreaker(threshold int, cooldown time.Duration) *Breaker {
 	}
 }
 
-// NewDefaultBreaker builds the breaker the worker uses: 5 consecutive
-// failures open the circuit, cooldowns start at one minute and double per
-// failed probe up to 30 minutes.
+// NewDefaultBreaker is the worker's breaker, built from the constants
+// above.
 func NewDefaultBreaker() *Breaker {
 	return NewBreaker(breakerThreshold, breakerCooldown)
 }
 
-// Allow reports whether a fetch for key may proceed.
+// Allow reports whether a fetch for key may run right now. The first call
+// after a cooldown is let through as a test; if that fails, the wait
+// doubles.
 func (breaker *Breaker) Allow(key string) bool {
 	breaker.mu.Lock()
 	defer breaker.mu.Unlock()
@@ -74,16 +75,17 @@ func (breaker *Breaker) Allow(key string) bool {
 	return true
 }
 
-// RecordSuccess closes the circuit for key by resetting its state.
+// RecordSuccess clears the source's failure state after a successful
+// fetch.
 func (breaker *Breaker) RecordSuccess(key string) {
 	breaker.mu.Lock()
 	defer breaker.mu.Unlock()
 	delete(breaker.states, key)
 }
 
-// RecordFailure counts a failure against key, opening the circuit once the
-// threshold is reached. A failed half-open probe reopens with a longer
-// cooldown.
+// RecordFailure counts a failed fetch against key. Once the threshold is
+// reached the circuit opens and fetches are blocked until the cooldown
+// passes.
 func (breaker *Breaker) RecordFailure(key string) {
 	breaker.mu.Lock()
 	defer breaker.mu.Unlock()
@@ -101,6 +103,8 @@ func (breaker *Breaker) RecordFailure(key string) {
 	}
 }
 
+// cooldownFor doubles the cooldown for every time the circuit has opened:
+// 1m, 2m, 4m … capped at breakerMaxCooldown.
 func (breaker *Breaker) cooldownFor(opens int) time.Duration {
 	cooldown := breaker.cooldown
 	for range max(opens-1, 0) {

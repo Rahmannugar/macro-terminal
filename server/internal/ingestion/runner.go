@@ -12,26 +12,27 @@ import (
 )
 
 const (
-	// runnerTick is the scheduler resolution: every tick, every configuration
-	// whose cadence has elapsed since its last dispatch runs.
+	// runnerTick is how often the scheduler looks for due sources: every
+	// minute it fetches everything that is overdue.
 	runnerTick = time.Minute
-	// runnerConcurrency bounds simultaneous provider fetches per tick.
+	// runnerConcurrency is how many fetches run at the same time.
 	runnerConcurrency = 4
 )
 
-// ConfigurationSource loads the fetchable units (one row per configuration).
+// ConfigurationSource loads the source configurations to schedule, one row
+// per configuration.
 type ConfigurationSource interface {
 	ListSourceConfigurationsWithSource(context.Context) ([]models.SourceConfigurationWithSource, error)
 }
 
-// SourceFetcher retrieves one configuration; implemented by *Fetcher.
+// SourceFetcher fetches one configuration; the fetcher implements it.
 type SourceFetcher interface {
 	Fetch(context.Context, models.SourceConfigurationWithSource) (Result, error)
 }
 
-// Runner schedules source configurations at their cadences. It runs an
-// immediate pass at boot so restarts catch up, then wakes on a ticker;
-// failures are per-source and never stop the loop.
+// Runner is the schedule loop. It runs one pass immediately at boot so
+// restarts catch up, then wakes every tick. A source that fails never
+// stops the others.
 type Runner struct {
 	configurations ConfigurationSource
 	fetcher        SourceFetcher
@@ -43,7 +44,7 @@ type Runner struct {
 	concurrency    int
 }
 
-// NewRunner builds the scheduled ingestion loop.
+// NewRunner builds the schedule loop.
 func NewRunner(
 	configurations ConfigurationSource,
 	fetcher SourceFetcher,
@@ -62,7 +63,7 @@ func NewRunner(
 	}
 }
 
-// Run blocks until ctx is canceled, dispatching due work each tick.
+// Run blocks until ctx is canceled and fetches due sources every tick.
 func (runner *Runner) Run(ctx context.Context) error {
 	runner.runDue(ctx)
 	ticker := time.NewTicker(runner.tick)
@@ -77,9 +78,9 @@ func (runner *Runner) Run(ctx context.Context) error {
 	}
 }
 
-// runDue dispatches every configuration whose cadence has elapsed. Dispatch
-// bookkeeping happens before the fetches so a slow provider cannot make its
-// source eligible again early.
+// runDue fetches every configuration whose cadence has passed. Last-run
+// times are recorded before fetching, so a slow provider cannot become due
+// again early.
 func (runner *Runner) runDue(ctx context.Context) {
 	configurations, err := runner.configurations.ListSourceConfigurationsWithSource(ctx)
 	if err != nil {

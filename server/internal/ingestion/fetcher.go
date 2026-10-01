@@ -21,30 +21,33 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// instrumentationPath names this package's spans.
+// instrumentationPath names the traces this package emits.
 const instrumentationPath = "github.com/Rahmannugar/macro-terminal/server/internal/ingestion"
 
 const (
-	// maxAttempts is the total attempts per fetch, including the first one.
+	// maxAttempts is how many times one fetch is tried before giving up.
 	maxAttempts = 3
-	// baseRetryDelay starts the exponential backoff between attempts.
+	// baseRetryDelay is the wait before the first retry; it doubles after
+	// each attempt.
 	baseRetryDelay = 500 * time.Millisecond
-	// maxRetryDelay caps any single wait, including a provider's Retry-After.
+	// maxRetryDelay caps every wait, including one the provider asks for
+	// through Retry-After.
 	maxRetryDelay = 30 * time.Second
-	// maxResponseBytes bounds provider reads so a runaway response cannot
-	// exhaust worker memory.
+	// maxResponseBytes caps how much of a response is read, so a runaway
+	// provider cannot eat worker memory.
 	maxResponseBytes = 16 << 20
 	// userAgent identifies the terminal to providers.
 	userAgent = "macro-terminal/1.0 (+https://macroterminal.consumel.com)"
 )
 
-// HTTPDoer is the subset of http.Client the fetcher needs.
+// HTTPDoer is the part of http.Client the fetcher needs: just Do.
 type HTTPDoer interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
-// Fetcher retrieves provider responses with failure classification, bounded
-// retries, and circuit breaking.
+// Fetcher performs provider requests: it builds the request, spaces out
+// calls to the same host, retries with backoff, and records results against
+// the circuit breaker.
 type Fetcher struct {
 	client      HTTPDoer
 	breaker     *Breaker
@@ -60,7 +63,7 @@ type Fetcher struct {
 	lastHostRequest map[string]time.Time
 }
 
-// NewFetcher builds a fetcher on the instrumented HTTP client from telemetry.
+// NewFetcher builds a fetcher on telemetry's traced HTTP client.
 func NewFetcher(client HTTPDoer, breaker *Breaker, logger *slog.Logger) *Fetcher {
 	return newFetcher(client, breaker, logger)
 }
@@ -92,9 +95,9 @@ func sleepContext(ctx context.Context, delay time.Duration) error {
 	}
 }
 
-// Fetch retrieves and parses one source configuration. Build failures
-// (invalid configuration, missing secret) never reach the provider and never
-// count against the circuit breaker.
+// Fetch retrieves and parses one source configuration. Errors that happen
+// while building the request (bad configuration, missing secret) never
+// reach the provider and do not count against the breaker.
 func (fetcher *Fetcher) Fetch(
 	ctx context.Context,
 	configuration models.SourceConfigurationWithSource,
@@ -219,10 +222,10 @@ func (fetcher *Fetcher) retryDelay(attempt int, err error) time.Duration {
 	return delay
 }
 
-// buildRequest turns configuration JSON into a request: the URL, string
-// parameters (provider-specific keys such as GDELT's query/language), and
-// `*_env`/`*_param` pairs that inject environment-held secrets — secrets
-// never live in JSONB configuration.
+// buildRequest turns configuration JSON into the request to send: the URL,
+// string parameters (provider keys like GDELT's query/language), and
+// `*_env`/`*_param` pairs that fill in secrets from environment variables.
+// Secrets are never stored in the configuration itself.
 func (fetcher *Fetcher) buildRequest(
 	ctx context.Context,
 	configuration models.SourceConfigurationWithSource,
@@ -265,7 +268,8 @@ func (fetcher *Fetcher) buildRequest(
 		return nil, fmt.Errorf("build request: %w", err)
 	}
 	request.Header.Set("User-Agent", userAgent)
-	// SDMX statistics gateways reject Accept values containing application/json.
+	// SDMX statistics gateways answer 500 when Accept includes
+	// application/json, so a configuration can override this header.
 	accept := acceptFor(configuration.Type)
 	if value, ok := document["accept"].(string); ok && strings.TrimSpace(value) != "" {
 		accept = value
@@ -319,8 +323,8 @@ func parseRetryAfter(value string, now time.Time) time.Duration {
 	return 0
 }
 
-// configurationInterval reads the optional per-host request spacing
-// (min_interval_s) from configuration JSON; zero when unset.
+// configurationInterval reads the optional min_interval_s (minimum seconds
+// between requests to one host) from configuration; 0 when unset.
 func configurationInterval(config []byte) time.Duration {
 	var limits struct {
 		MinIntervalSeconds int `json:"min_interval_s"`
@@ -334,8 +338,10 @@ func configurationInterval(config []byte) time.Duration {
 	return time.Duration(limits.MinIntervalSeconds) * time.Second
 }
 
-// waitHostSpacing keeps concurrent fetches of one provider host at least
-// interval apart, honoring limits such as GDELT's one-request-per-five-seconds.
+// waitHostSpacing keeps requests to the same host at least interval apart —
+// GDELT allows one request per five seconds, for example. Each caller
+// claims a timestamp slot, so concurrent fetches to one host queue up
+// instead of colliding.
 func (fetcher *Fetcher) waitHostSpacing(
 	ctx context.Context,
 	host string,
