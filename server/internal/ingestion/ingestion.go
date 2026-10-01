@@ -40,10 +40,12 @@ type Item struct {
 }
 
 // Result is a successful fetch of one configuration. Feed adapters fill
-// Items; API and web adapters keep the raw bytes in Body.
+// Items; API and web adapters keep the raw bytes in Body. BaseURL is the
+// request the response came from — the base for resolving relative links.
 type Result struct {
 	Items      []Item
 	Body       []byte
+	BaseURL    string
 	StatusCode int
 	Attempts   int
 	FetchedAt  time.Time

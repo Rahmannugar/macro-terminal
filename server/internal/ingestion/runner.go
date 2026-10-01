@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/Rahmannugar/macro-terminal/server/internal/normalization"
 	"github.com/Rahmannugar/macro-terminal/server/internal/sources/models"
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
@@ -158,6 +159,23 @@ func (runner *Runner) fetchOne(ctx context.Context, configuration models.SourceC
 		}
 		return
 	}
+	feedItems := make([]normalization.FeedItem, 0, len(result.Items))
+	for _, item := range result.Items {
+		feedItems = append(feedItems, normalization.FeedItem{
+			Title:     item.Title,
+			URL:       item.URL,
+			Summary:   item.Summary,
+			Published: item.Published,
+		})
+	}
+	_, stats := normalization.Articles(normalization.Input{
+		SourceID:   configuration.SourceID,
+		SourceType: configuration.SourceType,
+		ConfigType: configuration.Type,
+		Items:      feedItems,
+		Body:       result.Body,
+		BaseURL:    result.BaseURL,
+	})
 	runner.logger.InfoContext(ctx, "Fetch succeeded",
 		"event", "ingestion.fetch.succeeded",
 		"operation", "ingestion.fetch",
@@ -168,5 +186,8 @@ func (runner *Runner) fetchOne(ctx context.Context, configuration models.SourceC
 		"attempts", result.Attempts,
 		"status_code", result.StatusCode,
 		"duration_ms", runner.now().Sub(started).Milliseconds(),
+		"candidates", stats.Candidates,
+		"duplicates", stats.Duplicates,
+		"invalid", stats.Invalid,
 	)
 }

@@ -191,6 +191,7 @@ func (fetcher *Fetcher) attempt(
 			}
 		}
 		result.StatusCode = response.StatusCode
+		result.BaseURL = request.URL.String()
 		return result, nil
 	case response.StatusCode == http.StatusRequestTimeout ||
 		response.StatusCode == http.StatusTooEarly ||
