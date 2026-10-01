@@ -20,6 +20,11 @@ const (
 	apiPoolDefault int32 = 20
 )
 
+// @title Macro Terminal API
+// @version 0.1.0
+// @description Macro Terminal macro intelligence and fundamental research terminal API.
+// @servers.url http://localhost:8081
+// @servers.description Local development
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)

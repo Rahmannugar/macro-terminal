@@ -47,10 +47,10 @@ tasks:
       - gofmt -w .
 
   generate:
-    desc: Generate type-safe database code and the OpenAPI document
+    desc: Generate type-safe database code and the OpenAPI contract
     cmds:
       - go tool sqlc generate
-      - go run ./server/cmd/openapi
+      - go tool swag init -g main.go -d server/cmd/api,server/internal --v3.1 --requiredByDefault -o server/internal/openapi --outputTypes json
 
   migrate:
     desc: Apply pending PostgreSQL migrations
@@ -83,9 +83,10 @@ tasks:
       - golangci-lint run ./...
 
   check:
-    desc: Validate generation, formatting, tests, lint, and builds
+    desc: Validate generation, contract freshness, formatting, tests, lint, and builds
     cmds:
       - task: generate
+      - git diff --exit-code -- server/internal/openapi/swagger.json
       - test -z "$(gofmt -l .)"
       - go test ./...
       - task: lint

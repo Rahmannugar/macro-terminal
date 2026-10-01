@@ -1,0 +1,176 @@
+{
+    "components": {
+        "schemas": {
+            "health.response": {
+                "properties": {
+                    "status": {
+                        "example": "ok",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "status"
+                ],
+                "type": "object"
+            },
+            "openapi.Error": {
+                "properties": {
+                    "error": {
+                        "$ref": "#/components/schemas/openapi.ErrorDetail"
+                    }
+                },
+                "required": [
+                    "error"
+                ],
+                "type": "object"
+            },
+            "openapi.ErrorDetail": {
+                "properties": {
+                    "code": {
+                        "example": "invalid_request",
+                        "type": "string"
+                    },
+                    "message": {
+                        "example": "The request was malformed.",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "code",
+                    "message"
+                ],
+                "type": "object"
+            }
+        }
+    },
+    "info": {
+        "description": "Macro Terminal macro intelligence and fundamental research terminal API.",
+        "title": "Macro Terminal API",
+        "version": "0.1.0"
+    },
+    "externalDocs": {
+        "description": "",
+        "url": ""
+    },
+    "paths": {
+        "/health/live": {
+            "get": {
+                "description": "Answers the process liveness probe; it succeeds as long as the API process can serve HTTP.",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/health.response"
+                                }
+                            }
+                        },
+                        "description": "The process is alive."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request was malformed."
+                    },
+                    "429": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "Too many requests. Retry after the indicated delay."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Report whether the API process is alive.",
+                "tags": [
+                    "health"
+                ]
+            }
+        },
+        "/health/ready": {
+            "get": {
+                "description": "Answers the readiness probe; it succeeds only when PostgreSQL answers a ping within the readiness timeout, so traffic is held back while the database is unreachable.",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/health.response"
+                                }
+                            }
+                        },
+                        "description": "PostgreSQL answered the ping."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request was malformed."
+                    },
+                    "429": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "Too many requests. Retry after the indicated delay."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/health.response"
+                                }
+                            }
+                        },
+                        "description": "PostgreSQL did not answer the ping; the instance is not ready for traffic."
+                    }
+                },
+                "summary": "Report whether PostgreSQL is reachable.",
+                "tags": [
+                    "health"
+                ]
+            }
+        }
+    },
+    "openapi": "3.1.0",
+    "servers": [
+        {
+            "description": "Local development",
+            "url": "http://localhost:8081"
+        }
+    ]
+}
