@@ -14,13 +14,24 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/database"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/telemetry"
+	"github.com/Rahmannugar/macro-terminal/server/internal/ingestion"
+	sourcesrepositories "github.com/Rahmannugar/macro-terminal/server/internal/sources/repositories"
 )
 
 const (
-	databaseTimeout = 10 * time.Second
-	redisTimeout    = 5 * time.Second
-	shutdownTimeout = 15 * time.Second
+	databaseTimeout      = 10 * time.Second
+	redisTimeout         = 5 * time.Second
+	shutdownTimeout      = 15 * time.Second
+	providerFetchTimeout = 30 * time.Second
+	// databasePoolDefault stays modest because ingestion slots wait on
+	// providers, not PostgreSQL.
+	databasePoolDefault int32 = 10
 )
+
+type workerResult struct {
+	name string
+	err  error
+}
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -53,7 +64,7 @@ func run() (runError error) {
 	}()
 
 	databaseContext, cancelDatabase := context.WithTimeout(context.Background(), databaseTimeout)
-	databasePool, err := database.Open(databaseContext, cfg.Database.ConnectionString())
+	databasePool, err := database.Open(databaseContext, cfg.Database.ConnectionString(), cfg.Database.WorkerPoolOr(databasePoolDefault))
 	cancelDatabase()
 	if err != nil {
 		return fmt.Errorf("connect database: %w", err)
@@ -76,13 +87,43 @@ func run() (runError error) {
 		return fmt.Errorf("ping Redis: %w", err)
 	}
 
-	logger.Info("worker started", "consumers", 0)
+	sourceRepository := sourcesrepositories.NewSourceRepository(databasePool)
+	ingestionRunner := ingestion.NewRunner(
+		sourceRepository,
+		ingestion.NewFetcher(
+			telemetry.NewHTTPClient(providerFetchTimeout),
+			ingestion.NewDefaultBreaker(),
+			logger,
+		),
+		logger,
+		ingestion.DefaultCadences(),
+	)
 
 	signalContext, stopSignals := signal.NotifyContext(
 		context.Background(), syscall.SIGINT, syscall.SIGTERM,
 	)
 	defer stopSignals()
-	<-signalContext.Done()
-	logger.Info("worker shutdown completed")
+	workerContext, stopWorkers := context.WithCancel(signalContext)
+	defer stopWorkers()
+
+	results := make(chan workerResult, 1)
+	go func() {
+		results <- workerResult{name: "ingestion-runner", err: ingestionRunner.Run(workerContext)}
+	}()
+	logger.Info("worker started", "jobs", 1)
+
+	<-workerContext.Done()
+	stopWorkers()
+	shutdownTimer := time.NewTimer(shutdownTimeout)
+	defer shutdownTimer.Stop()
+	select {
+	case result := <-results:
+		if result.err != nil && !errors.Is(result.err, context.Canceled) {
+			return fmt.Errorf("%s stopped: %w", result.name, result.err)
+		}
+		logger.Info("worker shutdown completed")
+	case <-shutdownTimer.C:
+		return fmt.Errorf("worker shutdown timed out after %s", shutdownTimeout)
+	}
 	return runError
 }

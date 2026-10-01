@@ -14,7 +14,11 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/telemetry"
 )
 
-const databaseTimeout = 10 * time.Second
+const (
+	databaseTimeout = 10 * time.Second
+	// apiPoolDefault caps the API's client-side database pool.
+	apiPoolDefault int32 = 20
+)
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -51,7 +55,7 @@ func run() (runError error) {
 	}()
 
 	databaseContext, cancelDatabase := context.WithTimeout(context.Background(), databaseTimeout)
-	databasePool, err := database.Open(databaseContext, cfg.Database.ConnectionString())
+	databasePool, err := database.Open(databaseContext, cfg.Database.ConnectionString(), cfg.Database.APIPoolOr(apiPoolDefault))
 	cancelDatabase()
 	if err != nil {
 		return fmt.Errorf("connect database: %w", err)

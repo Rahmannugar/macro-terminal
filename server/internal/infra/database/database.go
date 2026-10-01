@@ -9,16 +9,16 @@ import (
 )
 
 const (
-	maximumConnections int32 = 20
 	minimumConnections int32 = 2
 )
 
-func Open(ctx context.Context, connectionString string) (*pgxpool.Pool, error) {
+// Open builds an instrumented pool capped at maxConns for this process.
+func Open(ctx context.Context, connectionString string, maxConns int32) (*pgxpool.Pool, error) {
 	config, err := pgxpool.ParseConfig(connectionString)
 	if err != nil {
 		return nil, fmt.Errorf("parse connection string: %w", err)
 	}
-	config.MaxConns = maximumConnections
+	config.MaxConns = maxConns
 	config.MinConns = minimumConnections
 	config.ConnConfig.Tracer = otelpgx.NewTracer(otelpgx.WithDisableSQLStatementInAttributes())
 

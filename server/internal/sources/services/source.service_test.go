@@ -55,6 +55,24 @@ func TestValidateConfiguration(t *testing.T) {
 			wantErr:    ErrConfigurationURLRequired,
 		},
 		{
+			name:       "request spacing interval accepted",
+			configType: "api",
+			config:     `{"url":"https://api.gdeltproject.org/api/v2/doc/doc","min_interval_s":5}`,
+			wantURL:    "https://api.gdeltproject.org/api/v2/doc/doc",
+		},
+		{
+			name:       "non-integer request spacing rejected",
+			configType: "api",
+			config:     `{"url":"https://example.com","min_interval_s":"5"}`,
+			wantErr:    ErrConfigurationIntervalInvalid,
+		},
+		{
+			name:       "non-positive request spacing rejected",
+			configType: "api",
+			config:     `{"url":"https://example.com","min_interval_s":0}`,
+			wantErr:    ErrConfigurationIntervalInvalid,
+		},
+		{
 			name:       "literal secret value rejected",
 			configType: "api",
 			config:     `{"url":"https://example.com","token":"abc123"}`,

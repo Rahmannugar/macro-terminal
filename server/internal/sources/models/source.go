@@ -28,3 +28,11 @@ type SourceConfiguration struct {
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
+
+// SourceConfigurationWithSource joins a configuration with its logical source
+// so ingestion can schedule per source without N+1 lookups.
+type SourceConfigurationWithSource struct {
+	SourceConfiguration
+	SourceName string
+	SourceType string
+}

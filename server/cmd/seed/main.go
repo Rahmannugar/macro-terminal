@@ -36,7 +36,8 @@ func run() error {
 	ctx, cancel := context.WithTimeout(context.Background(), seedTimeout)
 	defer cancel()
 
-	pool, err := database.Open(ctx, cfg.Database.ConnectionString())
+	// The seed runs sequentially, so a small pool is enough.
+	pool, err := database.Open(ctx, cfg.Database.ConnectionString(), 5)
 	if err != nil {
 		return fmt.Errorf("connect database: %w", err)
 	}

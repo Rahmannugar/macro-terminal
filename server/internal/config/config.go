@@ -47,6 +47,9 @@ type Database struct {
 	User     string
 	Password string
 	SSLMode  string
+
+	APIPoolMax    int32
+	WorkerPoolMax int32
 }
 
 type Redis struct {
@@ -121,6 +124,20 @@ func Load() (Config, error) {
 	if k.Exists("database.ssl_mode") {
 		cfg.Database.SSLMode = strings.TrimSpace(k.String("database.ssl_mode"))
 	}
+	if pool := strings.TrimSpace(k.String("database.api_pool_max")); pool != "" {
+		value, err := strconv.Atoi(pool)
+		if err != nil {
+			return Config{}, fmt.Errorf("MACRO_TERMINAL_DATABASE_API_POOL_MAX must be an integer: %w", err)
+		}
+		cfg.Database.APIPoolMax = int32(value)
+	}
+	if pool := strings.TrimSpace(k.String("database.worker_pool_max")); pool != "" {
+		value, err := strconv.Atoi(pool)
+		if err != nil {
+			return Config{}, fmt.Errorf("MACRO_TERMINAL_DATABASE_WORKER_POOL_MAX must be an integer: %w", err)
+		}
+		cfg.Database.WorkerPoolMax = int32(value)
+	}
 	cfg.Redis.URL = k.String("redis.url")
 	cfg.Auth.BaseURL = k.String("auth.base_url")
 	cfg.Auth.ClientBaseURL = k.String("auth.client_base_url")
@@ -162,6 +179,12 @@ func (cfg Config) Validate() error {
 	case "disable", "allow", "prefer", "require", "verify-ca", "verify-full":
 	default:
 		return fmt.Errorf("MACRO_TERMINAL_DATABASE_SSL_MODE must be a supported PostgreSQL SSL mode")
+	}
+	if cfg.Database.APIPoolMax != 0 && (cfg.Database.APIPoolMax < 1 || cfg.Database.APIPoolMax > 100) {
+		return fmt.Errorf("MACRO_TERMINAL_DATABASE_API_POOL_MAX must be between 1 and 100")
+	}
+	if cfg.Database.WorkerPoolMax != 0 && (cfg.Database.WorkerPoolMax < 1 || cfg.Database.WorkerPoolMax > 100) {
+		return fmt.Errorf("MACRO_TERMINAL_DATABASE_WORKER_POOL_MAX must be between 1 and 100")
 	}
 	if strings.TrimSpace(cfg.Redis.URL) == "" {
 		return fmt.Errorf("MACRO_TERMINAL_REDIS_URL is required")
@@ -206,6 +229,22 @@ func (cfg Database) ConnectionString() string {
 	query.Set("sslmode", cfg.SSLMode)
 	connection.RawQuery = query.Encode()
 	return connection.String()
+}
+
+// APIPoolOr returns MACRO_TERMINAL_DATABASE_API_POOL_MAX when set, else fallback.
+func (cfg Database) APIPoolOr(fallback int32) int32 {
+	if cfg.APIPoolMax > 0 {
+		return cfg.APIPoolMax
+	}
+	return fallback
+}
+
+// WorkerPoolOr returns MACRO_TERMINAL_DATABASE_WORKER_POOL_MAX when set, else fallback.
+func (cfg Database) WorkerPoolOr(fallback int32) int32 {
+	if cfg.WorkerPoolMax > 0 {
+		return cfg.WorkerPoolMax
+	}
+	return fallback
 }
 
 func commaSeparated(value string) []string {

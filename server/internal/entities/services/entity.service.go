@@ -68,8 +68,8 @@ func (service *EntityService) EntityPairsContaining(ctx context.Context, entityI
 	return pairs, nil
 }
 
-// CreateEntity adds an entity for the admin; existing codes conflict instead
-// of silently updating so admins notice typos.
+// CreateEntity creates an entity; a duplicate code is rejected rather than
+// overwriting the existing entity.
 func (service *EntityService) CreateEntity(ctx context.Context, code, name, entityType string) (models.Entity, error) {
 	entity, err := validateEntity(code, name, entityType)
 	if err != nil {

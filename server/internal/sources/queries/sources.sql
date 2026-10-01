@@ -46,3 +46,16 @@ SET config = $2,
     updated_at = now()
 WHERE id = $1
 RETURNING *;
+
+-- name: ListSourceConfigurationsWithSource :many
+SELECT sc.id,
+       sc.source_id,
+       sc.type,
+       sc.config,
+       sc.created_at,
+       sc.updated_at,
+       s.name AS source_name,
+       s.type AS source_type
+FROM source_configurations sc
+JOIN sources s ON s.id = sc.source_id
+ORDER BY s.name, sc.type;

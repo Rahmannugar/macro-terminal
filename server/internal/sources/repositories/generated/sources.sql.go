@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createSourceConfiguration = `-- name: CreateSourceConfiguration :one
@@ -134,6 +135,60 @@ func (q *Queries) ListSourceConfigurations(ctx context.Context, sourceID uuid.UU
 			&i.Config,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSourceConfigurationsWithSource = `-- name: ListSourceConfigurationsWithSource :many
+SELECT sc.id,
+       sc.source_id,
+       sc.type,
+       sc.config,
+       sc.created_at,
+       sc.updated_at,
+       s.name AS source_name,
+       s.type AS source_type
+FROM source_configurations sc
+JOIN sources s ON s.id = sc.source_id
+ORDER BY s.name, sc.type
+`
+
+type ListSourceConfigurationsWithSourceRow struct {
+	ID         uuid.UUID
+	SourceID   uuid.UUID
+	Type       string
+	Config     json.RawMessage
+	CreatedAt  pgtype.Timestamptz
+	UpdatedAt  pgtype.Timestamptz
+	SourceName string
+	SourceType string
+}
+
+func (q *Queries) ListSourceConfigurationsWithSource(ctx context.Context) ([]ListSourceConfigurationsWithSourceRow, error) {
+	rows, err := q.db.Query(ctx, listSourceConfigurationsWithSource)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSourceConfigurationsWithSourceRow
+	for rows.Next() {
+		var i ListSourceConfigurationsWithSourceRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SourceID,
+			&i.Type,
+			&i.Config,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.SourceName,
+			&i.SourceType,
 		); err != nil {
 			return nil, err
 		}

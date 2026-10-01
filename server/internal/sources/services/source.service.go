@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/common/ids"
@@ -13,12 +14,13 @@ import (
 )
 
 var (
-	ErrSourceNameRequired          = errors.New("source name is required")
-	ErrSourceTypeRequired          = errors.New("source type is required")
-	ErrConfigurationTypeInvalid    = errors.New("configuration type must be api, rss, or web")
-	ErrConfigurationNotObject      = errors.New("configuration must be a JSON object")
-	ErrConfigurationURLRequired    = errors.New("configuration requires a non-empty url")
-	ErrConfigurationSecretInConfig = errors.New("configuration must not contain secret values; reference an environment variable through an *_env key instead")
+	ErrSourceNameRequired           = errors.New("source name is required")
+	ErrSourceTypeRequired           = errors.New("source type is required")
+	ErrConfigurationTypeInvalid     = errors.New("configuration type must be api, rss, or web")
+	ErrConfigurationNotObject       = errors.New("configuration must be a JSON object")
+	ErrConfigurationURLRequired     = errors.New("configuration requires a non-empty url")
+	ErrConfigurationIntervalInvalid = errors.New("min_interval_s must be a positive integer")
+	ErrConfigurationSecretInConfig  = errors.New("configuration must not contain secret values; reference an environment variable through an *_env key instead")
 )
 
 // Secret-looking configuration keys are rejected unless they are environment
@@ -164,6 +166,13 @@ func validateConfiguration(configType string, config json.RawMessage) (string, e
 		}
 		if hasForbiddenConfigurationKeyEnding(normalized) {
 			return "", fmt.Errorf("%w: key %q", ErrConfigurationSecretInConfig, key)
+		}
+	}
+
+	if rawInterval, exists := object["min_interval_s"]; exists {
+		interval, ok := rawInterval.(float64)
+		if !ok || interval <= 0 || interval != math.Trunc(interval) {
+			return "", ErrConfigurationIntervalInvalid
 		}
 	}
 
