@@ -85,3 +85,17 @@ ON CONFLICT (user_id, entity_pair_id) DO NOTHING;
 DELETE FROM user_assets
 WHERE user_id = $1
   AND entity_pair_id = $2;
+
+-- name: ListEntityKnowledgeTerms :many
+SELECT id, name, type, entity_id, created_at, updated_at
+FROM knowledge_terms
+WHERE entity_id IS NOT NULL
+ORDER BY name, type;
+
+-- name: UpsertKnowledgeTerm :one
+INSERT INTO knowledge_terms (id, name, type, entity_id)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (name, type) DO UPDATE
+SET entity_id = EXCLUDED.entity_id,
+    updated_at = now()
+RETURNING id, name, type, entity_id, created_at, updated_at;

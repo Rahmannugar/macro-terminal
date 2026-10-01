@@ -13,15 +13,17 @@ import (
 )
 
 var (
-	ErrEntityCodeRequired     = errors.New("entity code is required")
-	ErrEntityNameRequired     = errors.New("entity name is required")
-	ErrEntityTypeRequired     = errors.New("entity type is required")
-	ErrEntityCodeExists       = errors.New("entity code already exists")
-	ErrEntityNotFound         = errors.New("entity not found")
-	ErrPairSymbolRequired     = errors.New("entity pair symbol is required")
-	ErrPairEntitiesMustDiffer = errors.New("entity pair requires two different entities")
-	ErrPairSymbolExists       = errors.New("entity pair symbol already exists")
-	ErrEntityPairNotFound     = errors.New("entity pair not found")
+	ErrEntityCodeRequired        = errors.New("entity code is required")
+	ErrEntityNameRequired        = errors.New("entity name is required")
+	ErrEntityTypeRequired        = errors.New("entity type is required")
+	ErrEntityCodeExists          = errors.New("entity code already exists")
+	ErrEntityNotFound            = errors.New("entity not found")
+	ErrPairSymbolRequired        = errors.New("entity pair symbol is required")
+	ErrPairEntitiesMustDiffer    = errors.New("entity pair requires two different entities")
+	ErrPairSymbolExists          = errors.New("entity pair symbol already exists")
+	ErrEntityPairNotFound        = errors.New("entity pair not found")
+	ErrKnowledgeTermNameRequired = errors.New("knowledge term name is required")
+	ErrKnowledgeTermTypeRequired = errors.New("knowledge term type is required")
 )
 
 type EntityRepository interface {
@@ -34,6 +36,8 @@ type EntityRepository interface {
 	UpsertEntityPair(context.Context, models.EntityPair) (models.EntityPair, error)
 	EntityPairsContainingEntity(context.Context, uuid.UUID) ([]models.EntityPair, error)
 	ListEntityPairs(context.Context) ([]models.EntityPair, error)
+	ListEntityKnowledgeTerms(context.Context) ([]models.KnowledgeTerm, error)
+	UpsertKnowledgeTerm(context.Context, models.KnowledgeTerm) (models.KnowledgeTerm, error)
 }
 
 type EntityService struct {
@@ -168,6 +172,57 @@ func (service *EntityService) EnsureEntityPair(
 	upserted, err := service.repository.UpsertEntityPair(ctx, pair)
 	if err != nil {
 		return models.EntityPair{}, fmt.Errorf("upsert entity pair: %w", err)
+	}
+	return upserted, nil
+}
+
+// ListKnowledgeTerms returns only the phrases linked to an entity.
+func (service *EntityService) ListKnowledgeTerms(
+	ctx context.Context,
+) ([]models.KnowledgeTerm, error) {
+	terms, err := service.repository.ListEntityKnowledgeTerms(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list knowledge terms: %w", err)
+	}
+	return terms, nil
+}
+
+// Re-running with a different entity relinks the phrase; name and type
+// together identify the row.
+func (service *EntityService) EnsureKnowledgeTerm(
+	ctx context.Context,
+	name, termType, entityCode string,
+) (models.KnowledgeTerm, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return models.KnowledgeTerm{}, ErrKnowledgeTermNameRequired
+	}
+	termType = strings.TrimSpace(termType)
+	if termType == "" {
+		return models.KnowledgeTerm{}, ErrKnowledgeTermTypeRequired
+	}
+
+	entity, err := service.repository.EntityByCode(ctx, strings.TrimSpace(entityCode))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return models.KnowledgeTerm{}, fmt.Errorf("%w: %s", ErrEntityNotFound, entityCode)
+	}
+	if err != nil {
+		return models.KnowledgeTerm{}, fmt.Errorf("find knowledge term entity: %w", err)
+	}
+
+	id, err := ids.New()
+	if err != nil {
+		return models.KnowledgeTerm{}, fmt.Errorf("generate knowledge term ID: %w", err)
+	}
+
+	upserted, err := service.repository.UpsertKnowledgeTerm(ctx, models.KnowledgeTerm{
+		ID:       id,
+		Name:     name,
+		Type:     termType,
+		EntityID: entity.ID,
+	})
+	if err != nil {
+		return models.KnowledgeTerm{}, fmt.Errorf("upsert knowledge term: %w", err)
 	}
 	return upserted, nil
 }

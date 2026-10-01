@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/Rahmannugar/macro-terminal/server/internal/mapping"
 	"github.com/Rahmannugar/macro-terminal/server/internal/normalization"
 	"github.com/Rahmannugar/macro-terminal/server/internal/sources/models"
 	"github.com/google/uuid"
@@ -18,6 +19,9 @@ const (
 	runnerTick = time.Minute
 	// runnerConcurrency is how many fetches run at the same time.
 	runnerConcurrency = 4
+	// mappingLogTitleLimit caps how many unmapped titles one mapping log
+	// line carries, so a batch of noise cannot flood the log.
+	mappingLogTitleLimit = 10
 )
 
 // ConfigurationSource loads the source configurations to schedule, one row
@@ -31,12 +35,19 @@ type SourceFetcher interface {
 	Fetch(context.Context, models.SourceConfigurationWithSource) (Result, error)
 }
 
+// DictionaryLoader loads the mapping vocabulary; the mapping loader
+// implements it.
+type DictionaryLoader interface {
+	Load(context.Context) (mapping.Dictionary, error)
+}
+
 // Runner is the schedule loop. It runs one pass immediately at boot so
 // restarts catch up, then wakes every tick. A source that fails never
 // stops the others.
 type Runner struct {
 	configurations ConfigurationSource
 	fetcher        SourceFetcher
+	mapper         DictionaryLoader
 	logger         *slog.Logger
 	cadences       Cadences
 	tick           time.Duration
@@ -49,12 +60,14 @@ type Runner struct {
 func NewRunner(
 	configurations ConfigurationSource,
 	fetcher SourceFetcher,
+	mapper DictionaryLoader,
 	logger *slog.Logger,
 	cadences Cadences,
 ) *Runner {
 	return &Runner{
 		configurations: configurations,
 		fetcher:        fetcher,
+		mapper:         mapper,
 		logger:         logger,
 		cadences:       cadences,
 		tick:           runnerTick,
@@ -110,19 +123,38 @@ func (runner *Runner) runDue(ctx context.Context) {
 		return
 	}
 
+	// The vocabulary is loaded once per pass and shared read-only by the
+	// concurrent fetches. A load failure only skips mapping for this pass.
+	var dictionary *mapping.Dictionary
+	loaded, err := runner.mapper.Load(ctx)
+	switch {
+	case err == nil:
+		dictionary = &loaded
+	case ctx.Err() == nil:
+		runner.logger.ErrorContext(ctx, "Mapping vocabulary unavailable",
+			"event", "ingestion.mapping.load.failed",
+			"operation", "ingestion.mapping",
+			"error", err,
+		)
+	}
+
 	var group errgroup.Group
 	group.SetLimit(runner.concurrency)
 	for _, configuration := range due {
 		configuration := configuration
 		group.Go(func() error {
-			runner.fetchOne(ctx, configuration)
+			runner.fetchOne(ctx, configuration, dictionary)
 			return nil
 		})
 	}
 	_ = group.Wait()
 }
 
-func (runner *Runner) fetchOne(ctx context.Context, configuration models.SourceConfigurationWithSource) {
+func (runner *Runner) fetchOne(
+	ctx context.Context,
+	configuration models.SourceConfigurationWithSource,
+	dictionary *mapping.Dictionary,
+) {
 	started := runner.now()
 	result, err := runner.fetcher.Fetch(ctx, configuration)
 	if err != nil {
@@ -168,7 +200,7 @@ func (runner *Runner) fetchOne(ctx context.Context, configuration models.SourceC
 			Published: item.Published,
 		})
 	}
-	_, stats := normalization.Articles(normalization.Input{
+	candidates, stats := normalization.Articles(normalization.Input{
 		SourceID:   configuration.SourceID,
 		SourceType: configuration.SourceType,
 		ConfigType: configuration.Type,
@@ -190,5 +222,41 @@ func (runner *Runner) fetchOne(ctx context.Context, configuration models.SourceC
 		"candidates", stats.Candidates,
 		"duplicates", stats.Duplicates,
 		"invalid", stats.Invalid,
+	)
+	runner.mapCandidates(ctx, configuration, dictionary, candidates)
+}
+
+func (runner *Runner) mapCandidates(
+	ctx context.Context,
+	configuration models.SourceConfigurationWithSource,
+	dictionary *mapping.Dictionary,
+	candidates []normalization.Candidate,
+) {
+	if dictionary == nil || len(candidates) == 0 {
+		return
+	}
+
+	outcomes := make([]mapping.Outcome, 0, len(candidates))
+	unmappedTitles := make([]string, 0, mappingLogTitleLimit)
+	for _, candidate := range candidates {
+		outcome := dictionary.Map(candidate.Title, candidate.Content)
+		outcomes = append(outcomes, outcome)
+		if !outcome.Mapped() && len(unmappedTitles) < mappingLogTitleLimit {
+			unmappedTitles = append(unmappedTitles, candidate.Title)
+		}
+	}
+	summary := mapping.Summarize(outcomes)
+
+	runner.logger.InfoContext(ctx, "Mapping completed",
+		"event", "ingestion.mapping.completed",
+		"operation", "ingestion.mapping",
+		"source", configuration.SourceName,
+		"configuration_type", configuration.Type,
+		"candidates", len(candidates),
+		"mapped", summary.Mapped,
+		"unmapped", summary.Unmapped,
+		"entity_codes", summary.EntityCodes,
+		"affected_pairs", summary.PairSymbols,
+		"unmapped_titles", unmappedTitles,
 	)
 }

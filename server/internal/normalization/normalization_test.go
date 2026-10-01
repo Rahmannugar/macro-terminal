@@ -1,6 +1,7 @@
 package normalization
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -159,5 +160,21 @@ func TestArticlesIgnoresNonArticlePayloads(t *testing.T) {
 
 	if len(candidates) != 0 || stats != (Stats{}) {
 		t.Errorf("candidates = %d stats = %+v, want none for statistics payloads", len(candidates), stats)
+	}
+}
+
+// BenchmarkArticlesLargeFeed sizes the normalize/canonicalize/dedupe path on
+// a batch the size of the biggest live source.
+func BenchmarkArticlesLargeFeed(b *testing.B) {
+	items := make([]FeedItem, 0, 640)
+	for i := 0; i < 640; i++ {
+		items = append(items, FeedItem{
+			Title: fmt.Sprintf("Headline number %d about markets and policy", i),
+			URL:   fmt.Sprintf("https://example.com/news/story-%d?utm_source=feed", i),
+		})
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		Articles(Input{Items: items, BaseURL: "https://example.com/news"})
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createEntity = `-- name: CreateEntity :one
@@ -175,6 +176,49 @@ func (q *Queries) ListEntities(ctx context.Context) ([]Entity, error) {
 			&i.Code,
 			&i.Name,
 			&i.Type,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEntityKnowledgeTerms = `-- name: ListEntityKnowledgeTerms :many
+SELECT id, name, type, entity_id, created_at, updated_at
+FROM knowledge_terms
+WHERE entity_id IS NOT NULL
+ORDER BY name, type
+`
+
+type ListEntityKnowledgeTermsRow struct {
+	ID        uuid.UUID
+	Name      string
+	Type      string
+	EntityID  pgtype.UUID
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+func (q *Queries) ListEntityKnowledgeTerms(ctx context.Context) ([]ListEntityKnowledgeTermsRow, error) {
+	rows, err := q.db.Query(ctx, listEntityKnowledgeTerms)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListEntityKnowledgeTermsRow
+	for rows.Next() {
+		var i ListEntityKnowledgeTermsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Type,
+			&i.EntityID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -416,6 +460,50 @@ func (q *Queries) UpsertEntityPair(ctx context.Context, arg UpsertEntityPairPara
 		&i.BaseEntityID,
 		&i.QuoteEntityID,
 		&i.Symbol,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const upsertKnowledgeTerm = `-- name: UpsertKnowledgeTerm :one
+INSERT INTO knowledge_terms (id, name, type, entity_id)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (name, type) DO UPDATE
+SET entity_id = EXCLUDED.entity_id,
+    updated_at = now()
+RETURNING id, name, type, entity_id, created_at, updated_at
+`
+
+type UpsertKnowledgeTermParams struct {
+	ID       uuid.UUID
+	Name     string
+	Type     string
+	EntityID pgtype.UUID
+}
+
+type UpsertKnowledgeTermRow struct {
+	ID        uuid.UUID
+	Name      string
+	Type      string
+	EntityID  pgtype.UUID
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
+func (q *Queries) UpsertKnowledgeTerm(ctx context.Context, arg UpsertKnowledgeTermParams) (UpsertKnowledgeTermRow, error) {
+	row := q.db.QueryRow(ctx, upsertKnowledgeTerm,
+		arg.ID,
+		arg.Name,
+		arg.Type,
+		arg.EntityID,
+	)
+	var i UpsertKnowledgeTermRow
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Type,
+		&i.EntityID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

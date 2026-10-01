@@ -24,6 +24,17 @@ type EntityPair struct {
 	UpdatedAt     time.Time
 }
 
+// Name and type together identify a term. EntityID is the zero UUID when
+// the phrase names no entity.
+type KnowledgeTerm struct {
+	ID        uuid.UUID
+	Name      string
+	Type      string
+	EntityID  uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 type UserAsset struct {
 	UserID       uuid.UUID
 	EntityPairID uuid.UUID

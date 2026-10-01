@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Rahmannugar/macro-terminal/server/internal/mapping"
 	"github.com/Rahmannugar/macro-terminal/server/internal/sources/models"
 	"github.com/google/uuid"
 )
@@ -62,6 +63,17 @@ func (fetcher *fakeSourceFetcher) fetchCount() int {
 	return len(fetcher.calls)
 }
 
+type fakeDictionaryLoader struct {
+	dict  mapping.Dictionary
+	err   error
+	calls int
+}
+
+func (loader *fakeDictionaryLoader) Load(context.Context) (mapping.Dictionary, error) {
+	loader.calls++
+	return loader.dict, loader.err
+}
+
 func configuration(id uuid.UUID, name, sourceType, configType string) models.SourceConfigurationWithSource {
 	return models.SourceConfigurationWithSource{
 		SourceConfiguration: models.SourceConfiguration{
@@ -77,9 +89,10 @@ func configuration(id uuid.UUID, name, sourceType, configType string) models.Sou
 func newTestRunner(
 	source *fakeConfigurationSource,
 	fetcher *fakeSourceFetcher,
+	loader *fakeDictionaryLoader,
 ) (*Runner, *time.Time) {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
-	runner := NewRunner(source, fetcher, discardLogger(), DefaultCadences())
+	runner := NewRunner(source, fetcher, loader, discardLogger(), DefaultCadences())
 	runner.now = func() time.Time { return now }
 	return runner, &now
 }
@@ -93,7 +106,7 @@ func TestRunnerFetchesEverythingOnFirstPass(t *testing.T) {
 		configurations: []models.SourceConfigurationWithSource{news, official, centralBank},
 	}
 	fetcher := &fakeSourceFetcher{byID: map[uuid.UUID]fakeFetchResult{}}
-	runner, _ := newTestRunner(source, fetcher)
+	runner, _ := newTestRunner(source, fetcher, &fakeDictionaryLoader{})
 
 	runner.runDue(context.Background())
 
@@ -111,7 +124,7 @@ func TestRunnerRespectsCadences(t *testing.T) {
 		configurations: []models.SourceConfigurationWithSource{news, official, centralBank},
 	}
 	fetcher := &fakeSourceFetcher{byID: map[uuid.UUID]fakeFetchResult{}}
-	runner, now := newTestRunner(source, fetcher)
+	runner, now := newTestRunner(source, fetcher, &fakeDictionaryLoader{})
 
 	runner.runDue(context.Background())
 	if fetcher.fetchCount() != 3 {
@@ -155,7 +168,7 @@ func TestRunnerContinuesAfterFetchFailure(t *testing.T) {
 	fetcher := &fakeSourceFetcher{byID: map[uuid.UUID]fakeFetchResult{
 		failing.ID: {err: errors.New("provider exploded")},
 	}}
-	runner, _ := newTestRunner(source, fetcher)
+	runner, _ := newTestRunner(source, fetcher, &fakeDictionaryLoader{})
 
 	runner.runDue(context.Background())
 
@@ -186,11 +199,45 @@ func TestRunnerCadenceForCentralBankSource(t *testing.T) {
 func TestRunnerLogsLoadFailureWithoutCrashing(t *testing.T) {
 	source := &fakeConfigurationSource{err: errors.New("database down")}
 	fetcher := &fakeSourceFetcher{byID: map[uuid.UUID]fakeFetchResult{}}
-	runner, _ := newTestRunner(source, fetcher)
+	runner, _ := newTestRunner(source, fetcher, &fakeDictionaryLoader{})
 
 	runner.runDue(context.Background()) // must not panic or hang
 
 	if fetcher.fetchCount() != 0 {
 		t.Fatalf("fetched = %d, want 0", fetcher.fetchCount())
+	}
+}
+
+func TestRunnerLoadsMappingDictionaryOncePerPass(t *testing.T) {
+	news := configuration(uuid.New(), "CoinDesk", "news", "rss")
+	official := configuration(uuid.New(), "BLS", "official", "api")
+	source := &fakeConfigurationSource{
+		configurations: []models.SourceConfigurationWithSource{news, official},
+	}
+	fetcher := &fakeSourceFetcher{byID: map[uuid.UUID]fakeFetchResult{}}
+	loader := &fakeDictionaryLoader{}
+	runner, _ := newTestRunner(source, fetcher, loader)
+
+	runner.runDue(context.Background())
+	runner.runDue(context.Background())
+
+	if loader.calls != 1 {
+		t.Fatalf("dictionary loads = %d, want 1 (one load per scheduling pass)", loader.calls)
+	}
+}
+
+func TestRunnerFetchesWhenDictionaryLoadFails(t *testing.T) {
+	news := configuration(uuid.New(), "CoinDesk", "news", "rss")
+	source := &fakeConfigurationSource{
+		configurations: []models.SourceConfigurationWithSource{news},
+	}
+	fetcher := &fakeSourceFetcher{byID: map[uuid.UUID]fakeFetchResult{}}
+	loader := &fakeDictionaryLoader{err: errors.New("database down")}
+	runner, _ := newTestRunner(source, fetcher, loader)
+
+	runner.runDue(context.Background())
+
+	if fetcher.fetchCount() != 1 {
+		t.Fatalf("fetched = %d, want 1 (mapping failure must not block fetching)", fetcher.fetchCount())
 	}
 }

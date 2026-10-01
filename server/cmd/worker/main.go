@@ -11,10 +11,12 @@ import (
 	"time"
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/config"
+	entityrepositories "github.com/Rahmannugar/macro-terminal/server/internal/entities/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/database"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/telemetry"
 	"github.com/Rahmannugar/macro-terminal/server/internal/ingestion"
+	"github.com/Rahmannugar/macro-terminal/server/internal/mapping"
 	sourcesrepositories "github.com/Rahmannugar/macro-terminal/server/internal/sources/repositories"
 )
 
@@ -88,6 +90,7 @@ func run() (runError error) {
 	}
 
 	sourceRepository := sourcesrepositories.NewSourceRepository(databasePool)
+	entityRepository := entityrepositories.NewEntityRepository(databasePool)
 	ingestionRunner := ingestion.NewRunner(
 		sourceRepository,
 		ingestion.NewFetcher(
@@ -95,6 +98,7 @@ func run() (runError error) {
 			ingestion.NewDefaultBreaker(),
 			logger,
 		),
+		mapping.NewLoader(entityRepository),
 		logger,
 		ingestion.DefaultCadences(),
 	)

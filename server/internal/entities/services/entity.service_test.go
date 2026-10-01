@@ -14,6 +14,7 @@ type fakeEntityRepository struct {
 	entities map[string]models.Entity
 	pairs    map[string]models.EntityPair
 	assets   map[string]models.UserAsset
+	terms    map[string]models.KnowledgeTerm
 }
 
 func newFakeEntityRepository() *fakeEntityRepository {
@@ -21,7 +22,35 @@ func newFakeEntityRepository() *fakeEntityRepository {
 		entities: map[string]models.Entity{},
 		pairs:    map[string]models.EntityPair{},
 		assets:   map[string]models.UserAsset{},
+		terms:    map[string]models.KnowledgeTerm{},
 	}
+}
+
+func knowledgeTermKey(name, termType string) string {
+	return name + "\x00" + termType
+}
+
+func (repository *fakeEntityRepository) ListEntityKnowledgeTerms(
+	context.Context,
+) ([]models.KnowledgeTerm, error) {
+	terms := make([]models.KnowledgeTerm, 0, len(repository.terms))
+	for _, term := range repository.terms {
+		terms = append(terms, term)
+	}
+	return terms, nil
+}
+
+func (repository *fakeEntityRepository) UpsertKnowledgeTerm(
+	_ context.Context,
+	term models.KnowledgeTerm,
+) (models.KnowledgeTerm, error) {
+	key := knowledgeTermKey(term.Name, term.Type)
+	if existing, ok := repository.terms[key]; ok {
+		term.ID = existing.ID
+		term.CreatedAt = existing.CreatedAt
+	}
+	repository.terms[key] = term
+	return term, nil
 }
 
 func (repository *fakeEntityRepository) ListEntities(context.Context) ([]models.Entity, error) {
@@ -339,5 +368,65 @@ func TestUserAssetServiceSubscribe(t *testing.T) {
 	}
 	if len(repository.assets) != 0 {
 		t.Fatalf("assets = %d after unsubscribe, want 0", len(repository.assets))
+	}
+}
+
+func TestEnsureKnowledgeTermValidation(t *testing.T) {
+	repository := newFakeEntityRepository()
+	service := NewEntityService(repository)
+	if _, err := service.EnsureEntity(context.Background(), "USD", "United States Dollar", "currency"); err != nil {
+		t.Fatalf("EnsureEntity: %v", err)
+	}
+
+	tests := []struct {
+		name       string
+		termName   string
+		termType   string
+		entityCode string
+		wantErr    error
+	}{
+		{name: "blank name", termName: " ", termType: "institution", entityCode: "USD", wantErr: ErrKnowledgeTermNameRequired},
+		{name: "blank type", termName: "Fed", termType: "", entityCode: "USD", wantErr: ErrKnowledgeTermTypeRequired},
+		{name: "unknown entity", termName: "Fed", termType: "institution", entityCode: "XYZ", wantErr: ErrEntityNotFound},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := service.EnsureKnowledgeTerm(
+				context.Background(), test.termName, test.termType, test.entityCode,
+			)
+			if !errors.Is(err, test.wantErr) {
+				t.Fatalf("EnsureKnowledgeTerm() error = %v, want %v", err, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestEnsureKnowledgeTermIsIdempotent(t *testing.T) {
+	repository := newFakeEntityRepository()
+	service := NewEntityService(repository)
+	if _, err := service.EnsureEntity(context.Background(), "USD", "United States Dollar", "currency"); err != nil {
+		t.Fatalf("EnsureEntity USD: %v", err)
+	}
+	if _, err := service.EnsureEntity(context.Background(), "EUR", "Euro", "currency"); err != nil {
+		t.Fatalf("EnsureEntity EUR: %v", err)
+	}
+
+	first, err := service.EnsureKnowledgeTerm(context.Background(), "Fed", "institution", "USD")
+	if err != nil {
+		t.Fatalf("first EnsureKnowledgeTerm: %v", err)
+	}
+	second, err := service.EnsureKnowledgeTerm(context.Background(), "Fed", "institution", "EUR")
+	if err != nil {
+		t.Fatalf("second EnsureKnowledgeTerm: %v", err)
+	}
+	if second.ID != first.ID {
+		t.Fatalf("re-seed created a new term instead of relinking in place")
+	}
+	if second.EntityID == first.EntityID {
+		t.Fatalf("re-seed did not apply the entity relink")
+	}
+	if len(repository.terms) != 1 {
+		t.Fatalf("terms = %d, want 1 (name and type identify the row)", len(repository.terms))
 	}
 }

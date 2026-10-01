@@ -67,7 +67,7 @@ func run() error {
 		}
 	}
 
-	var entitiesUpserted, pairsUpserted int
+	var entitiesUpserted, pairsUpserted, termsUpserted int
 	for _, seed := range seedEntities {
 		if _, err := entityService.EnsureEntity(ctx, seed.code, seed.name, seed.kind); err != nil {
 			return fmt.Errorf("seed entity %q: %w", seed.code, err)
@@ -80,6 +80,14 @@ func run() error {
 		}
 		pairsUpserted++
 	}
+	for _, seed := range seedKnowledgeTerms {
+		if _, err := entityService.EnsureKnowledgeTerm(
+			ctx, seed.name, seed.kind, seed.entity,
+		); err != nil {
+			return fmt.Errorf("seed knowledge term %q: %w", seed.name, err)
+		}
+		termsUpserted++
+	}
 
 	slog.Info(
 		"seed complete",
@@ -87,6 +95,7 @@ func run() error {
 		"configurations_ensured", configurationsEnsured,
 		"entities_upserted", entitiesUpserted,
 		"pairs_upserted", pairsUpserted,
+		"knowledge_terms_upserted", termsUpserted,
 	)
 	return nil
 }

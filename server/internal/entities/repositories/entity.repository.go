@@ -7,6 +7,7 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/entities/models"
 	entitydb "github.com/Rahmannugar/macro-terminal/server/internal/entities/repositories/generated"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -176,6 +177,65 @@ func (repository *EntityRepository) UnsubscribeUserAsset(ctx context.Context, us
 		return fmt.Errorf("unsubscribe user asset: %w", err)
 	}
 	return nil
+}
+
+func (repository *EntityRepository) ListEntityKnowledgeTerms(
+	ctx context.Context,
+) ([]models.KnowledgeTerm, error) {
+	rows, err := repository.queries.ListEntityKnowledgeTerms(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list entity knowledge terms: %w", err)
+	}
+	terms := make([]models.KnowledgeTerm, 0, len(rows))
+	for _, row := range rows {
+		terms = append(terms, models.KnowledgeTerm{
+			ID:        row.ID,
+			Name:      row.Name,
+			Type:      row.Type,
+			EntityID:  fromNullableUUID(row.EntityID),
+			CreatedAt: row.CreatedAt.Time,
+			UpdatedAt: row.UpdatedAt.Time,
+		})
+	}
+	return terms, nil
+}
+
+func (repository *EntityRepository) UpsertKnowledgeTerm(
+	ctx context.Context,
+	term models.KnowledgeTerm,
+) (models.KnowledgeTerm, error) {
+	row, err := repository.queries.UpsertKnowledgeTerm(ctx, entitydb.UpsertKnowledgeTermParams{
+		ID:       term.ID,
+		Name:     term.Name,
+		Type:     term.Type,
+		EntityID: toNullableUUID(term.EntityID),
+	})
+	if err != nil {
+		return models.KnowledgeTerm{}, fmt.Errorf("upsert knowledge term: %w", err)
+	}
+	return models.KnowledgeTerm{
+		ID:        row.ID,
+		Name:      row.Name,
+		Type:      row.Type,
+		EntityID:  fromNullableUUID(row.EntityID),
+		CreatedAt: row.CreatedAt.Time,
+		UpdatedAt: row.UpdatedAt.Time,
+	}, nil
+}
+
+// An unlinked column becomes the zero UUID.
+func fromNullableUUID(value pgtype.UUID) uuid.UUID {
+	if !value.Valid {
+		return uuid.Nil
+	}
+	return uuid.UUID(value.Bytes)
+}
+
+func toNullableUUID(id uuid.UUID) pgtype.UUID {
+	if id == uuid.Nil {
+		return pgtype.UUID{}
+	}
+	return pgtype.UUID{Bytes: id, Valid: true}
 }
 
 func mapEntity(row entitydb.Entity) models.Entity {
