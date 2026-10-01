@@ -33,7 +33,8 @@ type Input struct {
 	ConfigType string // api | rss | web
 	Items      []FeedItem
 	Body       []byte
-	BaseURL    string // request URL — relative links resolve against it
+	BaseURL    string    // request URL — relative links resolve against it
+	Selectors  Selectors // web only: CSS extraction from the page
 }
 
 // Candidate is one deduplicated article, ready for mapping and storage.
@@ -55,8 +56,8 @@ type Stats struct {
 
 // Articles normalizes one fetched result. Feed results use their parsed
 // items; news API results are parsed as GDELT's ArtList — the only news API
-// shape in the source universe. Other payloads (statistics responses, HTML
-// pages) yield no article candidates.
+// shape in the source universe; web pages are extracted with the source's
+// configured selectors. Statistics responses yield no article candidates.
 func Articles(in Input) ([]Candidate, Stats) {
 	var stats Stats
 
@@ -68,6 +69,9 @@ func Articles(in Input) ([]Candidate, Stats) {
 			return nil, stats
 		}
 		items = parsed
+	}
+	if len(items) == 0 && in.ConfigType == "web" {
+		items = extractWeb(in.Body, in.Selectors)
 	}
 
 	seen := make(map[string]bool, len(items))
@@ -158,7 +162,13 @@ var trackingParameters = map[string]bool{
 // feeds publish them) are resolved against the request URL first. Two URLs
 // that canonicalize to the same string are the same article.
 func canonicalURL(raw, base string) (string, bool) {
-	parsed, err := url.Parse(strings.TrimSpace(raw))
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		// An empty reference resolves to the base URL itself; a missing
+		// link is not an article.
+		return "", false
+	}
+	parsed, err := url.Parse(raw)
 	if err != nil {
 		return "", false
 	}

@@ -232,6 +232,46 @@ func (q *Queries) ListSources(ctx context.Context) ([]Source, error) {
 	return items, nil
 }
 
+const sourceConfigurationsByType = `-- name: SourceConfigurationsByType :many
+SELECT id, source_id, type, config, created_at, updated_at
+FROM source_configurations
+WHERE source_id = $1
+  AND type = $2
+ORDER BY id
+`
+
+type SourceConfigurationsByTypeParams struct {
+	SourceID   uuid.UUID
+	ConfigType string
+}
+
+func (q *Queries) SourceConfigurationsByType(ctx context.Context, arg SourceConfigurationsByTypeParams) ([]SourceConfiguration, error) {
+	rows, err := q.db.Query(ctx, sourceConfigurationsByType, arg.SourceID, arg.ConfigType)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SourceConfiguration
+	for rows.Next() {
+		var i SourceConfiguration
+		if err := rows.Scan(
+			&i.ID,
+			&i.SourceID,
+			&i.Type,
+			&i.Config,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateSourceConfiguration = `-- name: UpdateSourceConfiguration :one
 UPDATE source_configurations
 SET config = $2,

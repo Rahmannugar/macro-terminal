@@ -59,3 +59,10 @@ SELECT sc.id,
 FROM source_configurations sc
 JOIN sources s ON s.id = sc.source_id
 ORDER BY s.name, sc.type;
+
+-- name: SourceConfigurationsByType :many
+SELECT *
+FROM source_configurations
+WHERE source_id = sqlc.arg(source_id)
+  AND type = sqlc.arg(config_type)
+ORDER BY id;

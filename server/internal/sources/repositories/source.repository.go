@@ -72,6 +72,25 @@ func (repository *SourceRepository) ConfigurationsBySource(ctx context.Context, 
 	return configurations, nil
 }
 
+func (repository *SourceRepository) ConfigurationsByType(
+	ctx context.Context,
+	sourceID uuid.UUID,
+	configType string,
+) ([]models.SourceConfiguration, error) {
+	rows, err := repository.queries.SourceConfigurationsByType(ctx, sourcedb.SourceConfigurationsByTypeParams{
+		SourceID:   sourceID,
+		ConfigType: configType,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list source configurations by type: %w", err)
+	}
+	configurations := make([]models.SourceConfiguration, 0, len(rows))
+	for _, row := range rows {
+		configurations = append(configurations, mapConfiguration(row))
+	}
+	return configurations, nil
+}
+
 func (repository *SourceRepository) ListSourceConfigurationsWithSource(
 	ctx context.Context,
 ) ([]models.SourceConfigurationWithSource, error) {

@@ -170,8 +170,10 @@ var seedUniverse = []seedSource{
 		name:       "People's Bank of China (PBOC)",
 		sourceType: "official",
 		configurations: []seedConfiguration{{
+			// The press-release index only lists year archives; articles live
+			// on the year page. The URL must be bumped each January.
 			kind:   "web",
-			config: `{"url":"https://www.pbc.gov.cn/en/3688110/3688172/index.html"}`,
+			config: `{"url":"https://www.pbc.gov.cn/en/3688110/3688172/2026/index.html","selectors":{"item":"ul.prhhul li","title":".ListR a","url":".ListR a","date":".prhhdata","date_layout":"2006-01-02"}}`,
 		}},
 	},
 	{
@@ -194,7 +196,7 @@ var seedUniverse = []seedSource{
 		sourceType: "official",
 		configurations: []seedConfiguration{{
 			kind:   "web",
-			config: `{"url":"https://www.iea.org/news"}`,
+			config: `{"url":"https://www.iea.org/news","selectors":{"item":".m-news-detailed-listing__link","title":".m-news-detailed-listing__title","date":".m-news-detailed-listing__date","date_layout":"2 January 2006"}}`,
 		}},
 	},
 	{

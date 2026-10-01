@@ -45,6 +45,7 @@ type SourceRepository interface {
 	SourceByName(context.Context, string) (models.Source, error)
 	UpsertSource(context.Context, models.Source) (models.Source, error)
 	ConfigurationsBySource(context.Context, uuid.UUID) ([]models.SourceConfiguration, error)
+	ConfigurationsByType(context.Context, uuid.UUID, string) ([]models.SourceConfiguration, error)
 	SourceConfigurationByURL(context.Context, uuid.UUID, string, string) (models.SourceConfiguration, error)
 	CreateSourceConfiguration(context.Context, models.SourceConfiguration) (models.SourceConfiguration, error)
 	UpdateSourceConfiguration(context.Context, models.SourceConfiguration) (models.SourceConfiguration, error)
@@ -95,7 +96,9 @@ func (service *SourceService) UpsertSource(ctx context.Context, name, sourceType
 // EnsureSourceConfiguration creates the configuration, or updates it when the
 // same source/type/url combination already stores different configuration. The
 // url identifies the access endpoint, so re-seeding stays idempotent while
-// seed improvements still propagate.
+// seed improvements still propagate. When the url itself moves (a provider
+// reorganized its pages), the existing configuration of the same source and
+// type is updated in place instead of leaving the old one behind.
 func (service *SourceService) EnsureSourceConfiguration(
 	ctx context.Context,
 	sourceID uuid.UUID,
@@ -108,6 +111,9 @@ func (service *SourceService) EnsureSourceConfiguration(
 	}
 
 	existing, err := service.repository.SourceConfigurationByURL(ctx, sourceID, configType, configURL)
+	if errors.Is(err, models.ErrSourceConfigurationNotFound) {
+		existing, err = service.movedConfiguration(ctx, sourceID, configType)
+	}
 	if err == nil {
 		if string(existing.Config) == string(config) {
 			return existing, nil
@@ -130,6 +136,34 @@ func (service *SourceService) EnsureSourceConfiguration(
 		return models.SourceConfiguration{}, fmt.Errorf("generate source configuration ID: %w", idErr)
 	}
 
+	return service.createConfiguration(ctx, sourceID, configType, config, id)
+}
+
+// movedConfiguration finds the configuration a moved url should take over:
+// the source's only configuration of that type. Zero or several mean there is
+// nothing unambiguous to reuse, so the caller creates a new one.
+func (service *SourceService) movedConfiguration(
+	ctx context.Context,
+	sourceID uuid.UUID,
+	configType string,
+) (models.SourceConfiguration, error) {
+	configurations, err := service.repository.ConfigurationsByType(ctx, sourceID, configType)
+	if err != nil {
+		return models.SourceConfiguration{}, fmt.Errorf("list source configurations by type: %w", err)
+	}
+	if len(configurations) != 1 {
+		return models.SourceConfiguration{}, models.ErrSourceConfigurationNotFound
+	}
+	return configurations[0], nil
+}
+
+func (service *SourceService) createConfiguration(
+	ctx context.Context,
+	sourceID uuid.UUID,
+	configType string,
+	config json.RawMessage,
+	id uuid.UUID,
+) (models.SourceConfiguration, error) {
 	created, createErr := service.repository.CreateSourceConfiguration(ctx, models.SourceConfiguration{
 		ID:       id,
 		SourceID: sourceID,

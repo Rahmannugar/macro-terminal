@@ -137,6 +137,20 @@ func (repository *fakeSourceRepository) UpsertSource(_ context.Context, source m
 	return source, nil
 }
 
+func (repository *fakeSourceRepository) ConfigurationsByType(
+	_ context.Context,
+	sourceID uuid.UUID,
+	configType string,
+) ([]models.SourceConfiguration, error) {
+	var configurations []models.SourceConfiguration
+	for _, configuration := range repository.configurations {
+		if configuration.SourceID == sourceID && configuration.Type == configType {
+			configurations = append(configurations, configuration)
+		}
+	}
+	return configurations, nil
+}
+
 func (repository *fakeSourceRepository) ConfigurationsBySource(context.Context, uuid.UUID) ([]models.SourceConfiguration, error) {
 	return nil, nil
 }
@@ -239,5 +253,37 @@ func TestEnsureSourceConfiguration(t *testing.T) {
 		json.RawMessage(`{"url":"https://example.com/feed","password":"hunter2"}`),
 	); !errors.Is(err, ErrConfigurationSecretInConfig) {
 		t.Fatalf("secret in configuration error = %v, want %v", err, ErrConfigurationSecretInConfig)
+	}
+}
+
+func TestEnsureSourceConfigurationFollowsMovedURL(t *testing.T) {
+	sourceID := uuid.New()
+	service := NewSourceService(newFakeSourceRepository())
+	fake := service.repository.(*fakeSourceRepository)
+
+	original, err := service.EnsureSourceConfiguration(
+		context.Background(),
+		sourceID,
+		"web",
+		json.RawMessage(`{"url":"https://example.com/news/index.html"}`),
+	)
+	if err != nil {
+		t.Fatalf("first ensure: %v", err)
+	}
+
+	moved, err := service.EnsureSourceConfiguration(
+		context.Background(),
+		sourceID,
+		"web",
+		json.RawMessage(`{"url":"https://example.com/news/2026/index.html","selectors":{"item":".item","title":".title"}}`),
+	)
+	if err != nil {
+		t.Fatalf("moved url ensure: %v", err)
+	}
+	if moved.ID != original.ID {
+		t.Fatalf("moved url should update the existing configuration, got a second row")
+	}
+	if fake.created != 1 || fake.updated != 1 {
+		t.Fatalf("moved url created=%d updated=%d, want created=1 updated=1", fake.created, fake.updated)
 	}
 }
