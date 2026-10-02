@@ -9,6 +9,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type EconomicIndicator struct {
+	ID        uuid.UUID
+	Name      string
+	EntityID  uuid.UUID
+	Type      string
+	CreatedAt pgtype.Timestamptz
+	UpdatedAt pgtype.Timestamptz
+}
+
 type Entity struct {
 	ID        uuid.UUID
 	Code      string
@@ -25,4 +34,14 @@ type EntityPair struct {
 	Symbol        string
 	CreatedAt     pgtype.Timestamptz
 	UpdatedAt     pgtype.Timestamptz
+}
+
+type KnowledgeTerm struct {
+	ID          uuid.UUID
+	Name        string
+	Type        string
+	EntityID    pgtype.UUID
+	IndicatorID pgtype.UUID
+	CreatedAt   pgtype.Timestamptz
+	UpdatedAt   pgtype.Timestamptz
 }

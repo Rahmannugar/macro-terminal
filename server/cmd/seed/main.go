@@ -89,6 +89,21 @@ func run() error {
 		termsUpserted++
 	}
 
+	var indicatorsUpserted, indicatorTermsUpserted int
+	for _, seed := range seedIndicators {
+		indicator, err := entityService.EnsureIndicator(ctx, seed.name, seed.kind, seed.entity)
+		if err != nil {
+			return fmt.Errorf("seed indicator %q: %w", seed.name, err)
+		}
+		indicatorsUpserted++
+		for _, term := range seed.terms {
+			if _, err := entityService.EnsureIndicatorTerm(ctx, term, "topic", indicator); err != nil {
+				return fmt.Errorf("seed indicator term %q for %q: %w", term, seed.name, err)
+			}
+			indicatorTermsUpserted++
+		}
+	}
+
 	slog.Info(
 		"seed complete",
 		"sources_upserted", sourcesUpserted,
@@ -96,6 +111,8 @@ func run() error {
 		"entities_upserted", entitiesUpserted,
 		"pairs_upserted", pairsUpserted,
 		"knowledge_terms_upserted", termsUpserted,
+		"indicators_upserted", indicatorsUpserted,
+		"indicator_terms_upserted", indicatorTermsUpserted,
 	)
 	return nil
 }

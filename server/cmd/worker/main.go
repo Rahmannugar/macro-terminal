@@ -11,6 +11,7 @@ import (
 	"time"
 
 	articlerepositories "github.com/Rahmannugar/macro-terminal/server/internal/articles/repositories"
+	calendarepositories "github.com/Rahmannugar/macro-terminal/server/internal/calendar/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/config"
 	entityrepositories "github.com/Rahmannugar/macro-terminal/server/internal/entities/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
@@ -104,6 +105,7 @@ func run() (runError error) {
 		),
 		mapping.NewLoader(entityRepository),
 		articlerepositories.NewArticleRepository(databasePool),
+		calendarepositories.NewEventRepository(databasePool),
 		logger,
 		ingestion.DefaultCadences(),
 	)

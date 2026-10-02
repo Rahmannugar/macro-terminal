@@ -190,35 +190,27 @@ func (q *Queries) ListEntities(ctx context.Context) ([]Entity, error) {
 }
 
 const listEntityKnowledgeTerms = `-- name: ListEntityKnowledgeTerms :many
-SELECT id, name, type, entity_id, created_at, updated_at
+SELECT id, name, type, entity_id, indicator_id, created_at, updated_at
 FROM knowledge_terms
 WHERE entity_id IS NOT NULL
 ORDER BY name, type
 `
 
-type ListEntityKnowledgeTermsRow struct {
-	ID        uuid.UUID
-	Name      string
-	Type      string
-	EntityID  pgtype.UUID
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
-}
-
-func (q *Queries) ListEntityKnowledgeTerms(ctx context.Context) ([]ListEntityKnowledgeTermsRow, error) {
+func (q *Queries) ListEntityKnowledgeTerms(ctx context.Context) ([]KnowledgeTerm, error) {
 	rows, err := q.db.Query(ctx, listEntityKnowledgeTerms)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListEntityKnowledgeTermsRow
+	var items []KnowledgeTerm
 	for rows.Next() {
-		var i ListEntityKnowledgeTermsRow
+		var i KnowledgeTerm
 		if err := rows.Scan(
 			&i.ID,
 			&i.Name,
 			&i.Type,
 			&i.EntityID,
+			&i.IndicatorID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -322,6 +314,71 @@ func (q *Queries) ListEntityPairsContainingEntity(ctx context.Context, baseEntit
 			&i.BaseEntityID,
 			&i.QuoteEntityID,
 			&i.Symbol,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIndicatorKnowledgeTerms = `-- name: ListIndicatorKnowledgeTerms :many
+SELECT name, indicator_id
+FROM knowledge_terms
+WHERE indicator_id IS NOT NULL
+ORDER BY name, type
+`
+
+type ListIndicatorKnowledgeTermsRow struct {
+	Name        string
+	IndicatorID pgtype.UUID
+}
+
+func (q *Queries) ListIndicatorKnowledgeTerms(ctx context.Context) ([]ListIndicatorKnowledgeTermsRow, error) {
+	rows, err := q.db.Query(ctx, listIndicatorKnowledgeTerms)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListIndicatorKnowledgeTermsRow
+	for rows.Next() {
+		var i ListIndicatorKnowledgeTermsRow
+		if err := rows.Scan(&i.Name, &i.IndicatorID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIndicators = `-- name: ListIndicators :many
+SELECT id, name, entity_id, type, created_at, updated_at
+FROM economic_indicators
+ORDER BY name
+`
+
+func (q *Queries) ListIndicators(ctx context.Context) ([]EconomicIndicator, error) {
+	rows, err := q.db.Query(ctx, listIndicators)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EconomicIndicator
+	for rows.Next() {
+		var i EconomicIndicator
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.EntityID,
+			&i.Type,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
@@ -466,44 +523,74 @@ func (q *Queries) UpsertEntityPair(ctx context.Context, arg UpsertEntityPairPara
 	return i, err
 }
 
-const upsertKnowledgeTerm = `-- name: UpsertKnowledgeTerm :one
-INSERT INTO knowledge_terms (id, name, type, entity_id)
+const upsertIndicator = `-- name: UpsertIndicator :one
+INSERT INTO economic_indicators (id, name, entity_id, type)
 VALUES ($1, $2, $3, $4)
+ON CONFLICT (name, entity_id) DO UPDATE
+SET type = EXCLUDED.type,
+    updated_at = now()
+RETURNING id, name, entity_id, type, created_at, updated_at
+`
+
+type UpsertIndicatorParams struct {
+	ID       uuid.UUID
+	Name     string
+	EntityID uuid.UUID
+	Type     string
+}
+
+func (q *Queries) UpsertIndicator(ctx context.Context, arg UpsertIndicatorParams) (EconomicIndicator, error) {
+	row := q.db.QueryRow(ctx, upsertIndicator,
+		arg.ID,
+		arg.Name,
+		arg.EntityID,
+		arg.Type,
+	)
+	var i EconomicIndicator
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.EntityID,
+		&i.Type,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const upsertKnowledgeTerm = `-- name: UpsertKnowledgeTerm :one
+INSERT INTO knowledge_terms (id, name, type, entity_id, indicator_id)
+VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (name, type) DO UPDATE
 SET entity_id = EXCLUDED.entity_id,
+    indicator_id = COALESCE(EXCLUDED.indicator_id, knowledge_terms.indicator_id),
     updated_at = now()
-RETURNING id, name, type, entity_id, created_at, updated_at
+RETURNING id, name, type, entity_id, indicator_id, created_at, updated_at
 `
 
 type UpsertKnowledgeTermParams struct {
-	ID       uuid.UUID
-	Name     string
-	Type     string
-	EntityID pgtype.UUID
+	ID          uuid.UUID
+	Name        string
+	Type        string
+	EntityID    pgtype.UUID
+	IndicatorID pgtype.UUID
 }
 
-type UpsertKnowledgeTermRow struct {
-	ID        uuid.UUID
-	Name      string
-	Type      string
-	EntityID  pgtype.UUID
-	CreatedAt pgtype.Timestamptz
-	UpdatedAt pgtype.Timestamptz
-}
-
-func (q *Queries) UpsertKnowledgeTerm(ctx context.Context, arg UpsertKnowledgeTermParams) (UpsertKnowledgeTermRow, error) {
+func (q *Queries) UpsertKnowledgeTerm(ctx context.Context, arg UpsertKnowledgeTermParams) (KnowledgeTerm, error) {
 	row := q.db.QueryRow(ctx, upsertKnowledgeTerm,
 		arg.ID,
 		arg.Name,
 		arg.Type,
 		arg.EntityID,
+		arg.IndicatorID,
 	)
-	var i UpsertKnowledgeTermRow
+	var i KnowledgeTerm
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.Type,
 		&i.EntityID,
+		&i.IndicatorID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

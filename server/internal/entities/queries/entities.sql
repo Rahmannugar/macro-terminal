@@ -87,15 +87,35 @@ WHERE user_id = $1
   AND entity_pair_id = $2;
 
 -- name: ListEntityKnowledgeTerms :many
-SELECT id, name, type, entity_id, created_at, updated_at
+SELECT id, name, type, entity_id, indicator_id, created_at, updated_at
 FROM knowledge_terms
 WHERE entity_id IS NOT NULL
 ORDER BY name, type;
 
 -- name: UpsertKnowledgeTerm :one
-INSERT INTO knowledge_terms (id, name, type, entity_id)
-VALUES ($1, $2, $3, $4)
+INSERT INTO knowledge_terms (id, name, type, entity_id, indicator_id)
+VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (name, type) DO UPDATE
 SET entity_id = EXCLUDED.entity_id,
+    indicator_id = COALESCE(EXCLUDED.indicator_id, knowledge_terms.indicator_id),
     updated_at = now()
-RETURNING id, name, type, entity_id, created_at, updated_at;
+RETURNING id, name, type, entity_id, indicator_id, created_at, updated_at;
+
+-- name: ListIndicators :many
+SELECT id, name, entity_id, type, created_at, updated_at
+FROM economic_indicators
+ORDER BY name;
+
+-- name: ListIndicatorKnowledgeTerms :many
+SELECT name, indicator_id
+FROM knowledge_terms
+WHERE indicator_id IS NOT NULL
+ORDER BY name, type;
+
+-- name: UpsertIndicator :one
+INSERT INTO economic_indicators (id, name, entity_id, type)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (name, entity_id) DO UPDATE
+SET type = EXCLUDED.type,
+    updated_at = now()
+RETURNING id, name, entity_id, type, created_at, updated_at;

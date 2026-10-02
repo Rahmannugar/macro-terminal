@@ -189,12 +189,13 @@ func (repository *EntityRepository) ListEntityKnowledgeTerms(
 	terms := make([]models.KnowledgeTerm, 0, len(rows))
 	for _, row := range rows {
 		terms = append(terms, models.KnowledgeTerm{
-			ID:        row.ID,
-			Name:      row.Name,
-			Type:      row.Type,
-			EntityID:  fromNullableUUID(row.EntityID),
-			CreatedAt: row.CreatedAt.Time,
-			UpdatedAt: row.UpdatedAt.Time,
+			ID:          row.ID,
+			Name:        row.Name,
+			Type:        row.Type,
+			EntityID:    fromNullableUUID(row.EntityID),
+			IndicatorID: fromNullableUUID(row.IndicatorID),
+			CreatedAt:   row.CreatedAt.Time,
+			UpdatedAt:   row.UpdatedAt.Time,
 		})
 	}
 	return terms, nil
@@ -205,19 +206,80 @@ func (repository *EntityRepository) UpsertKnowledgeTerm(
 	term models.KnowledgeTerm,
 ) (models.KnowledgeTerm, error) {
 	row, err := repository.queries.UpsertKnowledgeTerm(ctx, entitydb.UpsertKnowledgeTermParams{
-		ID:       term.ID,
-		Name:     term.Name,
-		Type:     term.Type,
-		EntityID: toNullableUUID(term.EntityID),
+		ID:          term.ID,
+		Name:        term.Name,
+		Type:        term.Type,
+		EntityID:    toNullableUUID(term.EntityID),
+		IndicatorID: toNullableUUID(term.IndicatorID),
 	})
 	if err != nil {
 		return models.KnowledgeTerm{}, fmt.Errorf("upsert knowledge term: %w", err)
 	}
 	return models.KnowledgeTerm{
+		ID:          row.ID,
+		Name:        row.Name,
+		Type:        row.Type,
+		EntityID:    fromNullableUUID(row.EntityID),
+		IndicatorID: fromNullableUUID(row.IndicatorID),
+		CreatedAt:   row.CreatedAt.Time,
+		UpdatedAt:   row.UpdatedAt.Time,
+	}, nil
+}
+
+func (repository *EntityRepository) ListIndicators(ctx context.Context) ([]models.Indicator, error) {
+	rows, err := repository.queries.ListIndicators(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list indicators: %w", err)
+	}
+	indicators := make([]models.Indicator, 0, len(rows))
+	for _, row := range rows {
+		indicators = append(indicators, models.Indicator{
+			ID:        row.ID,
+			Name:      row.Name,
+			EntityID:  row.EntityID,
+			Type:      row.Type,
+			CreatedAt: row.CreatedAt.Time,
+			UpdatedAt: row.UpdatedAt.Time,
+		})
+	}
+	return indicators, nil
+}
+
+func (repository *EntityRepository) ListIndicatorKnowledgeTerms(
+	ctx context.Context,
+) ([]models.IndicatorTerm, error) {
+	rows, err := repository.queries.ListIndicatorKnowledgeTerms(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list indicator knowledge terms: %w", err)
+	}
+	terms := make([]models.IndicatorTerm, 0, len(rows))
+	for _, row := range rows {
+		terms = append(terms, models.IndicatorTerm{
+			Name:        row.Name,
+			IndicatorID: fromNullableUUID(row.IndicatorID),
+		})
+	}
+	return terms, nil
+}
+
+func (repository *EntityRepository) UpsertIndicator(
+	ctx context.Context,
+	indicator models.Indicator,
+) (models.Indicator, error) {
+	row, err := repository.queries.UpsertIndicator(ctx, entitydb.UpsertIndicatorParams{
+		ID:       indicator.ID,
+		Name:     indicator.Name,
+		EntityID: indicator.EntityID,
+		Type:     indicator.Type,
+	})
+	if err != nil {
+		return models.Indicator{}, fmt.Errorf("upsert indicator: %w", err)
+	}
+	return models.Indicator{
 		ID:        row.ID,
 		Name:      row.Name,
+		EntityID:  row.EntityID,
 		Type:      row.Type,
-		EntityID:  fromNullableUUID(row.EntityID),
 		CreatedAt: row.CreatedAt.Time,
 		UpdatedAt: row.UpdatedAt.Time,
 	}, nil

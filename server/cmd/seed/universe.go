@@ -492,3 +492,138 @@ var seedKnowledgeTerms = []seedKnowledgeTerm{
 	{name: "trade war", kind: "topic", entity: "CHINA"},
 	{name: "trade wars", kind: "topic", entity: "CHINA"},
 }
+
+type seedIndicator struct {
+	entity string
+	kind   string
+	name   string
+	terms  []string
+}
+
+// Indicators are the economic series calendar events measure. Terms are
+// matched against event names, longest first, so a country-prefixed phrase
+// always beats the bare form: "Canada CPI y/y" resolves to Canada even
+// though bare "CPI" belongs to the US series. Bare terms therefore appear
+// only under the indicator that owns the unprefixed name, and every other
+// country's series carries its prefix. GDP stays out on purpose — bare
+// "GDP" names exist on every market's feed and no phrase cleanly owns it.
+var seedIndicators = []seedIndicator{
+	// United States
+	{entity: "USD", kind: "inflation", name: "US CPI", terms: []string{
+		"cpi", "consumer price index", "cpi y/y", "cpi m/m", "inflation rate"}},
+	{entity: "USD", kind: "inflation", name: "US Core CPI", terms: []string{
+		"core cpi", "core consumer price index", "core cpi y/y", "core cpi m/m",
+		"core inflation rate"}},
+	{entity: "USD", kind: "inflation", name: "US PCE Price Index", terms: []string{
+		"pce", "core pce", "personal consumption expenditures"}},
+	{entity: "USD", kind: "inflation", name: "US PPI", terms: []string{
+		"ppi", "producer price index", "core ppi", "ppi y/y", "ppi m/m"}},
+	{entity: "USD", kind: "labor", name: "US Nonfarm Payrolls", terms: []string{
+		"nonfarm payrolls", "non-farm payrolls", "nonfarm", "payrolls", "nfp"}},
+	{entity: "USD", kind: "labor", name: "US Jobless Claims", terms: []string{
+		"jobless claims", "initial claims", "unemployment claims"}},
+	{entity: "USD", kind: "labor", name: "US Unemployment Rate", terms: []string{
+		"unemployment rate", "us unemployment"}},
+	{entity: "USD", kind: "labor", name: "US JOLTS Job Openings", terms: []string{
+		"jolts", "job openings"}},
+	{entity: "USD", kind: "sales", name: "US Retail Sales", terms: []string{
+		"retail sales", "core retail sales", "retail sales control group"}},
+	{entity: "USD", kind: "policy", name: "US Fed Funds Rate", terms: []string{
+		"fomc rate decision", "federal funds rate", "fed funds rate", "fomc statement"}},
+	{entity: "USD", kind: "activity", name: "US ISM Manufacturing PMI", terms: []string{
+		"ism manufacturing pmi", "ism manufacturing", "ism pmi"}},
+	{entity: "USD", kind: "activity", name: "US ISM Services PMI", terms: []string{
+		"ism services pmi", "ism services", "ism non-manufacturing"}},
+	{entity: "USD", kind: "orders", name: "US Durable Goods Orders", terms: []string{
+		"durable goods orders", "durable goods"}},
+	{entity: "USD", kind: "orders", name: "US Factory Orders", terms: []string{
+		"factory orders"}},
+	{entity: "USD", kind: "activity", name: "US Housing Starts", terms: []string{
+		"housing starts"}},
+	{entity: "USD", kind: "activity", name: "US Building Permits", terms: []string{
+		"building permits"}},
+	{entity: "USD", kind: "activity", name: "US Consumer Sentiment", terms: []string{
+		"consumer sentiment", "michigan sentiment", "michigan consumer sentiment"}},
+	{entity: "USD", kind: "activity", name: "US Personal Income", terms: []string{
+		"personal income"}},
+	{entity: "USD", kind: "activity", name: "US Personal Spending", terms: []string{
+		"personal spending"}},
+	{entity: "USD", kind: "activity", name: "US Trade Balance", terms: []string{
+		"trade balance", "foreign trade"}},
+
+	// Euro area
+	{entity: "EUR", kind: "inflation", name: "Eurozone Flash CPI", terms: []string{
+		"eurozone flash cpi", "euro area flash cpi", "eurozone core cpi",
+		"euro area core cpi", "eurozone cpi", "euro area cpi", "flash cpi"}},
+	{entity: "EUR", kind: "inflation", name: "Eurozone HICP", terms: []string{
+		"eurozone hicp", "euro area hicp", "hicp",
+		"harmonised inflation rate", "harmonised inflation"}},
+	{entity: "EUR", kind: "labor", name: "Eurozone Unemployment Rate", terms: []string{
+		"eurozone unemployment", "euro area unemployment"}},
+	{entity: "EUR", kind: "policy", name: "ECB Rate Decision", terms: []string{
+		"ecb rate decision", "ecb deposit rate", "ecb interest rate",
+		"main refinancing rate", "refinancing rate"}},
+
+	// United Kingdom
+	{entity: "GBP", kind: "inflation", name: "UK CPI", terms: []string{
+		"uk cpi", "gbp cpi", "uk consumer price index"}},
+	{entity: "GBP", kind: "activity", name: "UK Nationwide HPI", terms: []string{
+		"nationwide hpi", "nationwide house price index"}},
+	{entity: "GBP", kind: "policy", name: "BoE Rate Decision", terms: []string{
+		"boe rate decision", "bank of england rate decision", "boe interest rate",
+		"mpc rate decision"}},
+	{entity: "GBP", kind: "sales", name: "UK Retail Sales", terms: []string{
+		"uk retail sales"}},
+	{entity: "GBP", kind: "labor", name: "UK Unemployment Rate", terms: []string{
+		"uk unemployment", "uk jobless rate"}},
+
+	// Japan
+	{entity: "JPY", kind: "inflation", name: "Japan CPI", terms: []string{
+		"japan cpi", "japan core cpi", "national cpi", "tokyo cpi", "tokyo core cpi"}},
+	{entity: "JPY", kind: "policy", name: "BoJ Rate Decision", terms: []string{
+		"boj rate decision", "bank of japan rate decision", "boj interest rate"}},
+	{entity: "JPY", kind: "labor", name: "Japan Unemployment Rate", terms: []string{
+		"japan unemployment"}},
+	{entity: "JPY", kind: "activity", name: "Japan Tankan", terms: []string{
+		"tankan", "tankan manufacturing", "tankan services"}},
+
+	// Switzerland
+	{entity: "CHF", kind: "inflation", name: "Swiss CPI", terms: []string{
+		"swiss cpi", "chf cpi", "switzerland cpi"}},
+	{entity: "CHF", kind: "policy", name: "SNB Policy Rate", terms: []string{
+		"snb policy rate", "snb interest rate", "swiss national bank rate"}},
+
+	// Canada
+	{entity: "CAD", kind: "inflation", name: "Canada CPI", terms: []string{
+		"canada cpi", "canadian cpi"}},
+	{entity: "CAD", kind: "policy", name: "BoC Rate Decision", terms: []string{
+		"boc rate decision", "bank of canada rate decision", "boc interest rate"}},
+	{entity: "CAD", kind: "sales", name: "Canada Retail Sales", terms: []string{
+		"canada retail sales", "canadian retail sales"}},
+	{entity: "CAD", kind: "labor", name: "Canada Employment Change", terms: []string{
+		"canada employment", "canadian employment", "canada jobs"}},
+
+	// Australia
+	{entity: "AUD", kind: "inflation", name: "Australia CPI", terms: []string{
+		"australia cpi", "australian cpi"}},
+	{entity: "AUD", kind: "policy", name: "RBA Rate Decision", terms: []string{
+		"rba rate decision", "reserve bank of australia rate", "rba interest rate"}},
+	{entity: "AUD", kind: "labor", name: "Australia Employment Change", terms: []string{
+		"australia employment", "australian employment"}},
+
+	// New Zealand
+	{entity: "NZD", kind: "inflation", name: "NZ CPI", terms: []string{
+		"nz cpi", "new zealand cpi"}},
+	{entity: "NZD", kind: "policy", name: "RBNZ Rate Decision", terms: []string{
+		"rbnz rate decision", "reserve bank of new zealand rate", "rbnz interest rate"}},
+
+	// China
+	{entity: "CHINA", kind: "inflation", name: "China CPI", terms: []string{
+		"china cpi", "chinese cpi"}},
+	{entity: "CHINA", kind: "inflation", name: "China PPI", terms: []string{
+		"china ppi", "chinese ppi"}},
+	{entity: "CHINA", kind: "activity", name: "China PMI", terms: []string{
+		"china pmi", "chinese pmi", "nbs manufacturing pmi", "cai manufacturing pmi"}},
+	{entity: "CHINA", kind: "activity", name: "China Trade Balance", terms: []string{
+		"china trade balance"}},
+}

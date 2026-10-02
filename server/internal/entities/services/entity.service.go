@@ -24,6 +24,8 @@ var (
 	ErrEntityPairNotFound        = errors.New("entity pair not found")
 	ErrKnowledgeTermNameRequired = errors.New("knowledge term name is required")
 	ErrKnowledgeTermTypeRequired = errors.New("knowledge term type is required")
+	ErrIndicatorNameRequired     = errors.New("indicator name is required")
+	ErrIndicatorTypeRequired     = errors.New("indicator type is required")
 )
 
 type EntityRepository interface {
@@ -38,6 +40,9 @@ type EntityRepository interface {
 	ListEntityPairs(context.Context) ([]models.EntityPair, error)
 	ListEntityKnowledgeTerms(context.Context) ([]models.KnowledgeTerm, error)
 	UpsertKnowledgeTerm(context.Context, models.KnowledgeTerm) (models.KnowledgeTerm, error)
+	ListIndicators(context.Context) ([]models.Indicator, error)
+	ListIndicatorKnowledgeTerms(context.Context) ([]models.IndicatorTerm, error)
+	UpsertIndicator(context.Context, models.Indicator) (models.Indicator, error)
 }
 
 type EntityService struct {
@@ -223,6 +228,81 @@ func (service *EntityService) EnsureKnowledgeTerm(
 	})
 	if err != nil {
 		return models.KnowledgeTerm{}, fmt.Errorf("upsert knowledge term: %w", err)
+	}
+	return upserted, nil
+}
+
+// EnsureIndicator upserts by name and entity for the seed script:
+// re-seeding is idempotent while type improvements still propagate.
+func (service *EntityService) EnsureIndicator(
+	ctx context.Context,
+	name, indicatorType, entityCode string,
+) (models.Indicator, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return models.Indicator{}, ErrIndicatorNameRequired
+	}
+	indicatorType = strings.TrimSpace(indicatorType)
+	if indicatorType == "" {
+		return models.Indicator{}, ErrIndicatorTypeRequired
+	}
+
+	entity, err := service.repository.EntityByCode(ctx, strings.TrimSpace(entityCode))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return models.Indicator{}, fmt.Errorf("%w: %s", ErrEntityNotFound, entityCode)
+	}
+	if err != nil {
+		return models.Indicator{}, fmt.Errorf("find indicator entity: %w", err)
+	}
+
+	id, err := ids.New()
+	if err != nil {
+		return models.Indicator{}, fmt.Errorf("generate indicator ID: %w", err)
+	}
+
+	upserted, err := service.repository.UpsertIndicator(ctx, models.Indicator{
+		ID:       id,
+		Name:     name,
+		EntityID: entity.ID,
+		Type:     indicatorType,
+	})
+	if err != nil {
+		return models.Indicator{}, fmt.Errorf("upsert indicator: %w", err)
+	}
+	return upserted, nil
+}
+
+// EnsureIndicatorTerm links a phrase to an indicator under the indicator's
+// entity. Name and type together identify the row, so an already-seeded
+// phrase gains its indicator link in place.
+func (service *EntityService) EnsureIndicatorTerm(
+	ctx context.Context,
+	name, termType string,
+	indicator models.Indicator,
+) (models.KnowledgeTerm, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return models.KnowledgeTerm{}, ErrKnowledgeTermNameRequired
+	}
+	termType = strings.TrimSpace(termType)
+	if termType == "" {
+		return models.KnowledgeTerm{}, ErrKnowledgeTermTypeRequired
+	}
+
+	id, err := ids.New()
+	if err != nil {
+		return models.KnowledgeTerm{}, fmt.Errorf("generate knowledge term ID: %w", err)
+	}
+
+	upserted, err := service.repository.UpsertKnowledgeTerm(ctx, models.KnowledgeTerm{
+		ID:          id,
+		Name:        name,
+		Type:        termType,
+		EntityID:    indicator.EntityID,
+		IndicatorID: indicator.ID,
+	})
+	if err != nil {
+		return models.KnowledgeTerm{}, fmt.Errorf("upsert indicator knowledge term: %w", err)
 	}
 	return upserted, nil
 }

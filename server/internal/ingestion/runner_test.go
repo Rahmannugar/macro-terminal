@@ -8,6 +8,7 @@ import (
 	"time"
 
 	articlemodels "github.com/Rahmannugar/macro-terminal/server/internal/articles/models"
+	calendarmodels "github.com/Rahmannugar/macro-terminal/server/internal/calendar/models"
 	entitymodels "github.com/Rahmannugar/macro-terminal/server/internal/entities/models"
 	"github.com/Rahmannugar/macro-terminal/server/internal/mapping"
 	"github.com/Rahmannugar/macro-terminal/server/internal/sources/models"
@@ -124,6 +125,32 @@ func (store *fakeArticleStore) stored() [][]articlemodels.PersistEntry {
 	return store.batches
 }
 
+type fakeEventStore struct {
+	mu      sync.Mutex
+	err     error
+	stats   calendarmodels.PersistStats
+	batches [][]calendarmodels.PersistEntry
+}
+
+func (store *fakeEventStore) PersistEvents(
+	_ context.Context,
+	entries []calendarmodels.PersistEntry,
+) (calendarmodels.PersistStats, error) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if store.err != nil {
+		return calendarmodels.PersistStats{}, store.err
+	}
+	store.batches = append(store.batches, entries)
+	return store.stats, nil
+}
+
+func (store *fakeEventStore) stored() [][]calendarmodels.PersistEntry {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	return store.batches
+}
+
 func configuration(id uuid.UUID, name, sourceType, configType string) models.SourceConfigurationWithSource {
 	return models.SourceConfigurationWithSource{
 		SourceConfiguration: models.SourceConfiguration{
@@ -143,7 +170,7 @@ func newTestRunner(
 ) (*Runner, *time.Time) {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	runner := NewRunner(
-		source, fetcher, loader, &fakeArticleStore{}, discardLogger(), DefaultCadences(),
+		source, fetcher, loader, &fakeArticleStore{}, &fakeEventStore{}, discardLogger(), DefaultCadences(),
 	)
 	runner.now = func() time.Time { return now }
 	return runner, &now
@@ -151,6 +178,10 @@ func newTestRunner(
 
 func testArticleStore(runner *Runner) *fakeArticleStore {
 	return runner.articles.(*fakeArticleStore)
+}
+
+func testEventStore(runner *Runner) *fakeEventStore {
+	return runner.events.(*fakeEventStore)
 }
 
 func TestRunnerFetchesEverythingOnFirstPass(t *testing.T) {
@@ -393,6 +424,8 @@ func TestRunnerStoresMappingOutcomes(t *testing.T) {
 		}},
 		nil,
 		nil,
+		nil,
+		nil,
 	)}
 	runner, _ := newTestRunner(source, fetcher, loader)
 
@@ -477,5 +510,160 @@ func TestRunnerContinuesWhenPersistFails(t *testing.T) {
 	}
 	if batches := testArticleStore(runner).stored(); len(batches) != 0 {
 		t.Fatalf("stored batches = %d, want 0", len(batches))
+	}
+}
+
+func TestRunnerCalendarClassifiesAndStoresEvents(t *testing.T) {
+	entityID := uuid.New()
+	indicatorID := uuid.New()
+	financeCalendar := configuration(uuid.New(), "FinanceCalendar", "calendar", "api")
+	source := &fakeConfigurationSource{
+		configurations: []models.SourceConfigurationWithSource{financeCalendar},
+	}
+	fetcher := &fakeSourceFetcher{byID: map[uuid.UUID]fakeFetchResult{
+		financeCalendar.ID: {result: Result{
+			StatusCode: 200,
+			Attempts:   1,
+			Body: []byte(`{"events": [
+				{"date": "2026-10-02", "time_utc": "2026-10-02T12:30:00Z",
+				 "name": "CPI y/y", "category": "economic-indicators",
+				 "consensus": "2.9% YoY", "prior": "3.0% YoY", "actual": "2.8% YoY"}
+			]}`),
+		}},
+	}}
+	loader := &fakeDictionaryLoader{dict: mapping.Build(
+		[]entitymodels.Entity{{ID: entityID, Code: "USD", Name: "US Dollar", Type: "currency"}},
+		nil,
+		nil,
+		[]entitymodels.Indicator{{ID: indicatorID, Name: "US CPI", EntityID: entityID, Type: "inflation"}},
+		[]entitymodels.IndicatorTerm{{Name: "cpi", IndicatorID: indicatorID}},
+	)}
+	runner, now := newTestRunner(source, fetcher, loader)
+
+	runner.runDue(context.Background())
+
+	batches := testEventStore(runner).stored()
+	if len(batches) != 1 {
+		t.Fatalf("event batches = %d, want 1", len(batches))
+	}
+	if len(batches[0]) != 1 {
+		t.Fatalf("event entries = %d, want 1", len(batches[0]))
+	}
+	entry := batches[0][0]
+	if entry.IndicatorID != indicatorID || entry.EntityID != entityID {
+		t.Errorf("indicator/entity = %s/%s, want %s/%s",
+			entry.IndicatorID, entry.EntityID, indicatorID, entityID)
+	}
+	if entry.SourceID != financeCalendar.SourceID {
+		t.Errorf("SourceID = %s, want %s", entry.SourceID, financeCalendar.SourceID)
+	}
+	wantScheduled := time.Date(2026, 10, 2, 12, 30, 0, 0, time.UTC)
+	if !entry.ScheduledAt.Equal(wantScheduled) {
+		t.Errorf("ScheduledAt = %v, want %v", entry.ScheduledAt, wantScheduled)
+	}
+	if entry.Actual == nil || *entry.Actual != 2.8 {
+		t.Errorf("Actual = %v, want 2.8", entry.Actual)
+	}
+	if entry.Previous == nil || *entry.Previous != 3.0 {
+		t.Errorf("Previous = %v, want 3.0", entry.Previous)
+	}
+	if entry.ReleasedAt == nil || !entry.ReleasedAt.Equal(*now) {
+		t.Errorf("ReleasedAt = %v, want pass time %v", entry.ReleasedAt, *now)
+	}
+	if articleBatches := testArticleStore(runner).stored(); len(articleBatches) != 0 {
+		t.Fatalf("article batches = %d, want 0 (indicator rows stay out of news)", len(articleBatches))
+	}
+}
+
+func TestRunnerCalendarSkipsUnknownIndicatorNames(t *testing.T) {
+	calendar := configuration(uuid.New(), "Biquote", "calendar", "api")
+	source := &fakeConfigurationSource{
+		configurations: []models.SourceConfigurationWithSource{calendar},
+	}
+	fetcher := &fakeSourceFetcher{byID: map[uuid.UUID]fakeFetchResult{
+		calendar.ID: {result: Result{
+			Body: []byte(`[{"time": "2026-10-02T12:30:00Z", "type": "indicator",
+				"name": "Mystery figure", "sourceUrl": "https://example.com/mystery"}]`),
+		}},
+	}}
+	loader := &fakeDictionaryLoader{dict: mapping.Build(
+		[]entitymodels.Entity{{ID: uuid.New(), Code: "USD", Name: "US Dollar", Type: "currency"}},
+		nil, nil, nil, nil,
+	)}
+	runner, _ := newTestRunner(source, fetcher, loader)
+
+	runner.runDue(context.Background())
+
+	batches := testEventStore(runner).stored()
+	if len(batches) != 1 || len(batches[0]) != 0 {
+		t.Fatalf("event batches = %v, want one empty batch (unclassified rows are skipped)", batches)
+	}
+	if articleBatches := testArticleStore(runner).stored(); len(articleBatches) != 0 {
+		t.Fatalf("article batches = %d, want 0", len(articleBatches))
+	}
+}
+
+func TestRunnerCalendarRoutesNonCalendarRowToNews(t *testing.T) {
+	entityID := uuid.New()
+	calendar := configuration(uuid.New(), "Biquote", "calendar", "api")
+	source := &fakeConfigurationSource{
+		configurations: []models.SourceConfigurationWithSource{calendar},
+	}
+	fetcher := &fakeSourceFetcher{byID: map[uuid.UUID]fakeFetchResult{
+		calendar.ID: {result: Result{
+			Body: []byte(`[
+				{"time": "2026-10-04T14:00:00Z", "type": "indicator",
+				 "name": "CPI y/y", "sourceUrl": "https://example.com/cpi"},
+				{"time": "2026-10-04T15:00:00Z", "type": "speech",
+				 "name": "Fed Chair remarks", "sourceUrl": "https://example.com/remarks"}
+			]`),
+		}},
+	}}
+	indicatorID := uuid.New()
+	loader := &fakeDictionaryLoader{dict: mapping.Build(
+		[]entitymodels.Entity{{ID: entityID, Code: "USD", Name: "US Dollar", Type: "currency"}},
+		nil,
+		nil,
+		[]entitymodels.Indicator{{ID: indicatorID, Name: "US CPI", EntityID: entityID, Type: "inflation"}},
+		[]entitymodels.IndicatorTerm{{Name: "cpi", IndicatorID: indicatorID}},
+	)}
+	runner, _ := newTestRunner(source, fetcher, loader)
+
+	runner.runDue(context.Background())
+
+	eventBatches := testEventStore(runner).stored()
+	if len(eventBatches) != 1 || len(eventBatches[0]) != 1 {
+		t.Fatalf("event batches = %v, want one batch with the indicator row", eventBatches)
+	}
+	articleBatches := testArticleStore(runner).stored()
+	if len(articleBatches) != 1 || len(articleBatches[0]) != 1 {
+		t.Fatalf("article batches = %v, want one batch with the speech", articleBatches)
+	}
+	if articleBatches[0][0].Title != "Fed Chair remarks" {
+		t.Errorf("article title = %q, want Fed Chair remarks", articleBatches[0][0].Title)
+	}
+}
+
+func TestRunnerCalendarWithoutDictionaryStoresNothing(t *testing.T) {
+	calendar := configuration(uuid.New(), "FinanceCalendar", "calendar", "api")
+	source := &fakeConfigurationSource{
+		configurations: []models.SourceConfigurationWithSource{calendar},
+	}
+	fetcher := &fakeSourceFetcher{byID: map[uuid.UUID]fakeFetchResult{
+		calendar.ID: {result: Result{
+			Body: []byte(`{"events": [
+				{"date": "2026-10-02", "time_utc": "2026-10-02T12:30:00Z",
+				 "name": "CPI y/y", "category": "economic-indicators"}
+			]}`),
+		}},
+	}}
+	loader := &fakeDictionaryLoader{err: errors.New("database down")}
+	runner, _ := newTestRunner(source, fetcher, loader)
+
+	runner.runDue(context.Background())
+
+	batches := testEventStore(runner).stored()
+	if len(batches) != 1 || len(batches[0]) != 0 {
+		t.Fatalf("event batches = %v, want one empty batch (no vocabulary means no guessing)", batches)
 	}
 }

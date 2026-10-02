@@ -7,6 +7,7 @@ import (
 	"time"
 
 	articlemodels "github.com/Rahmannugar/macro-terminal/server/internal/articles/models"
+	calendarmodels "github.com/Rahmannugar/macro-terminal/server/internal/calendar/models"
 	"github.com/Rahmannugar/macro-terminal/server/internal/mapping"
 	"github.com/Rahmannugar/macro-terminal/server/internal/normalization"
 	"github.com/Rahmannugar/macro-terminal/server/internal/sources/models"
@@ -50,6 +51,15 @@ type ArticleStore interface {
 	) (articlemodels.PersistStats, error)
 }
 
+// EventStore persists classified calendar events with their entity links;
+// the calendar repository implements it.
+type EventStore interface {
+	PersistEvents(
+		context.Context,
+		[]calendarmodels.PersistEntry,
+	) (calendarmodels.PersistStats, error)
+}
+
 // Runner is the schedule loop. Dispatch times live in PostgreSQL, so a
 // restart resumes the cadence instead of refetching everything. A source
 // that fails never stops the others.
@@ -58,6 +68,7 @@ type Runner struct {
 	fetcher        SourceFetcher
 	mapper         DictionaryLoader
 	articles       ArticleStore
+	events         EventStore
 	logger         *slog.Logger
 	cadences       Cadences
 	tick           time.Duration
@@ -72,6 +83,7 @@ func NewRunner(
 	fetcher SourceFetcher,
 	mapper DictionaryLoader,
 	articles ArticleStore,
+	events EventStore,
 	logger *slog.Logger,
 	cadences Cadences,
 ) *Runner {
@@ -80,6 +92,7 @@ func NewRunner(
 		fetcher:        fetcher,
 		mapper:         mapper,
 		articles:       articles,
+		events:         events,
 		logger:         logger,
 		cadences:       cadences,
 		tick:           runnerTick,
@@ -234,6 +247,10 @@ func (runner *Runner) fetchOne(
 		}
 		return
 	}
+	if configuration.SourceType == "calendar" {
+		runner.fetchCalendar(ctx, configuration, dictionary, result, started)
+		return
+	}
 	feedItems := make([]normalization.FeedItem, 0, len(result.Items))
 	for _, item := range result.Items {
 		feedItems = append(feedItems, normalization.FeedItem{
@@ -267,6 +284,114 @@ func (runner *Runner) fetchOne(
 		"invalid", stats.Invalid,
 	)
 	runner.storeCandidates(ctx, configuration, dictionary, candidates)
+}
+
+// fetchCalendar parses a calendar payload, classifies each indicator row,
+// and stores it. Rows the vocabulary cannot name are skipped and counted;
+// non-calendar rows only reach the news pipeline when they carry their own
+// URL. A missing vocabulary therefore stores nothing rather than guessing.
+func (runner *Runner) fetchCalendar(
+	ctx context.Context,
+	configuration models.SourceConfigurationWithSource,
+	dictionary *mapping.Dictionary,
+	result Result,
+	started time.Time,
+) {
+	events, news, calendarStats := normalization.CalendarEvents(result.Body)
+
+	entries := make([]calendarmodels.PersistEntry, 0, len(events))
+	unclassified := 0
+	unmappedNames := make([]string, 0, mappingLogTitleLimit)
+	for _, event := range events {
+		if dictionary == nil {
+			unclassified++
+			continue
+		}
+		match, ok := dictionary.ClassifyIndicator(event.Name)
+		if !ok {
+			unclassified++
+			if len(unmappedNames) < mappingLogTitleLimit {
+				unmappedNames = append(unmappedNames, event.Name)
+			}
+			continue
+		}
+		entry := calendarmodels.PersistEntry{
+			SourceID:    configuration.SourceID,
+			IndicatorID: match.IndicatorID,
+			EntityID:    match.EntityID,
+			ScheduledAt: event.ScheduledAt,
+			Previous:    event.Previous,
+			Consensus:   event.Consensus,
+			Actual:      event.Actual,
+		}
+		if event.Actual != nil {
+			released := runner.now()
+			entry.ReleasedAt = &released
+		}
+		entries = append(entries, entry)
+	}
+
+	newsCandidates, articleStats := normalization.Articles(normalization.Input{
+		SourceID:   configuration.SourceID,
+		SourceType: configuration.SourceType,
+		ConfigType: configuration.Type,
+		Items:      news,
+		BaseURL:    result.BaseURL,
+	})
+	runner.logger.InfoContext(ctx, "Fetch succeeded",
+		"event", "ingestion.fetch.succeeded",
+		"operation", "ingestion.fetch",
+		"source", configuration.SourceName,
+		"configuration_type", configuration.Type,
+		"items", calendarStats.Rows,
+		"bytes", len(result.Body),
+		"attempts", result.Attempts,
+		"status_code", result.StatusCode,
+		"duration_ms", runner.now().Sub(started).Milliseconds(),
+		"candidates", len(entries)+articleStats.Candidates,
+		"duplicates", articleStats.Duplicates,
+		"invalid", calendarStats.Malformed+articleStats.Invalid,
+		"skipped", unclassified+calendarStats.NewsSkipped,
+	)
+
+	runner.storeEvents(ctx, configuration, entries, unclassified, unmappedNames)
+	runner.storeCandidates(ctx, configuration, dictionary, newsCandidates)
+}
+
+// storeEvents persists one calendar pass. Skipped rows are logged with
+// the pass so an unknown indicator name stays visible instead of silently
+// disappearing.
+func (runner *Runner) storeEvents(
+	ctx context.Context,
+	configuration models.SourceConfigurationWithSource,
+	entries []calendarmodels.PersistEntry,
+	unclassified int,
+	unmappedNames []string,
+) {
+	stats, err := runner.events.PersistEvents(ctx, entries)
+	if err != nil {
+		if ctx.Err() != nil {
+			return
+		}
+		runner.logger.ErrorContext(ctx, "Failed to store calendar events",
+			"event", "ingestion.calendar.persist.failed",
+			"operation", "ingestion.calendar.persist",
+			"source", configuration.SourceName,
+			"configuration_type", configuration.Type,
+			"error", err,
+		)
+		return
+	}
+	runner.logger.InfoContext(ctx, "Calendar events stored",
+		"event", "ingestion.calendar.persisted",
+		"operation", "ingestion.calendar.persist",
+		"source", configuration.SourceName,
+		"configuration_type", configuration.Type,
+		"stored", stats.Stored,
+		"links_added", stats.LinksAdded,
+		"unclassified", unclassified,
+		"unmapped_names", unmappedNames,
+	)
 }
 
 // storeCandidates maps one fetch's candidates when a dictionary is

@@ -46,7 +46,7 @@ func testDictionary() Dictionary {
 		{BaseEntityID: btcID, QuoteEntityID: usdID, Symbol: "BTC"},
 		{BaseEntityID: xauID, QuoteEntityID: usdID, Symbol: "XAU"},
 	}
-	return Build(entities, terms, pairs)
+	return Build(entities, terms, pairs, nil, nil)
 }
 
 func TestDictionaryMap(t *testing.T) {
@@ -216,6 +216,8 @@ func TestBuildEntityRowWinsPhraseCollision(t *testing.T) {
 		},
 		[]models.KnowledgeTerm{{Name: "Shared Name", Type: "alias", EntityID: second}},
 		nil,
+		nil,
+		nil,
 	)
 
 	outcome := dictionary.Map("Shared Name moves", "")
@@ -260,10 +262,12 @@ func TestSummarizeEmpty(t *testing.T) {
 }
 
 type fakeVocabulary struct {
-	entities []models.Entity
-	terms    []models.KnowledgeTerm
-	pairs    []models.EntityPair
-	err      error
+	entities       []models.Entity
+	terms          []models.KnowledgeTerm
+	pairs          []models.EntityPair
+	indicators     []models.Indicator
+	indicatorTerms []models.IndicatorTerm
+	err            error
 }
 
 func (vocabulary *fakeVocabulary) ListEntities(context.Context) ([]models.Entity, error) {
@@ -278,6 +282,16 @@ func (vocabulary *fakeVocabulary) ListEntityKnowledgeTerms(
 
 func (vocabulary *fakeVocabulary) ListEntityPairs(context.Context) ([]models.EntityPair, error) {
 	return vocabulary.pairs, vocabulary.err
+}
+
+func (vocabulary *fakeVocabulary) ListIndicators(context.Context) ([]models.Indicator, error) {
+	return vocabulary.indicators, vocabulary.err
+}
+
+func (vocabulary *fakeVocabulary) ListIndicatorKnowledgeTerms(
+	context.Context,
+) ([]models.IndicatorTerm, error) {
+	return vocabulary.indicatorTerms, vocabulary.err
 }
 
 func TestLoaderBuildsDictionary(t *testing.T) {
@@ -308,6 +322,71 @@ func TestLoaderPropagatesVocabularyFailure(t *testing.T) {
 	}
 }
 
+func TestClassifyIndicator(t *testing.T) {
+	cpiUS := uuid.New()
+	flashCPIEU := uuid.New()
+	payrollsUS := uuid.New()
+
+	loader := NewLoader(&fakeVocabulary{
+		entities: []models.Entity{
+			{ID: usdID, Code: "USD", Name: "United States Dollar"},
+			{ID: eurID, Code: "EUR", Name: "Euro"},
+		},
+		indicators: []models.Indicator{
+			{ID: cpiUS, Name: "CPI", EntityID: usdID, Type: "inflation"},
+			{ID: flashCPIEU, Name: "Eurozone Flash CPI", EntityID: eurID, Type: "inflation"},
+			{ID: payrollsUS, Name: "Nonfarm Payrolls", EntityID: usdID, Type: "labor"},
+		},
+		indicatorTerms: []models.IndicatorTerm{
+			{Name: "cpi", IndicatorID: cpiUS},
+			{Name: "consumer price index", IndicatorID: cpiUS},
+			{Name: "eurozone flash cpi", IndicatorID: flashCPIEU},
+			{Name: "flash cpi", IndicatorID: flashCPIEU},
+			{Name: "nonfarm payrolls", IndicatorID: payrollsUS},
+			{Name: "payrolls", IndicatorID: payrollsUS},
+		},
+	})
+	dictionary, err := loader.Load(context.Background())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	tests := []struct {
+		name          string
+		eventName     string
+		wantIndicator uuid.UUID
+		wantEntity    uuid.UUID
+		wantOK        bool
+	}{
+		{"unqualified falls back to the shorter phrase", "CPI y/y", cpiUS, usdID, true},
+		{"longest phrase wins inside one name", "Eurozone Flash CPI October 2026", flashCPIEU, eurID, true},
+		{"phrase must sit on word boundaries", "SNPCPIX index", uuid.Nil, uuid.Nil, false},
+		{"nothing classifiable is not matched", "Is the Stock Market Open?", uuid.Nil, uuid.Nil, false},
+		{"multiple indicators, longest still wins", "February nonfarm payrolls", payrollsUS, usdID, true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			match, ok := dictionary.ClassifyIndicator(test.eventName)
+			if ok != test.wantOK {
+				t.Fatalf("ClassifyIndicator(%q) ok = %v, want %v", test.eventName, ok, test.wantOK)
+			}
+			if !test.wantOK {
+				return
+			}
+			if match.IndicatorID != test.wantIndicator || match.EntityID != test.wantEntity {
+				t.Fatalf("ClassifyIndicator(%q) = %+v, want indicator %v entity %v",
+					test.eventName, match, test.wantIndicator, test.wantEntity)
+			}
+		})
+	}
+}
+
+func TestClassifyIndicatorWithoutIndexMatchesNothing(t *testing.T) {
+	if _, ok := testDictionary().ClassifyIndicator("CPI y/y"); ok {
+		t.Fatal("ClassifyIndicator matched without an indicator index")
+	}
+}
+
 func equalStrings(got, want []string) bool {
 	if len(got) == 0 && len(want) == 0 {
 		return true
@@ -334,7 +413,7 @@ func BenchmarkDictionaryMap(b *testing.B) {
 			EntityID: entities[i%len(entities)].ID,
 		})
 	}
-	dictionary := Build(entities, terms, nil)
+	dictionary := Build(entities, terms, nil, nil, nil)
 	title := "Fed holds rates steady as inflation cools and gold hits a record"
 	content := "Policymakers left the benchmark unchanged while traders watched the dollar, sterling and the Nikkei."
 
@@ -363,7 +442,7 @@ func BenchmarkDictionaryMap10k(b *testing.B) {
 			EntityID: entities[i%len(entities)].ID,
 		})
 	}
-	dictionary := Build(entities, terms, nil)
+	dictionary := Build(entities, terms, nil, nil, nil)
 	title := "Fed holds rates steady as inflation cools and gold hits a record"
 	content := "Policymakers left the benchmark unchanged while traders watched the dollar, sterling and the Nikkei."
 
@@ -403,6 +482,6 @@ func BenchmarkDictionaryBuild10k(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		Build(entities, terms, pairs)
+		Build(entities, terms, pairs, nil, nil)
 	}
 }

@@ -17,6 +17,8 @@ type Vocabulary interface {
 	ListEntities(context.Context) ([]models.Entity, error)
 	ListEntityKnowledgeTerms(context.Context) ([]models.KnowledgeTerm, error)
 	ListEntityPairs(context.Context) ([]models.EntityPair, error)
+	ListIndicators(context.Context) ([]models.Indicator, error)
+	ListIndicatorKnowledgeTerms(context.Context) ([]models.IndicatorTerm, error)
 }
 
 type Loader struct {
@@ -40,13 +42,23 @@ func (loader *Loader) Load(ctx context.Context) (Dictionary, error) {
 	if err != nil {
 		return Dictionary{}, fmt.Errorf("list entity pairs: %w", err)
 	}
-	return Build(entities, terms, pairs), nil
+	indicators, err := loader.vocabulary.ListIndicators(ctx)
+	if err != nil {
+		return Dictionary{}, fmt.Errorf("list indicators: %w", err)
+	}
+	indicatorTerms, err := loader.vocabulary.ListIndicatorKnowledgeTerms(ctx)
+	if err != nil {
+		return Dictionary{}, fmt.Errorf("list indicator knowledge terms: %w", err)
+	}
+	return Build(entities, terms, pairs, indicators, indicatorTerms), nil
 }
 
 type Dictionary struct {
 	phrases []phrase
 	pairs   []pair
 	codes   map[uuid.UUID]string
+
+	indicator indicatorIndex
 }
 
 type phrase struct {
@@ -66,6 +78,8 @@ func Build(
 	entities []models.Entity,
 	terms []models.KnowledgeTerm,
 	pairs []models.EntityPair,
+	indicators []models.Indicator,
+	indicatorTerms []models.IndicatorTerm,
 ) Dictionary {
 	dictionary := Dictionary{codes: map[uuid.UUID]string{}}
 	seen := map[string]bool{}
@@ -106,6 +120,7 @@ func Build(
 			symbol:  entityPair.Symbol,
 		})
 	}
+	dictionary.indicator = buildIndicatorIndex(indicators, indicatorTerms)
 	return dictionary
 }
 
@@ -113,6 +128,84 @@ type Outcome struct {
 	EntityIDs   []uuid.UUID
 	EntityCodes []string
 	PairSymbols []string
+}
+
+// indicatorIndex classifies calendar event names to economic indicators.
+// Phrases are ordered longest-first so "eurozone flash cpi" wins over the
+// US-biased "cpi" inside the same name.
+type indicatorIndex struct {
+	phrases []indicatorPhrase
+	entity  map[uuid.UUID]uuid.UUID // indicator ID -> entity ID
+}
+
+type indicatorPhrase struct {
+	text        string // lowercased
+	indicatorID uuid.UUID
+}
+
+func buildIndicatorIndex(
+	indicators []models.Indicator,
+	terms []models.IndicatorTerm,
+) indicatorIndex {
+	index := indicatorIndex{entity: map[uuid.UUID]uuid.UUID{}}
+	seen := map[string]bool{}
+	for _, indicator := range indicators {
+		index.entity[indicator.ID] = indicator.EntityID
+	}
+	for _, term := range terms {
+		if _, known := index.entity[term.IndicatorID]; !known {
+			continue
+		}
+		lower := normalize(term.Name)
+		if lower == "" || seen[lower] {
+			continue
+		}
+		seen[lower] = true
+		index.phrases = append(index.phrases, indicatorPhrase{
+			text:        lower,
+			indicatorID: term.IndicatorID,
+		})
+	}
+	sort.Slice(index.phrases, func(i, j int) bool {
+		if len(index.phrases[i].text) != len(index.phrases[j].text) {
+			return len(index.phrases[i].text) > len(index.phrases[j].text)
+		}
+		return index.phrases[i].text < index.phrases[j].text
+	})
+	return index
+}
+
+// IndicatorMatch is the indicator an event name classifies to, together
+// with the entity that indicator belongs to.
+type IndicatorMatch struct {
+	IndicatorID uuid.UUID
+	EntityID    uuid.UUID
+}
+
+// ClassifyIndicator matches an event name against the indicator phrases.
+// Matching follows the same rules as entity mapping: case-insensitive,
+// word-bounded, verbatim, longest phrase first. An event that names
+// nothing classifiable is not stored as a calendar event.
+func (dictionary Dictionary) ClassifyIndicator(name string) (IndicatorMatch, bool) {
+	text := normalize(name)
+
+	var taken []span
+	for _, candidate := range dictionary.indicator.phrases {
+		start, end, ok := findPhrase(text, candidate.text, taken)
+		if !ok {
+			continue
+		}
+		taken = append(taken, span{start: start, end: end})
+		entityID, known := dictionary.indicator.entity[candidate.indicatorID]
+		if !known {
+			continue
+		}
+		return IndicatorMatch{
+			IndicatorID: candidate.indicatorID,
+			EntityID:    entityID,
+		}, true
+	}
+	return IndicatorMatch{}, false
 }
 
 func (outcome Outcome) Mapped() bool {

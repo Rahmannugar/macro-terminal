@@ -11,18 +11,20 @@ import (
 )
 
 type fakeEntityRepository struct {
-	entities map[string]models.Entity
-	pairs    map[string]models.EntityPair
-	assets   map[string]models.UserAsset
-	terms    map[string]models.KnowledgeTerm
+	entities   map[string]models.Entity
+	pairs      map[string]models.EntityPair
+	assets     map[string]models.UserAsset
+	terms      map[string]models.KnowledgeTerm
+	indicators map[string]models.Indicator
 }
 
 func newFakeEntityRepository() *fakeEntityRepository {
 	return &fakeEntityRepository{
-		entities: map[string]models.Entity{},
-		pairs:    map[string]models.EntityPair{},
-		assets:   map[string]models.UserAsset{},
-		terms:    map[string]models.KnowledgeTerm{},
+		entities:   map[string]models.Entity{},
+		pairs:      map[string]models.EntityPair{},
+		assets:     map[string]models.UserAsset{},
+		terms:      map[string]models.KnowledgeTerm{},
+		indicators: map[string]models.Indicator{},
 	}
 }
 
@@ -55,6 +57,44 @@ func (repository *fakeEntityRepository) UpsertKnowledgeTerm(
 
 func (repository *fakeEntityRepository) ListEntities(context.Context) ([]models.Entity, error) {
 	return nil, nil
+}
+
+func (repository *fakeEntityRepository) ListIndicators(
+	context.Context,
+) ([]models.Indicator, error) {
+	indicators := make([]models.Indicator, 0, len(repository.indicators))
+	for _, indicator := range repository.indicators {
+		indicators = append(indicators, indicator)
+	}
+	return indicators, nil
+}
+
+func (repository *fakeEntityRepository) ListIndicatorKnowledgeTerms(
+	context.Context,
+) ([]models.IndicatorTerm, error) {
+	var terms []models.IndicatorTerm
+	for _, term := range repository.terms {
+		if term.IndicatorID != uuid.Nil {
+			terms = append(terms, models.IndicatorTerm{
+				Name:        term.Name,
+				IndicatorID: term.IndicatorID,
+			})
+		}
+	}
+	return terms, nil
+}
+
+func (repository *fakeEntityRepository) UpsertIndicator(
+	_ context.Context,
+	indicator models.Indicator,
+) (models.Indicator, error) {
+	key := indicator.Name + "\x00" + indicator.EntityID.String()
+	if existing, ok := repository.indicators[key]; ok {
+		indicator.ID = existing.ID
+		indicator.CreatedAt = existing.CreatedAt
+	}
+	repository.indicators[key] = indicator
+	return indicator, nil
 }
 
 func (repository *fakeEntityRepository) EntityByCode(_ context.Context, code string) (models.Entity, error) {
