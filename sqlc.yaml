@@ -52,3 +52,19 @@ sql:
             go_type:
               import: encoding/json
               type: RawMessage
+  - name: articles
+    engine: postgresql
+    schema: db/migrations
+    queries: server/internal/articles/queries
+    gen:
+      go:
+        package: articledb
+        out: server/internal/articles/repositories/generated
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        omit_unused_structs: true
+        overrides:
+          - db_type: uuid
+            go_type:
+              import: github.com/google/uuid
+              type: UUID

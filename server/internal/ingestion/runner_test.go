@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	articlemodels "github.com/Rahmannugar/macro-terminal/server/internal/articles/models"
+	entitymodels "github.com/Rahmannugar/macro-terminal/server/internal/entities/models"
 	"github.com/Rahmannugar/macro-terminal/server/internal/mapping"
 	"github.com/Rahmannugar/macro-terminal/server/internal/sources/models"
 	"github.com/google/uuid"
@@ -96,6 +98,32 @@ func (loader *fakeDictionaryLoader) Load(context.Context) (mapping.Dictionary, e
 	return loader.dict, loader.err
 }
 
+type fakeArticleStore struct {
+	mu      sync.Mutex
+	err     error
+	stats   articlemodels.PersistStats
+	batches [][]articlemodels.PersistEntry
+}
+
+func (store *fakeArticleStore) PersistArticles(
+	_ context.Context,
+	entries []articlemodels.PersistEntry,
+) (articlemodels.PersistStats, error) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if store.err != nil {
+		return articlemodels.PersistStats{}, store.err
+	}
+	store.batches = append(store.batches, entries)
+	return store.stats, nil
+}
+
+func (store *fakeArticleStore) stored() [][]articlemodels.PersistEntry {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	return store.batches
+}
+
 func configuration(id uuid.UUID, name, sourceType, configType string) models.SourceConfigurationWithSource {
 	return models.SourceConfigurationWithSource{
 		SourceConfiguration: models.SourceConfiguration{
@@ -114,9 +142,15 @@ func newTestRunner(
 	loader *fakeDictionaryLoader,
 ) (*Runner, *time.Time) {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
-	runner := NewRunner(source, fetcher, loader, discardLogger(), DefaultCadences())
+	runner := NewRunner(
+		source, fetcher, loader, &fakeArticleStore{}, discardLogger(), DefaultCadences(),
+	)
 	runner.now = func() time.Time { return now }
 	return runner, &now
+}
+
+func testArticleStore(runner *Runner) *fakeArticleStore {
+	return runner.articles.(*fakeArticleStore)
 }
 
 func TestRunnerFetchesEverythingOnFirstPass(t *testing.T) {
@@ -335,5 +369,113 @@ func TestRunnerWakeCoalesces(t *testing.T) {
 	case <-runner.wake:
 		t.Fatal("wakes must coalesce into a single buffered slot")
 	default:
+	}
+}
+
+func TestRunnerStoresMappingOutcomes(t *testing.T) {
+	entityID := uuid.New()
+	news := configuration(uuid.New(), "CoinDesk", "news", "rss")
+	source := &fakeConfigurationSource{
+		configurations: []models.SourceConfigurationWithSource{news},
+	}
+	fetcher := &fakeSourceFetcher{byID: map[uuid.UUID]fakeFetchResult{
+		news.ID: {result: Result{
+			BaseURL: "https://example.com",
+			Items: []Item{
+				{Title: "Federal Reserve holds rates", URL: "https://example.com/fed"},
+				{Title: "Sunny weather reported", URL: "https://example.com/weather"},
+			},
+		}},
+	}}
+	loader := &fakeDictionaryLoader{dict: mapping.Build(
+		[]entitymodels.Entity{{
+			ID: entityID, Code: "FED", Name: "Federal Reserve", Type: "institution",
+		}},
+		nil,
+		nil,
+	)}
+	runner, _ := newTestRunner(source, fetcher, loader)
+
+	runner.runDue(context.Background())
+
+	batches := testArticleStore(runner).stored()
+	if len(batches) != 1 {
+		t.Fatalf("persist batches = %d, want 1", len(batches))
+	}
+	entries := batches[0]
+	if len(entries) != 2 {
+		t.Fatalf("stored entries = %d, want 2", len(entries))
+	}
+	if len(entries[0].EntityIDs) != 1 || entries[0].EntityIDs[0] != entityID {
+		t.Fatalf("mapped entry entities = %v, want [%v]", entries[0].EntityIDs, entityID)
+	}
+	if entries[0].QueueUnmapped {
+		t.Fatal("mapped entry must not be queued as unmapped")
+	}
+	if !entries[1].QueueUnmapped {
+		t.Fatal("unmatched entry must be queued as unmapped")
+	}
+	if len(entries[1].EntityIDs) != 0 {
+		t.Fatalf("unmatched entry entities = %v, want none", entries[1].EntityIDs)
+	}
+}
+
+func TestRunnerStoresCandidatesWhenDictionaryUnavailable(t *testing.T) {
+	news := configuration(uuid.New(), "CoinDesk", "news", "rss")
+	source := &fakeConfigurationSource{
+		configurations: []models.SourceConfigurationWithSource{news},
+	}
+	fetcher := &fakeSourceFetcher{byID: map[uuid.UUID]fakeFetchResult{
+		news.ID: {result: Result{
+			BaseURL: "https://example.com",
+			Items: []Item{
+				{Title: "Federal Reserve holds rates", URL: "https://example.com/fed"},
+			},
+		}},
+	}}
+	loader := &fakeDictionaryLoader{err: errors.New("database down")}
+	runner, _ := newTestRunner(source, fetcher, loader)
+
+	runner.runDue(context.Background())
+
+	batches := testArticleStore(runner).stored()
+	if len(batches) != 1 {
+		t.Fatalf("persist batches = %d, want 1 (a vocabulary outage still stores fetched articles)", len(batches))
+	}
+	entry := batches[0][0]
+	if entry.QueueUnmapped || len(entry.EntityIDs) != 0 {
+		t.Fatalf(
+			"unclassified entry mapped=%v entities=%v, want no classification without a dictionary",
+			!entry.QueueUnmapped, entry.EntityIDs,
+		)
+	}
+}
+
+func TestRunnerContinuesWhenPersistFails(t *testing.T) {
+	failing := configuration(uuid.New(), "Broken API", "news", "api")
+	working := configuration(uuid.New(), "CoinDesk", "news", "rss")
+	source := &fakeConfigurationSource{
+		configurations: []models.SourceConfigurationWithSource{failing, working},
+	}
+	fetcher := &fakeSourceFetcher{byID: map[uuid.UUID]fakeFetchResult{
+		failing.ID: {result: Result{
+			BaseURL: "https://example.com",
+			Items:   []Item{{Title: "Stored nowhere", URL: "https://example.com/a"}},
+		}},
+		working.ID: {result: Result{
+			BaseURL: "https://example.com",
+			Items:   []Item{{Title: "Still fetched", URL: "https://example.com/b"}},
+		}},
+	}}
+	runner, _ := newTestRunner(source, fetcher, &fakeDictionaryLoader{})
+	testArticleStore(runner).err = errors.New("database down")
+
+	runner.runDue(context.Background())
+
+	if fetcher.fetchCount() != 2 {
+		t.Fatalf("fetched = %d, want 2 (persist failure must not stop the pass)", fetcher.fetchCount())
+	}
+	if batches := testArticleStore(runner).stored(); len(batches) != 0 {
+		t.Fatalf("stored batches = %d, want 0", len(batches))
 	}
 }

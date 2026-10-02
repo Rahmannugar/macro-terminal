@@ -164,6 +164,15 @@ func (fetcher *Fetcher) attempt(
 	configuration models.SourceConfigurationWithSource,
 ) (Result, error) {
 	attemptRequest := request.Clone(ctx)
+	// A POST body is consumed by the previous attempt; rebuild it from the
+	// saved snapshot so every retry sends the identical payload.
+	if request.GetBody != nil {
+		body, err := request.GetBody()
+		if err != nil {
+			return Result{}, fmt.Errorf("rebuild request body: %w", err)
+		}
+		attemptRequest.Body = body
+	}
 	response, err := fetcher.client.Do(attemptRequest)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -240,7 +249,9 @@ func (fetcher *Fetcher) retryDelay(attempt int, err error) time.Duration {
 // buildRequest turns configuration JSON into the request to send: the URL,
 // string parameters (provider keys like GDELT's query/language), and
 // `*_env`/`*_param` pairs that fill in secrets from environment variables.
-// Secrets are never stored in the configuration itself.
+// Secrets are never stored in the configuration itself. The BLS source is
+// the one provider that is not a plain GET: it refuses the bare collection
+// URL and wants series selection in a JSON body.
 func (fetcher *Fetcher) buildRequest(
 	ctx context.Context,
 	configuration models.SourceConfigurationWithSource,
@@ -257,11 +268,6 @@ func (fetcher *Fetcher) buildRequest(
 		return nil, fmt.Errorf("%w: configuration has no url", ErrInvalidURL)
 	}
 
-	query, err := configurationQuery(document)
-	if err != nil {
-		return nil, err
-	}
-
 	target, err := url.Parse(rawURL)
 	if err != nil || target.Host == "" {
 		return nil, fmt.Errorf("%w: %s", ErrInvalidURL, rawURL)
@@ -273,6 +279,35 @@ func (fetcher *Fetcher) buildRequest(
 		if err := fetcher.checkDestination(target.Hostname(), target.Port()); err != nil {
 			return nil, err
 		}
+	}
+
+	var request *http.Request
+	if configuration.SourceName == blsSourceName {
+		request, err = buildBLSRequest(ctx, target, document)
+	} else {
+		request, err = buildGETRequest(ctx, target, document)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	request.Header.Set("User-Agent", userAgent)
+	// SDMX statistics gateways answer 500 when Accept includes
+	// application/json, so a configuration can override this header.
+	accept := acceptFor(configuration.Type)
+	if value, ok := document["accept"].(string); ok && strings.TrimSpace(value) != "" {
+		accept = value
+	}
+	request.Header.Set("Accept", accept)
+	return request, nil
+}
+
+// buildGETRequest assembles the query string from configuration keys and
+// sends a GET.
+func buildGETRequest(ctx context.Context, target *url.URL, document map[string]any) (*http.Request, error) {
+	query, err := configurationQuery(document)
+	if err != nil {
+		return nil, err
 	}
 	existing := target.Query()
 	for key, values := range query {
@@ -287,14 +322,65 @@ func (fetcher *Fetcher) buildRequest(
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
-	request.Header.Set("User-Agent", userAgent)
-	// SDMX statistics gateways answer 500 when Accept includes
-	// application/json, so a configuration can override this header.
-	accept := acceptFor(configuration.Type)
-	if value, ok := document["accept"].(string); ok && strings.TrimSpace(value) != "" {
-		accept = value
+	return request, nil
+}
+
+// blsSourceName identifies the provider whose data endpoint refuses a bare
+// GET: without a series ID in the path it answers 405, so multi-series
+// requests travel as a JSON POST body instead of query parameters.
+const blsSourceName = "BLS"
+
+// buildBLSRequest turns the configuration's series selection into the JSON
+// body BLS expects. The registration key is optional: BLS answers without
+// one, just within tighter limits, so an unset environment variable is not
+// an error here.
+func buildBLSRequest(ctx context.Context, target *url.URL, document map[string]any) (*http.Request, error) {
+	rawSeries, ok := document["seriesid"].([]any)
+	if !ok || len(rawSeries) == 0 {
+		return nil, fmt.Errorf(
+			"%w: %s configuration needs a non-empty seriesid array", ErrInvalidConfiguration, blsSourceName,
+		)
 	}
-	request.Header.Set("Accept", accept)
+	series := make([]string, 0, len(rawSeries))
+	for _, raw := range rawSeries {
+		seriesID, ok := raw.(string)
+		if !ok || strings.TrimSpace(seriesID) == "" {
+			return nil, fmt.Errorf(
+				"%w: %s seriesid entries must be non-empty strings", ErrInvalidConfiguration, blsSourceName,
+			)
+		}
+		series = append(series, strings.TrimSpace(seriesID))
+	}
+
+	body := map[string]any{"seriesid": series}
+	for _, key := range []string{"startyear", "endyear"} {
+		raw, present := document[key]
+		if !present {
+			continue
+		}
+		value, ok := raw.(string)
+		if !ok || strings.TrimSpace(value) == "" {
+			return nil, fmt.Errorf(
+				"%w: %s %s must be a four-digit year string", ErrInvalidConfiguration, blsSourceName, key,
+			)
+		}
+		body[key] = strings.TrimSpace(value)
+	}
+	if envName, ok := document["registrationkey_env"].(string); ok && strings.TrimSpace(envName) != "" {
+		if key := os.Getenv(strings.TrimSpace(envName)); key != "" {
+			body["registrationkey"] = key
+		}
+	}
+
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("encode %s request body: %w", blsSourceName, err)
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, target.String(), bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	request.Header.Set("Content-Type", "application/json")
 	return request, nil
 }
 

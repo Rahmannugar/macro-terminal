@@ -399,3 +399,145 @@ func TestFetcherSpacesRequestsPerHost(t *testing.T) {
 		t.Fatalf("delays = %v, want a single 5s spacing wait", *delays)
 	}
 }
+
+func blsConfiguration(configJSON string) models.SourceConfigurationWithSource {
+	configuration := testConfiguration("api", configJSON)
+	configuration.SourceName = blsSourceName
+	return configuration
+}
+
+func TestFetcherBLSBuildsJSONPost(t *testing.T) {
+	fetcher, server, _, _ := newTestFetcher(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %s, want POST", r.Method)
+		}
+		if got := r.Header.Get("Content-Type"); got != "application/json" {
+			t.Errorf("Content-Type = %q, want application/json", got)
+		}
+		if r.URL.RawQuery != "" {
+			t.Errorf("query = %q, want empty (series selection travels in the body)", r.URL.RawQuery)
+		}
+		var body struct {
+			SeriesID  []string `json:"seriesid"`
+			StartYear string   `json:"startyear"`
+			EndYear   string   `json:"endyear"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		if len(body.SeriesID) != 2 || body.SeriesID[0] != "CUUR0000SA0" || body.SeriesID[1] != "LNS14000000" {
+			t.Errorf("seriesid = %v", body.SeriesID)
+		}
+		if body.StartYear != "2025" || body.EndYear != "2026" {
+			t.Errorf("years = %q/%q, want 2025/2026", body.StartYear, body.EndYear)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"REQUEST_SUCCEEDED"}`))
+	})
+
+	configuration := blsConfiguration(
+		`{"url":"` + server.URL + `/timeseries/data/","seriesid":["CUUR0000SA0","LNS14000000"],"startyear":"2025","endyear":"2026"}`,
+	)
+	if _, err := fetcher.Fetch(context.Background(), configuration); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+}
+
+func TestFetcherBLSRegistrationKeyFromEnvironment(t *testing.T) {
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		if body["registrationkey"] != "bls-key-123" {
+			t.Errorf("registrationkey = %v, want bls-key-123", body["registrationkey"])
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}
+	fetcher, server, _, _ := newTestFetcher(t, handler)
+	t.Setenv("TEST_FETCHER_BLS_KEY", "bls-key-123")
+
+	configuration := blsConfiguration(
+		`{"url":"` + server.URL + `/timeseries/data/","seriesid":["CUUR0000SA0"],"registrationkey_env":"TEST_FETCHER_BLS_KEY"}`,
+	)
+	if _, err := fetcher.Fetch(context.Background(), configuration); err != nil {
+		t.Fatalf("Fetch with key: %v", err)
+	}
+
+	// Without the environment variable BLS still answers; the key is just
+	// missing from the body.
+	handler = func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		if _, present := body["registrationkey"]; present {
+			t.Errorf("registrationkey = %v, want absent when the env is unset", body["registrationkey"])
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}
+	fetcher, server, _, _ = newTestFetcher(t, handler)
+	t.Setenv("TEST_FETCHER_BLS_KEY", "")
+
+	configuration = blsConfiguration(
+		`{"url":"` + server.URL + `/timeseries/data/","seriesid":["CUUR0000SA0"],"registrationkey_env":"TEST_FETCHER_BLS_KEY"}`,
+	)
+	if _, err := fetcher.Fetch(context.Background(), configuration); err != nil {
+		t.Fatalf("Fetch without key: %v", err)
+	}
+}
+
+func TestFetcherBLSRejectsMissingSeriesID(t *testing.T) {
+	fetcher, _, requests, _ := newTestFetcher(t, func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("invalid configuration should never reach the provider")
+	})
+
+	for _, config := range []string{
+		`{"url":"https://api.bls.gov/publicAPI/v2/timeseries/data/"}`,
+		`{"url":"https://api.bls.gov/publicAPI/v2/timeseries/data/","seriesid":[]}`,
+		`{"url":"https://api.bls.gov/publicAPI/v2/timeseries/data/","seriesid":"CUUR0000SA0"}`,
+		`{"url":"https://api.bls.gov/publicAPI/v2/timeseries/data/","seriesid":[42]}`,
+	} {
+		_, err := fetcher.Fetch(context.Background(), blsConfiguration(config))
+		if !errors.Is(err, ErrInvalidConfiguration) {
+			t.Errorf("config %s: err = %v, want ErrInvalidConfiguration", config, err)
+		}
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("requests = %d, want 0", requests.Load())
+	}
+}
+
+func TestFetcherBLSRetryResendsIdenticalBody(t *testing.T) {
+	var bodies []string
+	var failures atomic.Int64
+	fetcher, server, _, _ := newTestFetcher(t, func(w http.ResponseWriter, r *http.Request) {
+		payload, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read body: %v", err)
+		}
+		bodies = append(bodies, string(payload))
+		if failures.Add(1) == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	})
+
+	configuration := blsConfiguration(
+		`{"url":"` + server.URL + `/timeseries/data/","seriesid":["CUUR0000SA0"]}`,
+	)
+	result, err := fetcher.Fetch(context.Background(), configuration)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if result.Attempts != 2 {
+		t.Fatalf("attempts = %d, want 2", result.Attempts)
+	}
+	if len(bodies) != 2 {
+		t.Fatalf("captured bodies = %d, want 2", len(bodies))
+	}
+	if bodies[0] == "" || bodies[0] != bodies[1] {
+		t.Fatalf("retry bodies = %q then %q, want identical non-empty payloads", bodies[0], bodies[1])
+	}
+}

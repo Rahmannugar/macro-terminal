@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	articlemodels "github.com/Rahmannugar/macro-terminal/server/internal/articles/models"
 	"github.com/Rahmannugar/macro-terminal/server/internal/mapping"
 	"github.com/Rahmannugar/macro-terminal/server/internal/normalization"
 	"github.com/Rahmannugar/macro-terminal/server/internal/sources/models"
@@ -40,6 +41,15 @@ type DictionaryLoader interface {
 	Load(context.Context) (mapping.Dictionary, error)
 }
 
+// ArticleStore persists normalized candidates together with their mapping
+// outcomes; the articles repository implements it.
+type ArticleStore interface {
+	PersistArticles(
+		context.Context,
+		[]articlemodels.PersistEntry,
+	) (articlemodels.PersistStats, error)
+}
+
 // Runner is the schedule loop. Dispatch times live in PostgreSQL, so a
 // restart resumes the cadence instead of refetching everything. A source
 // that fails never stops the others.
@@ -47,6 +57,7 @@ type Runner struct {
 	configurations ConfigurationSource
 	fetcher        SourceFetcher
 	mapper         DictionaryLoader
+	articles       ArticleStore
 	logger         *slog.Logger
 	cadences       Cadences
 	tick           time.Duration
@@ -60,6 +71,7 @@ func NewRunner(
 	configurations ConfigurationSource,
 	fetcher SourceFetcher,
 	mapper DictionaryLoader,
+	articles ArticleStore,
 	logger *slog.Logger,
 	cadences Cadences,
 ) *Runner {
@@ -67,6 +79,7 @@ func NewRunner(
 		configurations: configurations,
 		fetcher:        fetcher,
 		mapper:         mapper,
+		articles:       articles,
 		logger:         logger,
 		cadences:       cadences,
 		tick:           runnerTick,
@@ -253,40 +266,92 @@ func (runner *Runner) fetchOne(
 		"duplicates", stats.Duplicates,
 		"invalid", stats.Invalid,
 	)
-	runner.mapCandidates(ctx, configuration, dictionary, candidates)
+	runner.storeCandidates(ctx, configuration, dictionary, candidates)
 }
 
-func (runner *Runner) mapCandidates(
+// storeCandidates maps one fetch's candidates when a dictionary is
+// available, then always persists them: an article is a canonical source
+// record, so a vocabulary outage must not drop what was fetched.
+func (runner *Runner) storeCandidates(
 	ctx context.Context,
 	configuration models.SourceConfigurationWithSource,
 	dictionary *mapping.Dictionary,
 	candidates []normalization.Candidate,
 ) {
-	if dictionary == nil || len(candidates) == 0 {
+	if len(candidates) == 0 {
 		return
 	}
 
-	outcomes := make([]mapping.Outcome, 0, len(candidates))
-	unmappedTitles := make([]string, 0, mappingLogTitleLimit)
-	for _, candidate := range candidates {
-		outcome := dictionary.Map(candidate.Title, candidate.Content)
-		outcomes = append(outcomes, outcome)
-		if !outcome.Mapped() && len(unmappedTitles) < mappingLogTitleLimit {
-			unmappedTitles = append(unmappedTitles, candidate.Title)
-		}
+	entries := make([]articlemodels.PersistEntry, 0, len(candidates))
+	var outcomes []mapping.Outcome
+	var unmappedTitles []string
+	if dictionary != nil {
+		outcomes = make([]mapping.Outcome, 0, len(candidates))
+		unmappedTitles = make([]string, 0, mappingLogTitleLimit)
 	}
-	summary := mapping.Summarize(outcomes)
+	for _, candidate := range candidates {
+		entry := articlemodels.PersistEntry{
+			SourceID: candidate.SourceID,
+			Title:    candidate.Title,
+			Content:  candidate.Content,
+			URL:      candidate.URL,
+		}
+		if !candidate.PublishedAt.IsZero() {
+			published := candidate.PublishedAt
+			entry.PublishedAt = &published
+		}
+		if dictionary != nil {
+			outcome := dictionary.Map(candidate.Title, candidate.Content)
+			outcomes = append(outcomes, outcome)
+			if outcome.Mapped() {
+				entry.EntityIDs = outcome.EntityIDs
+			} else {
+				entry.QueueUnmapped = true
+				if len(unmappedTitles) < mappingLogTitleLimit {
+					unmappedTitles = append(unmappedTitles, candidate.Title)
+				}
+			}
+		}
+		entries = append(entries, entry)
+	}
 
-	runner.logger.InfoContext(ctx, "Mapping completed",
-		"event", "ingestion.mapping.completed",
-		"operation", "ingestion.mapping",
+	if dictionary != nil {
+		summary := mapping.Summarize(outcomes)
+		runner.logger.InfoContext(ctx, "Mapping completed",
+			"event", "ingestion.mapping.completed",
+			"operation", "ingestion.mapping",
+			"source", configuration.SourceName,
+			"configuration_type", configuration.Type,
+			"candidates", len(candidates),
+			"mapped", summary.Mapped,
+			"unmapped", summary.Unmapped,
+			"entity_codes", summary.EntityCodes,
+			"affected_pairs", summary.PairSymbols,
+			"unmapped_titles", unmappedTitles,
+		)
+	}
+
+	stats, err := runner.articles.PersistArticles(ctx, entries)
+	if err != nil {
+		if ctx.Err() != nil {
+			return
+		}
+		runner.logger.ErrorContext(ctx, "Failed to store articles",
+			"event", "ingestion.articles.persist.failed",
+			"operation", "ingestion.articles.persist",
+			"source", configuration.SourceName,
+			"configuration_type", configuration.Type,
+			"error", err,
+		)
+		return
+	}
+	runner.logger.InfoContext(ctx, "Articles stored",
+		"event", "ingestion.articles.persisted",
+		"operation", "ingestion.articles.persist",
 		"source", configuration.SourceName,
 		"configuration_type", configuration.Type,
-		"candidates", len(candidates),
-		"mapped", summary.Mapped,
-		"unmapped", summary.Unmapped,
-		"entity_codes", summary.EntityCodes,
-		"affected_pairs", summary.PairSymbols,
-		"unmapped_titles", unmappedTitles,
+		"stored", len(entries),
+		"unmapped_queued", stats.UnmappedQueued,
+		"resolved", stats.Resolved,
 	)
 }

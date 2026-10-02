@@ -18,8 +18,11 @@ var seedUniverse = []seedSource{
 		name:       "BLS",
 		sourceType: "official",
 		configurations: []seedConfiguration{{
-			kind:   "api",
-			config: `{"url":"https://api.bls.gov/publicAPI/v2/timeseries/data/"}`,
+			kind: "api",
+			// CPI, unemployment, nonfarm payrolls, average hourly
+			// earnings, and JOLTS job openings; the registration key is
+			// optional and only raises the query limits when set.
+			config: `{"url":"https://api.bls.gov/publicAPI/v2/timeseries/data/","seriesid":["CUUR0000SA0","LNS14000000","CES0000000001","CES0500000003","JTS000000000000000JOL"],"registrationkey_env":"MACRO_TERMINAL_BLS_API_KEY"}`,
 		}},
 	},
 	{

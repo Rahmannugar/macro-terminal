@@ -28,6 +28,9 @@ var (
 	ErrInsecureURL = errors.New("source URL must use http or https")
 	// ErrInvalidURL means the URL is missing, unparsable, or has no host.
 	ErrInvalidURL = errors.New("source URL is invalid")
+	// ErrInvalidConfiguration means the configuration keys a provider
+	// requires are missing or have the wrong shape.
+	ErrInvalidConfiguration = errors.New("source configuration is invalid")
 )
 
 // Item is one entry from an RSS/Atom feed.

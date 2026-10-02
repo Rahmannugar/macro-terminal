@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	articlerepositories "github.com/Rahmannugar/macro-terminal/server/internal/articles/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/config"
 	entityrepositories "github.com/Rahmannugar/macro-terminal/server/internal/entities/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
@@ -102,6 +103,7 @@ func run() (runError error) {
 			logger,
 		),
 		mapping.NewLoader(entityRepository),
+		articlerepositories.NewArticleRepository(databasePool),
 		logger,
 		ingestion.DefaultCadences(),
 	)
