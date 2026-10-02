@@ -10,9 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Rahmannugar/macro-terminal/server/internal/ai"
 	articlerepositories "github.com/Rahmannugar/macro-terminal/server/internal/articles/repositories"
 	calendarepositories "github.com/Rahmannugar/macro-terminal/server/internal/calendar/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/config"
+	"github.com/Rahmannugar/macro-terminal/server/internal/enrichment"
+	enrichmentrepositories "github.com/Rahmannugar/macro-terminal/server/internal/enrichment/repositories"
 	entityrepositories "github.com/Rahmannugar/macro-terminal/server/internal/entities/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/database"
@@ -33,6 +36,8 @@ const (
 	// scheduleChangeChannel must match the channel the database trigger
 	// notifies on configuration changes.
 	scheduleChangeChannel = "macro_terminal_source_configurations"
+	// outboxChannel must match the channel the database trigger notifies on.
+	outboxChannel = "macro_terminal_outbox"
 )
 
 type workerResult struct {
@@ -117,7 +122,16 @@ func run() (runError error) {
 	workerContext, stopWorkers := context.WithCancel(signalContext)
 	defer stopWorkers()
 
-	results := make(chan workerResult, 2)
+	enrichmentJob := enrichment.NewJob(
+		enrichmentrepositories.NewOutboxRepository(databasePool),
+		entityRepository,
+		ai.NewClient(telemetry.NewHTTPClient(providerFetchTimeout), cfg.AI.APIKey, cfg.AI.Model),
+		cfg.AI.Model,
+		cfg.AI.APIKey != "",
+		logger,
+	)
+
+	results := make(chan workerResult, 4)
 	go func() {
 		results <- workerResult{name: "ingestion-runner", err: ingestionRunner.Run(workerContext)}
 	}()
@@ -130,13 +144,25 @@ func run() (runError error) {
 			ingestionRunner.Wake,
 		)}
 	}()
-	logger.Info("worker started", "jobs", 2)
+	go func() {
+		results <- workerResult{name: "outbox-listener", err: database.Listen(
+			workerContext,
+			logger,
+			cfg.Database.ConnectionString(),
+			outboxChannel,
+			enrichmentJob.Wake,
+		)}
+	}()
+	go func() {
+		results <- workerResult{name: "enrichment-job", err: enrichmentJob.Run(workerContext)}
+	}()
+	logger.Info("worker started", "jobs", 4)
 
 	<-workerContext.Done()
 	stopWorkers()
 	shutdownTimer := time.NewTimer(shutdownTimeout)
 	defer shutdownTimer.Stop()
-	for completed := 0; completed < 2; completed++ {
+	for completed := 0; completed < 4; completed++ {
 		select {
 		case result := <-results:
 			if result.err != nil && !errors.Is(result.err, context.Canceled) {

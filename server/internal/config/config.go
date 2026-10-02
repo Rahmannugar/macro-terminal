@@ -19,6 +19,7 @@ const (
 	environmentPrefix   = "MACRO_TERMINAL_"
 	defaultHTTPPort     = 8080
 	defaultPostgresPort = 5432
+	defaultAIModel      = "gemini-3.1-flash-lite"
 )
 
 type Environment string
@@ -34,6 +35,7 @@ type Config struct {
 	Database    Database
 	Redis       Redis
 	Auth        Auth
+	AI          AI
 }
 
 type HTTP struct {
@@ -61,6 +63,11 @@ type Auth struct {
 	ClientBaseURL  string
 	TrustedOrigins []string
 	TrustedProxies []string
+}
+
+type AI struct {
+	APIKey string
+	Model  string
 }
 
 func Load() (Config, error) {
@@ -143,6 +150,11 @@ func Load() (Config, error) {
 	cfg.Auth.ClientBaseURL = k.String("auth.client_base_url")
 	cfg.Auth.TrustedOrigins = commaSeparated(k.String("auth.trusted_origins"))
 	cfg.Auth.TrustedProxies = commaSeparated(k.String("auth.trusted_proxies"))
+	cfg.AI.APIKey = strings.TrimSpace(k.String("ai.api_key"))
+	cfg.AI.Model = defaultAIModel
+	if model := strings.TrimSpace(k.String("ai.model")); model != "" {
+		cfg.AI.Model = model
+	}
 
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err

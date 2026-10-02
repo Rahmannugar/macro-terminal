@@ -87,3 +87,23 @@ sql:
           - db_type: numeric
             go_type:
               type: float64
+  - name: enrichment
+    engine: postgresql
+    schema: db/migrations
+    queries: server/internal/enrichment/queries
+    gen:
+      go:
+        package: enrichmentdb
+        out: server/internal/enrichment/repositories/generated
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        omit_unused_structs: true
+        overrides:
+          - db_type: uuid
+            go_type:
+              import: github.com/google/uuid
+              type: UUID
+          - db_type: jsonb
+            go_type:
+              import: encoding/json
+              type: RawMessage
