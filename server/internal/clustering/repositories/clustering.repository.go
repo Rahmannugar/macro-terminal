@@ -145,10 +145,10 @@ func (repository *Repository) LinkArticleToCluster(ctx context.Context, articleI
 	return linked, nil
 }
 
-func (repository *Repository) MembersOfCluster(ctx context.Context, clusterID uuid.UUID) ([]uuid.UUID, error) {
-	members, err := repository.queries.MembersOfCluster(ctx, clusterID)
+func (repository *Repository) MembersOfClusterForArticle(ctx context.Context, articleID uuid.UUID) ([]uuid.UUID, error) {
+	members, err := repository.queries.MembersOfClusterForArticle(ctx, articleID)
 	if err != nil {
-		return nil, fmt.Errorf("get members of cluster: %w", err)
+		return nil, fmt.Errorf("get members of article's cluster: %w", err)
 	}
 	return members, nil
 }

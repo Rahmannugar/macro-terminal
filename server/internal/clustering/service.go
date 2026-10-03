@@ -9,7 +9,7 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/articles/models"
 	"github.com/Rahmannugar/macro-terminal/server/internal/vector"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -23,8 +23,7 @@ var (
 )
 
 type ClusterReader interface {
-	ClusterOfArticle(ctx context.Context, articleID uuid.UUID) (uuid.UUID, error)
-	MembersOfCluster(ctx context.Context, clusterID uuid.UUID) ([]uuid.UUID, error)
+	MembersOfClusterForArticle(ctx context.Context, articleID uuid.UUID) ([]uuid.UUID, error)
 }
 
 type ArticleHydrator interface {
@@ -53,26 +52,33 @@ func (service *Service) Related(
 ) ([]models.StoredArticle, error) {
 	limit = clampLimit(limit)
 
-	selfs, err := service.hydrator.GetArticlesByIDs(ctx, []uuid.UUID{articleID})
-	if err != nil {
-		return nil, fmt.Errorf("hydrate related article: %w", err)
+	var self models.StoredArticle
+	var mates []uuid.UUID
+	var selfErr, matesErr error
+	var group errgroup.Group
+	group.Go(func() error {
+		self, selfErr = service.loadSelf(ctx, articleID)
+		return nil
+	})
+	group.Go(func() error {
+		mates, matesErr = service.memberIDs(ctx, articleID)
+		return nil
+	})
+	_ = group.Wait()
+	if selfErr != nil {
+		return nil, selfErr
 	}
-	if len(selfs) == 0 {
-		return nil, ErrNotFound
+	if matesErr != nil {
+		return nil, matesErr
 	}
-	self := selfs[0]
 
-	memberIDs, err := service.memberIDs(ctx, articleID)
+	neighborIDs, err := service.neighborIDs(ctx, self, len(mates), limit)
 	if err != nil {
 		return nil, err
 	}
-	neighborIDs, err := service.neighborIDs(ctx, self, len(memberIDs), limit)
-	if err != nil {
-		return nil, err
-	}
 
-	candidates := make([]uuid.UUID, 0, len(memberIDs)+len(neighborIDs))
-	candidates = append(candidates, memberIDs...)
+	candidates := make([]uuid.UUID, 0, len(mates)+len(neighborIDs))
+	candidates = append(candidates, mates...)
 	candidates = append(candidates, neighborIDs...)
 	hydrated, err := service.hydrator.GetArticlesByIDs(ctx, candidates)
 	if err != nil {
@@ -86,8 +92,8 @@ func (service *Service) Related(
 	related := make([]models.StoredArticle, 0, limit)
 	included := map[uuid.UUID]struct{}{articleID: {}}
 
-	members := make([]models.StoredArticle, 0, len(memberIDs))
-	for _, id := range memberIDs {
+	members := make([]models.StoredArticle, 0, len(mates))
+	for _, id := range mates {
 		if article, ok := byID[id]; ok {
 			members = append(members, article)
 		}
@@ -117,15 +123,19 @@ func (service *Service) Related(
 	return related, nil
 }
 
-func (service *Service) memberIDs(ctx context.Context, articleID uuid.UUID) ([]uuid.UUID, error) {
-	clusterID, err := service.clusters.ClusterOfArticle(ctx, articleID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, nil
-	}
+func (service *Service) loadSelf(ctx context.Context, articleID uuid.UUID) (models.StoredArticle, error) {
+	selfs, err := service.hydrator.GetArticlesByIDs(ctx, []uuid.UUID{articleID})
 	if err != nil {
-		return nil, fmt.Errorf("load story cluster: %w", err)
+		return models.StoredArticle{}, fmt.Errorf("hydrate related article: %w", err)
 	}
-	members, err := service.clusters.MembersOfCluster(ctx, clusterID)
+	if len(selfs) == 0 {
+		return models.StoredArticle{}, ErrNotFound
+	}
+	return selfs[0], nil
+}
+
+func (service *Service) memberIDs(ctx context.Context, articleID uuid.UUID) ([]uuid.UUID, error) {
+	members, err := service.clusters.MembersOfClusterForArticle(ctx, articleID)
 	if err != nil {
 		return nil, fmt.Errorf("load story cluster members: %w", err)
 	}

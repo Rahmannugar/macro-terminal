@@ -3,31 +3,24 @@ package clustering
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/articles/models"
 	"github.com/Rahmannugar/macro-terminal/server/internal/vector"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 type fakeClusterReader struct {
-	clusterOf map[uuid.UUID]uuid.UUID
-	members   map[uuid.UUID][]uuid.UUID
+	mates map[uuid.UUID][]uuid.UUID
+	err   error
 }
 
-func (reader *fakeClusterReader) ClusterOfArticle(_ context.Context, articleID uuid.UUID) (uuid.UUID, error) {
-	clusterID, ok := reader.clusterOf[articleID]
-	if !ok {
-		return uuid.Nil, fmt.Errorf("clusters of article %s: %w", articleID, pgx.ErrNoRows)
+func (reader *fakeClusterReader) MembersOfClusterForArticle(_ context.Context, articleID uuid.UUID) ([]uuid.UUID, error) {
+	if reader.err != nil {
+		return nil, reader.err
 	}
-	return clusterID, nil
-}
-
-func (reader *fakeClusterReader) MembersOfCluster(_ context.Context, clusterID uuid.UUID) ([]uuid.UUID, error) {
-	return reader.members[clusterID], nil
+	return reader.mates[articleID], nil
 }
 
 type fakeHydrator struct {
@@ -62,15 +55,11 @@ func TestRelatedOrdersClusterMatesFirstAndDeduplicates(t *testing.T) {
 	newer := uuid.New()
 	semantic := uuid.New()
 	outside := uuid.New()
-	clusterID := uuid.New()
 	recent := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
 	past := time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC)
 
 	service := NewService(
-		&fakeClusterReader{
-			clusterOf: map[uuid.UUID]uuid.UUID{self: clusterID},
-			members:   map[uuid.UUID][]uuid.UUID{clusterID: {self, older, newer}},
-		},
+		&fakeClusterReader{mates: map[uuid.UUID][]uuid.UUID{self: {self, older, newer}}},
 		&fakeSearcher{neighbors: []vector.Neighbor{
 			{ID: newer, Score: 0.95, PublishedAt: &recent},
 			{ID: semantic, Score: 0.7, PublishedAt: &past},
@@ -105,14 +94,10 @@ func TestRelatedOrdersClusterMatesFirstAndDeduplicates(t *testing.T) {
 func TestRelatedServesClusterMatesWithoutAConfiguredSearcher(t *testing.T) {
 	self := uuid.New()
 	mate := uuid.New()
-	clusterID := uuid.New()
 	past := time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC)
 
 	service := NewService(
-		&fakeClusterReader{
-			clusterOf: map[uuid.UUID]uuid.UUID{self: clusterID},
-			members:   map[uuid.UUID][]uuid.UUID{clusterID: {self, mate}},
-		},
+		&fakeClusterReader{mates: map[uuid.UUID][]uuid.UUID{self: {self, mate}}},
 		nil,
 		&fakeHydrator{articles: map[uuid.UUID]models.StoredArticle{
 			self: storedArticle(self, "Fed holds rates", past),
@@ -134,15 +119,11 @@ func TestRelatedHonoursTheLimitBeforeSemanticFill(t *testing.T) {
 	older := uuid.New()
 	newer := uuid.New()
 	semantic := uuid.New()
-	clusterID := uuid.New()
 	recent := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
 	past := time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC)
 
 	service := NewService(
-		&fakeClusterReader{
-			clusterOf: map[uuid.UUID]uuid.UUID{self: clusterID},
-			members:   map[uuid.UUID][]uuid.UUID{clusterID: {self, older, newer}},
-		},
+		&fakeClusterReader{mates: map[uuid.UUID][]uuid.UUID{self: {self, older, newer}}},
 		&fakeSearcher{neighbors: []vector.Neighbor{
 			{ID: semantic, Score: 0.9, PublishedAt: &past},
 		}},
@@ -168,6 +149,18 @@ func TestRelatedRejectsUnknownArticles(t *testing.T) {
 
 	if _, err := service.Related(t.Context(), uuid.New(), DefaultPageSize); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+}
+
+func TestRelatedAnswersNotFoundBeforeClusterFailures(t *testing.T) {
+	service := NewService(
+		&fakeClusterReader{err: errors.New("database unavailable")},
+		&fakeSearcher{},
+		&fakeHydrator{},
+	)
+
+	if _, err := service.Related(t.Context(), uuid.New(), DefaultPageSize); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound to win when lookups fail together", err)
 	}
 }
 

@@ -38,13 +38,9 @@ func decodeFailure(t *testing.T, recorder *httptest.ResponseRecorder) openapi.Er
 func pageService() (*Service, uuid.UUID) {
 	self := uuid.New()
 	mate := uuid.New()
-	clusterID := uuid.New()
 	past := time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC)
 	return NewService(
-		&fakeClusterReader{
-			clusterOf: map[uuid.UUID]uuid.UUID{self: clusterID},
-			members:   map[uuid.UUID][]uuid.UUID{clusterID: {self, mate}},
-		},
+		&fakeClusterReader{mates: map[uuid.UUID][]uuid.UUID{self: {self, mate}}},
 		&fakeSearcher{},
 		&fakeHydrator{articles: map[uuid.UUID]models.StoredArticle{
 			self: storedArticle(self, "Fed holds rates", past),

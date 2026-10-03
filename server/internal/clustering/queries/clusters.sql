@@ -19,10 +19,15 @@ SELECT article_id, story_cluster_id
 FROM article_story_clusters
 WHERE article_id = ANY(sqlc.arg(ids)::uuid[]);
 
--- name: MembersOfCluster :many
-SELECT article_id
-FROM article_story_clusters
-WHERE story_cluster_id = $1;
+-- name: MembersOfClusterForArticle :many
+SELECT member.article_id
+FROM article_story_clusters AS member
+WHERE member.story_cluster_id = (
+    SELECT cluster.story_cluster_id
+    FROM article_story_clusters AS cluster
+    WHERE cluster.article_id = $1
+    LIMIT 1
+);
 
 -- name: TouchStoryCluster :exec
 UPDATE story_clusters

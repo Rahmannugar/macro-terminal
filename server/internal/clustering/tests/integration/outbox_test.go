@@ -95,12 +95,19 @@ func TestClusteringDiscoveryAndClusterLinks(t *testing.T) {
 	if memberOf != clusterID {
 		t.Fatalf("cluster = %s, want %s", memberOf, clusterID)
 	}
-	members, err := repository.MembersOfCluster(t.Context(), clusterID)
+	members, err := repository.MembersOfClusterForArticle(t.Context(), indexed)
 	if err != nil {
-		t.Fatalf("members of cluster: %v", err)
+		t.Fatalf("members of article's cluster: %v", err)
 	}
 	if len(members) != 1 || members[0] != indexed {
-		t.Fatalf("members = %v, want [%s]", members, indexed)
+		t.Fatalf("members = %v, want [%s] (the cluster's only member)", members, indexed)
+	}
+	members, err = repository.MembersOfClusterForArticle(t.Context(), neverIndexed)
+	if err != nil {
+		t.Fatalf("members for unclustered article: %v", err)
+	}
+	if len(members) != 0 {
+		t.Fatalf("members for unclustered article = %v, want none", members)
 	}
 	memberships, err := repository.ClusterIDsForArticles(t.Context(), []uuid.UUID{indexed, neverIndexed})
 	if err != nil {

@@ -124,14 +124,19 @@ func (q *Queries) LinkArticleToCluster(ctx context.Context, arg LinkArticleToClu
 	return result.RowsAffected(), nil
 }
 
-const membersOfCluster = `-- name: MembersOfCluster :many
-SELECT article_id
-FROM article_story_clusters
-WHERE story_cluster_id = $1
+const membersOfClusterForArticle = `-- name: MembersOfClusterForArticle :many
+SELECT member.article_id
+FROM article_story_clusters AS member
+WHERE member.story_cluster_id = (
+    SELECT cluster.story_cluster_id
+    FROM article_story_clusters AS cluster
+    WHERE cluster.article_id = $1
+    LIMIT 1
+)
 `
 
-func (q *Queries) MembersOfCluster(ctx context.Context, storyClusterID uuid.UUID) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, membersOfCluster, storyClusterID)
+func (q *Queries) MembersOfClusterForArticle(ctx context.Context, articleID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, membersOfClusterForArticle, articleID)
 	if err != nil {
 		return nil, err
 	}
