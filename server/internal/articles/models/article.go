@@ -40,3 +40,14 @@ type PersistStats struct {
 	UnmappedQueued int
 	Resolved       int
 }
+
+// StoredArticle is a hydrated article row joined with its source name.
+type StoredArticle struct {
+	ID          uuid.UUID
+	SourceID    uuid.UUID
+	SourceName  string
+	Title       string
+	Content     string
+	URL         string
+	PublishedAt *time.Time
+}

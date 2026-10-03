@@ -3,11 +3,14 @@ package main
 import (
 	"fmt"
 
+	articlerepositories "github.com/Rahmannugar/macro-terminal/server/internal/articles/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/config"
 	"github.com/Rahmannugar/macro-terminal/server/internal/health"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cors"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/telemetry"
 	"github.com/Rahmannugar/macro-terminal/server/internal/openapi"
+	"github.com/Rahmannugar/macro-terminal/server/internal/search"
+	"github.com/Rahmannugar/macro-terminal/server/internal/vector"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -36,5 +39,14 @@ func newRouter(
 	if err := openapi.RegisterRoutes(router); err != nil {
 		return nil, fmt.Errorf("register OpenAPI routes: %w", err)
 	}
+
+	var searcher vector.Searcher
+	if cfg.Ahnlich.AIAddr != "" {
+		searcher, err = vector.NewSearcher(cfg.Ahnlich.AIAddr)
+		if err != nil {
+			return nil, fmt.Errorf("connect vector search: %w", err)
+		}
+	}
+	search.RegisterRoutes(router, search.NewService(searcher, articlerepositories.NewArticleRepository(database)))
 	return router, nil
 }

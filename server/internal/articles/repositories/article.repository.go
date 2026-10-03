@@ -89,6 +89,37 @@ func (repository *ArticleRepository) PersistArticles(
 	return stats, nil
 }
 
+func (repository *ArticleRepository) GetArticlesByIDs(ctx context.Context, ids []uuid.UUID) ([]models.StoredArticle, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	rows, err := repository.queries.GetArticlesByIDs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("get articles by ids: %w", err)
+	}
+	articles := make([]models.StoredArticle, 0, len(rows))
+	for _, row := range rows {
+		var publishedAt *time.Time
+		if row.PublishedAt.Valid {
+			publishedAt = &row.PublishedAt.Time
+		}
+		var content string
+		if row.Content != nil {
+			content = *row.Content
+		}
+		articles = append(articles, models.StoredArticle{
+			ID:          row.ID,
+			SourceID:    row.SourceID,
+			SourceName:  row.SourceName,
+			Title:       row.Title,
+			Content:     content,
+			URL:         row.Url,
+			PublishedAt: publishedAt,
+		})
+	}
+	return articles, nil
+}
+
 // contentPointer stores an empty snippet as NULL rather than an empty
 // string; both read back the same, NULL keeps the column honest.
 func contentPointer(content string) *string {

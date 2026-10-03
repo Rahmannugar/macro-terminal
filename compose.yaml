@@ -114,6 +114,7 @@ services:
       MACRO_TERMINAL_DATABASE_PORT: 5432
       MACRO_TERMINAL_REDIS_URL: redis://redis:6379/0
       MACRO_TERMINAL_AUTH_BASE_URL: http://localhost:8081
+      MACRO_TERMINAL_AHNLICH_AI_ADDR: ahnlich-ai:1370
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     ports:
       - "8081:8081"

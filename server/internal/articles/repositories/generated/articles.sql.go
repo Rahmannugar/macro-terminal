@@ -12,6 +12,51 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getArticlesByIDs = `-- name: GetArticlesByIDs :many
+SELECT a.id, a.source_id, s.name AS source_name, a.title, a.content, a.url, a.published_at
+FROM articles AS a
+JOIN sources AS s ON s.id = a.source_id
+WHERE a.id = ANY($1::uuid[])
+`
+
+type GetArticlesByIDsRow struct {
+	ID          uuid.UUID
+	SourceID    uuid.UUID
+	SourceName  string
+	Title       string
+	Content     *string
+	Url         string
+	PublishedAt pgtype.Timestamptz
+}
+
+func (q *Queries) GetArticlesByIDs(ctx context.Context, ids []uuid.UUID) ([]GetArticlesByIDsRow, error) {
+	rows, err := q.db.Query(ctx, getArticlesByIDs, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetArticlesByIDsRow
+	for rows.Next() {
+		var i GetArticlesByIDsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SourceID,
+			&i.SourceName,
+			&i.Title,
+			&i.Content,
+			&i.Url,
+			&i.PublishedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const resolveUnmappedArticle = `-- name: ResolveUnmappedArticle :execrows
 DELETE FROM unmapped_articles
 WHERE article_id = $1

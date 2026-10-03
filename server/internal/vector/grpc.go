@@ -18,37 +18,37 @@ import (
 )
 
 const (
-	articleStore       = "articles"
-	articleIDKey       = "article_id"
-	publishedAtKey     = "published_at"
-	storeRequestWindow = 60 * time.Second
+	articleStore   = "articles"
+	articleIDKey   = "article_id"
+	publishedAtKey = "published_at"
+	requestWindow  = 60 * time.Second
 )
 
 var articlePredicates = []string{articleIDKey, publishedAtKey}
 
-type grpcIndexer struct {
+type grpcClient struct {
 	conn   *grpc.ClientConn
 	client aisvc.AIServiceClient
 }
 
-func newGrpcIndexer(addr string) (*grpcIndexer, error) {
+func newGrpcClient(addr string) (*grpcClient, error) {
 	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, fmt.Errorf("create Ahnlich client for %q: %w", addr, err)
 	}
-	return &grpcIndexer{conn: conn, client: aisvc.NewAIServiceClient(conn)}, nil
+	return &grpcClient{conn: conn, client: aisvc.NewAIServiceClient(conn)}, nil
 }
 
-func (indexer *grpcIndexer) StoreArticle(ctx context.Context, article Article) error {
-	ctx, cancel := context.WithTimeout(ctx, storeRequestWindow)
+func (client *grpcClient) StoreArticle(ctx context.Context, article Article) error {
+	ctx, cancel := context.WithTimeout(ctx, requestWindow)
 	defer cancel()
 
-	if err := indexer.ensureStore(ctx); err != nil {
+	if err := client.ensureStore(ctx); err != nil {
 		return err
 	}
 
 	condition := articleCondition(article.ID)
-	existing, err := indexer.client.GetPred(ctx, &query.GetPred{
+	existing, err := client.client.GetPred(ctx, &query.GetPred{
 		Store:     articleStore,
 		Condition: condition,
 	})
@@ -56,7 +56,7 @@ func (indexer *grpcIndexer) StoreArticle(ctx context.Context, article Article) e
 		return fmt.Errorf("look up existing article vector: %w", err)
 	}
 	if len(existing.Entries) > 0 {
-		if _, err := indexer.client.DelPred(ctx, &query.DelPred{
+		if _, err := client.client.DelPred(ctx, &query.DelPred{
 			Store:     articleStore,
 			Condition: condition,
 		}); err != nil {
@@ -64,7 +64,7 @@ func (indexer *grpcIndexer) StoreArticle(ctx context.Context, article Article) e
 		}
 	}
 
-	_, err = indexer.client.Set(ctx, &query.Set{
+	_, err = client.client.Set(ctx, &query.Set{
 		Store: articleStore,
 		Inputs: []*keyval.AiStoreEntry{{
 			Key: &keyval.StoreInput{
@@ -83,8 +83,8 @@ func (indexer *grpcIndexer) StoreArticle(ctx context.Context, article Article) e
 	return nil
 }
 
-func (indexer *grpcIndexer) ensureStore(ctx context.Context) error {
-	_, err := indexer.client.CreateStore(ctx, &query.CreateStore{
+func (client *grpcClient) ensureStore(ctx context.Context) error {
+	_, err := client.client.CreateStore(ctx, &query.CreateStore{
 		Store:      articleStore,
 		QueryModel: models.AIModel_ALL_MINI_LM_L6_V2,
 		IndexModel: models.AIModel_ALL_MINI_LM_L6_V2,
@@ -93,13 +93,56 @@ func (indexer *grpcIndexer) ensureStore(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("ensure article store: %w", err)
 	}
-	if _, err := indexer.client.CreatePredIndex(ctx, &query.CreatePredIndex{
+	if _, err := client.client.CreatePredIndex(ctx, &query.CreatePredIndex{
 		Store:      articleStore,
 		Predicates: articlePredicates,
 	}); err != nil {
 		return fmt.Errorf("ensure article predicates: %w", err)
 	}
 	return nil
+}
+
+func (client *grpcClient) SearchArticles(ctx context.Context, text string, limit int) ([]uuid.UUID, error) {
+	if limit < 1 {
+		return nil, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, requestWindow)
+	defer cancel()
+
+	response, err := client.client.GetSimN(ctx, &query.GetSimN{
+		Store: articleStore,
+		SearchInput: &keyval.StoreInput{
+			Value: &keyval.StoreInput_RawString{RawString: text},
+		},
+		ClosestN: uint64(limit),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("search article vectors: %w", err)
+	}
+	ids := make([]uuid.UUID, 0, len(response.Entries))
+	for _, entry := range response.Entries {
+		id, err := uuid.Parse(storeValueString(entry.Value, articleIDKey))
+		if err != nil {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+func storeValueString(value *keyval.StoreValue, key string) string {
+	if value == nil {
+		return ""
+	}
+	item, ok := value.Value[key]
+	if !ok || item == nil {
+		return ""
+	}
+	raw, ok := item.Value.(*metadata.MetadataValue_RawString)
+	if !ok {
+		return ""
+	}
+	return raw.RawString
 }
 
 func articleCondition(articleID uuid.UUID) *predicates.PredicateCondition {

@@ -22,3 +22,9 @@ ON CONFLICT (article_id) DO NOTHING;
 DELETE FROM unmapped_articles
 WHERE article_id = $1
   AND status = 'pending';
+
+-- name: GetArticlesByIDs :many
+SELECT a.id, a.source_id, s.name AS source_name, a.title, a.content, a.url, a.published_at
+FROM articles AS a
+JOIN sources AS s ON s.id = a.source_id
+WHERE a.id = ANY(sqlc.arg(ids)::uuid[]);
