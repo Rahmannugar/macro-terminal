@@ -13,6 +13,8 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/ai"
 	articlerepositories "github.com/Rahmannugar/macro-terminal/server/internal/articles/repositories"
 	calendarepositories "github.com/Rahmannugar/macro-terminal/server/internal/calendar/repositories"
+	"github.com/Rahmannugar/macro-terminal/server/internal/clustering"
+	clusteringrepositories "github.com/Rahmannugar/macro-terminal/server/internal/clustering/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/config"
 	"github.com/Rahmannugar/macro-terminal/server/internal/enrichment"
 	enrichmentrepositories "github.com/Rahmannugar/macro-terminal/server/internal/enrichment/repositories"
@@ -134,21 +136,27 @@ func run() (runError error) {
 		logger,
 	)
 
-	var articleIndexer vector.Indexer
+	var articleVectors vector.Client
 	if cfg.Ahnlich.AIAddr != "" {
-		articleIndexer, err = vector.NewIndexer(cfg.Ahnlich.AIAddr)
+		articleVectors, err = vector.NewClient(cfg.Ahnlich.AIAddr)
 		if err != nil {
 			return fmt.Errorf("connect Ahnlich: %w", err)
 		}
 	}
 	indexingJob := indexing.NewJob(
 		indexingrepositories.NewOutboxRepository(databasePool),
-		articleIndexer,
+		articleVectors,
+		cfg.Ahnlich.AIAddr != "",
+		logger,
+	)
+	clusteringJob := clustering.NewJob(
+		clusteringrepositories.NewRepository(databasePool),
+		articleVectors,
 		cfg.Ahnlich.AIAddr != "",
 		logger,
 	)
 
-	results := make(chan workerResult, 5)
+	results := make(chan workerResult, 6)
 	go func() {
 		results <- workerResult{name: "ingestion-runner", err: ingestionRunner.Run(workerContext)}
 	}()
@@ -170,6 +178,7 @@ func run() (runError error) {
 			func() {
 				enrichmentJob.Wake()
 				indexingJob.Wake()
+				clusteringJob.Wake()
 			},
 		)}
 	}()
@@ -179,13 +188,16 @@ func run() (runError error) {
 	go func() {
 		results <- workerResult{name: "indexing-job", err: indexingJob.Run(workerContext)}
 	}()
-	logger.Info("worker started", "jobs", 5)
+	go func() {
+		results <- workerResult{name: "clustering-job", err: clusteringJob.Run(workerContext)}
+	}()
+	logger.Info("worker started", "jobs", 6)
 
 	<-workerContext.Done()
 	stopWorkers()
 	shutdownTimer := time.NewTimer(shutdownTimeout)
 	defer shutdownTimer.Stop()
-	for completed := 0; completed < 5; completed++ {
+	for completed := 0; completed < 6; completed++ {
 		select {
 		case result := <-results:
 			if result.err != nil && !errors.Is(result.err, context.Canceled) {

@@ -1,6 +1,73 @@
 {
     "components": {
         "schemas": {
+            "clustering.articleJSON": {
+                "properties": {
+                    "content": {
+                        "example": "The Federal Reserve left its benchmark rate unchanged.",
+                        "type": "string"
+                    },
+                    "id": {
+                        "example": "9d1e4a63-8f6d-4b9c-1f4e-7a553f8b2a60",
+                        "type": "string"
+                    },
+                    "publishedAt": {
+                        "type": "string"
+                    },
+                    "source": {
+                        "$ref": "#/components/schemas/clustering.sourceJSON"
+                    },
+                    "title": {
+                        "example": "Fed holds rates steady",
+                        "type": "string"
+                    },
+                    "url": {
+                        "example": "https://www.reuters.com/markets/us/",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "content",
+                    "id",
+                    "publishedAt",
+                    "source",
+                    "title",
+                    "url"
+                ],
+                "type": "object"
+            },
+            "clustering.relatedResponse": {
+                "properties": {
+                    "articles": {
+                        "items": {
+                            "$ref": "#/components/schemas/clustering.articleJSON"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "required": [
+                    "articles"
+                ],
+                "type": "object"
+            },
+            "clustering.sourceJSON": {
+                "properties": {
+                    "id": {
+                        "example": "3f8b2a60-9d1e-4a63-8f6d-2b9c1f4e7a55",
+                        "type": "string"
+                    },
+                    "name": {
+                        "example": "Reuters",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id",
+                    "name"
+                ],
+                "type": "object"
+            },
             "health.response": {
                 "properties": {
                     "status": {
@@ -124,6 +191,96 @@
         "url": ""
     },
     "paths": {
+        "/api/v1/articles/{id}/related": {
+            "get": {
+                "description": "Returns story cluster mates first (most recent first), then semantically similar indexed articles, deduplicated and excluding the article itself. When semantic search is not configured only cluster mates are returned.",
+                "parameters": [
+                    {
+                        "description": "Article id (UUID).",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Page size between 1 and 100. Defaults to 25.",
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/clustering.relatedResponse"
+                                }
+                            }
+                        },
+                        "description": "The related articles, cluster mates first."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request was malformed."
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The article does not exist."
+                    },
+                    "429": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "Too many requests. Retry after the indicated delay."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "Semantic search is unavailable."
+                    }
+                },
+                "summary": "Get articles related to one article.",
+                "tags": [
+                    "articles"
+                ]
+            }
+        },
         "/api/v1/search/articles": {
             "get": {
                 "description": "Embeds the query text, retrieves the closest indexed article ids from the vector index, and hydrates them from PostgreSQL in relevance order. Pass the returned nextCursor to fetch the next page.",

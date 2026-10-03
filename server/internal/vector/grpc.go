@@ -8,6 +8,8 @@ import (
 	"github.com/deven96/ahnlich/sdk/ahnlich-client-go/grpc/ai/models"
 	"github.com/deven96/ahnlich/sdk/ahnlich-client-go/grpc/ai/preprocess"
 	"github.com/deven96/ahnlich/sdk/ahnlich-client-go/grpc/ai/query"
+	aiserver "github.com/deven96/ahnlich/sdk/ahnlich-client-go/grpc/ai/server"
+	"github.com/deven96/ahnlich/sdk/ahnlich-client-go/grpc/algorithm/algorithms"
 	"github.com/deven96/ahnlich/sdk/ahnlich-client-go/grpc/keyval"
 	"github.com/deven96/ahnlich/sdk/ahnlich-client-go/grpc/metadata"
 	"github.com/deven96/ahnlich/sdk/ahnlich-client-go/grpc/predicates"
@@ -103,6 +105,43 @@ func (client *grpcClient) ensureStore(ctx context.Context) error {
 }
 
 func (client *grpcClient) SearchArticles(ctx context.Context, text string, limit int) ([]uuid.UUID, error) {
+	entries, err := client.closest(ctx, text, limit)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]uuid.UUID, 0, len(entries))
+	for _, entry := range entries {
+		id, err := uuid.Parse(storeValueString(entry.Value, articleIDKey))
+		if err != nil {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+func (client *grpcClient) FindSimilarArticles(ctx context.Context, article Article, limit int) ([]Neighbor, error) {
+	entries, err := client.closest(ctx, embedInput(article), limit)
+	if err != nil {
+		return nil, err
+	}
+	neighbors := make([]Neighbor, 0, len(entries))
+	for _, entry := range entries {
+		id, err := uuid.Parse(storeValueString(entry.Value, articleIDKey))
+		if err != nil || entry.Similarity == nil {
+			continue
+		}
+		neighbors = append(neighbors, Neighbor{
+			ID:          id,
+			PublishedAt: parsePublishedAt(storeValueString(entry.Value, publishedAtKey)),
+			Score:       entry.Similarity.Value,
+		})
+	}
+	return neighbors, nil
+}
+
+// closest asks the index for the nearest entries; cosine keeps scores on the higher-is-closer scale callers threshold against.
+func (client *grpcClient) closest(ctx context.Context, text string, limit int) ([]*aiserver.GetSimNEntry, error) {
 	if limit < 1 {
 		return nil, nil
 	}
@@ -114,20 +153,13 @@ func (client *grpcClient) SearchArticles(ctx context.Context, text string, limit
 		SearchInput: &keyval.StoreInput{
 			Value: &keyval.StoreInput_RawString{RawString: text},
 		},
-		ClosestN: uint64(limit),
+		Algorithm: algorithms.Algorithm_CosineSimilarity,
+		ClosestN:  uint64(limit),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("search article vectors: %w", err)
 	}
-	ids := make([]uuid.UUID, 0, len(response.Entries))
-	for _, entry := range response.Entries {
-		id, err := uuid.Parse(storeValueString(entry.Value, articleIDKey))
-		if err != nil {
-			continue
-		}
-		ids = append(ids, id)
-	}
-	return ids, nil
+	return response.Entries, nil
 }
 
 func storeValueString(value *keyval.StoreValue, key string) string {
@@ -172,6 +204,17 @@ func formatPublishedAt(publishedAt time.Time) string {
 		return ""
 	}
 	return publishedAt.UTC().Format(time.RFC3339)
+}
+
+func parsePublishedAt(value string) *time.Time {
+	if value == "" {
+		return nil
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return nil
+	}
+	return &parsed
 }
 
 func metadataValue(value string) *metadata.MetadataValue {

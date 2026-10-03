@@ -1,0 +1,35 @@
+-- name: CreateStoryCluster :one
+INSERT INTO story_clusters (id, title)
+VALUES ($1, $2)
+RETURNING id;
+
+-- name: LinkArticleToCluster :execrows
+INSERT INTO article_story_clusters (article_id, story_cluster_id)
+VALUES ($1, $2)
+ON CONFLICT DO NOTHING;
+
+-- name: ClusterOfArticle :one
+SELECT story_cluster_id
+FROM article_story_clusters
+WHERE article_id = $1
+LIMIT 1;
+
+-- name: ClusterIDsForArticles :many
+SELECT article_id, story_cluster_id
+FROM article_story_clusters
+WHERE article_id = ANY(sqlc.arg(ids)::uuid[]);
+
+-- name: MembersOfCluster :many
+SELECT article_id
+FROM article_story_clusters
+WHERE story_cluster_id = $1;
+
+-- name: TouchStoryCluster :exec
+UPDATE story_clusters
+SET updated_at = now()
+WHERE id = $1;
+
+-- name: GetArticleTitles :many
+SELECT id, title
+FROM articles
+WHERE id = ANY(sqlc.arg(ids)::uuid[]);

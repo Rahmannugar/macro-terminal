@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	articlerepositories "github.com/Rahmannugar/macro-terminal/server/internal/articles/repositories"
+	"github.com/Rahmannugar/macro-terminal/server/internal/clustering"
+	clusteringrepositories "github.com/Rahmannugar/macro-terminal/server/internal/clustering/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/config"
 	"github.com/Rahmannugar/macro-terminal/server/internal/health"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cors"
@@ -48,5 +50,10 @@ func newRouter(
 		}
 	}
 	search.RegisterRoutes(router, search.NewService(searcher, articlerepositories.NewArticleRepository(database)))
+	clustering.RegisterRoutes(router, clustering.NewService(
+		clusteringrepositories.NewRepository(database),
+		searcher,
+		articlerepositories.NewArticleRepository(database),
+	))
 	return router, nil
 }
