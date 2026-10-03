@@ -32,6 +32,40 @@ services:
       retries: 10
       start_period: 5s
 
+  ahnlich-db:
+    image: ghcr.io/deven96/ahnlich-db:latest
+    command: >
+      "ahnlich-db run --host 0.0.0.0 --enable-persistence
+      --persist-location /root/.ahnlich/data/db.dat
+      --persistence-interval 300"
+    volumes:
+      - ahnlich-db-data:/root/.ahnlich/data
+    healthcheck:
+      test: ["CMD-SHELL", "echo 'PING' | ahnlich-cli ahnlich --agent db --host 127.0.0.1 --port 1369 --no-interactive"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  ahnlich-ai:
+    image: ghcr.io/deven96/ahnlich-ai:latest
+    command: >
+      "ahnlich-ai run --db-host ahnlich-db --host 0.0.0.0
+      --supported-models all-minilm-l6-v2"
+    ports:
+      - "1371:1370"
+    volumes:
+      - ahnlich-ai-models:/root/.ahnlich/models
+    depends_on:
+      ahnlich-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "echo 'PING' | ahnlich-cli ahnlich --agent ai --host 127.0.0.1 --port 1370 --no-interactive"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
   otel-collector:
     image: otel/opentelemetry-collector:0.161.0
     command: ["--config=/etc/otelcol/config.yaml"]
@@ -112,6 +146,7 @@ services:
       MACRO_TERMINAL_DATABASE_HOST: postgres
       MACRO_TERMINAL_DATABASE_PORT: 5432
       MACRO_TERMINAL_REDIS_URL: redis://redis:6379/0
+      MACRO_TERMINAL_AHNLICH_AI_ADDR: ahnlich-ai:1370
       MACRO_TERMINAL_AUTH_BASE_URL: http://localhost:8081
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     volumes:
@@ -131,5 +166,7 @@ services:
 volumes:
   postgres-data:
   redis-data:
+  ahnlich-db-data:
+  ahnlich-ai-models:
   go-modules:
   go-build-cache:

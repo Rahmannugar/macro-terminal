@@ -36,6 +36,7 @@ type Config struct {
 	Redis       Redis
 	Auth        Auth
 	AI          AI
+	Ahnlich     Ahnlich
 }
 
 type HTTP struct {
@@ -68,6 +69,10 @@ type Auth struct {
 type AI struct {
 	APIKey string
 	Model  string
+}
+
+type Ahnlich struct {
+	AIAddr string
 }
 
 func Load() (Config, error) {
@@ -155,6 +160,7 @@ func Load() (Config, error) {
 	if model := strings.TrimSpace(k.String("ai.model")); model != "" {
 		cfg.AI.Model = model
 	}
+	cfg.Ahnlich.AIAddr = strings.TrimSpace(k.String("ahnlich.ai_addr"))
 
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err

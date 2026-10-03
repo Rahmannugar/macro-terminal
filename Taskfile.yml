@@ -11,7 +11,7 @@ tasks:
   up:
     desc: Start the local containers using existing images
     cmds:
-      - docker compose up --detach --wait postgres redis
+      - docker compose up --detach --wait postgres redis ahnlich-db ahnlich-ai
       - docker compose run --rm migrate
       - docker compose up --detach --wait api worker
 
@@ -61,6 +61,11 @@ tasks:
     desc: Seed the initial source universe (idempotent)
     cmds:
       - go run ./server/cmd/seed
+
+  reindex:
+    desc: Reset article indexing work so vectors rebuild from PostgreSQL
+    cmds:
+      - go run ./server/cmd/reindex
 
   test:
     desc: Run all tests
