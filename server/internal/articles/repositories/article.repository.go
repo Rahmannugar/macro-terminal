@@ -2,11 +2,13 @@ package repositories
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/articles/models"
 	articledb "github.com/Rahmannugar/macro-terminal/server/internal/articles/repositories/generated"
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -15,10 +17,11 @@ import (
 type ArticleRepository struct {
 	pool    *pgxpool.Pool
 	queries *articledb.Queries
+	store   *cache.JSONStore
 }
 
-func NewArticleRepository(pool *pgxpool.Pool) *ArticleRepository {
-	return &ArticleRepository{pool: pool, queries: articledb.New(pool)}
+func NewArticleRepository(pool *pgxpool.Pool, store *cache.JSONStore) *ArticleRepository {
+	return &ArticleRepository{pool: pool, queries: articledb.New(pool), store: store}
 }
 
 // PersistArticles stores one configuration's candidates and their mapping
@@ -43,6 +46,7 @@ func (repository *ArticleRepository) PersistArticles(
 	defer func() { _ = tx.Rollback(ctx) }()
 	queries := repository.queries.WithTx(tx)
 
+	storedIDs := make([]uuid.UUID, 0, len(entries))
 	for _, entry := range entries {
 		article, err := queries.UpsertArticle(ctx, articledb.UpsertArticleParams{
 			ID:          uuid.New(),
@@ -55,6 +59,7 @@ func (repository *ArticleRepository) PersistArticles(
 		if err != nil {
 			return stats, fmt.Errorf("upsert article: %w", err)
 		}
+		storedIDs = append(storedIDs, article.ID)
 
 		switch {
 		case len(entry.EntityIDs) > 0:
@@ -86,38 +91,103 @@ func (repository *ArticleRepository) PersistArticles(
 	if err := tx.Commit(ctx); err != nil {
 		return stats, fmt.Errorf("commit persist transaction: %w", err)
 	}
+	repository.populateCache(ctx, storedIDs)
 	return stats, nil
 }
 
-func (repository *ArticleRepository) GetArticlesByIDs(ctx context.Context, ids []uuid.UUID) ([]models.StoredArticle, error) {
-	if len(ids) == 0 {
-		return nil, nil
+// populateCache refreshes cached copies only after the transaction has
+// committed, so a rolled-back write can never leave Redis holding an
+// article PostgreSQL does not have.
+func (repository *ArticleRepository) populateCache(ctx context.Context, ids []uuid.UUID) {
+	if repository.store == nil || len(ids) == 0 {
+		return
 	}
 	rows, err := repository.queries.GetArticlesByIDs(ctx, ids)
 	if err != nil {
-		return nil, fmt.Errorf("get articles by ids: %w", err)
+		return
 	}
-	articles := make([]models.StoredArticle, 0, len(rows))
 	for _, row := range rows {
-		var publishedAt *time.Time
-		if row.PublishedAt.Valid {
-			publishedAt = &row.PublishedAt.Time
-		}
-		var content string
-		if row.Content != nil {
-			content = *row.Content
-		}
-		articles = append(articles, models.StoredArticle{
-			ID:          row.ID,
-			SourceID:    row.SourceID,
-			SourceName:  row.SourceName,
-			Title:       row.Title,
-			Content:     content,
-			URL:         row.Url,
-			PublishedAt: publishedAt,
-		})
+		_ = repository.store.Set(ctx, cache.ArticleKey(row.ID), storedArticleFromRow(row))
 	}
-	return articles, nil
+}
+
+func (repository *ArticleRepository) GetArticlesByIDs(ctx context.Context, ids []uuid.UUID) ([]models.StoredArticle, error) {
+	unique := uniqueIDs(ids)
+	if len(unique) == 0 {
+		return nil, nil
+	}
+	keys := make([]string, len(unique))
+	for index, id := range unique {
+		keys[index] = cache.ArticleKey(id)
+	}
+	cached, err := repository.store.GetMany(ctx, keys)
+	if err != nil {
+		cached = nil
+	}
+	articles := make(map[uuid.UUID]models.StoredArticle, len(unique))
+	missing := make([]uuid.UUID, 0, len(unique))
+	for index, id := range unique {
+		raw, ok := cached[keys[index]]
+		if ok {
+			var stored models.StoredArticle
+			if err := json.Unmarshal(raw, &stored); err == nil {
+				articles[id] = stored
+				continue
+			}
+		}
+		missing = append(missing, id)
+	}
+	if len(missing) > 0 {
+		rows, err := repository.queries.GetArticlesByIDs(ctx, missing)
+		if err != nil {
+			return nil, fmt.Errorf("get articles by ids: %w", err)
+		}
+		for _, row := range rows {
+			stored := storedArticleFromRow(row)
+			articles[stored.ID] = stored
+			_ = repository.store.Set(ctx, cache.ArticleKey(stored.ID), stored)
+		}
+	}
+	ordered := make([]models.StoredArticle, 0, len(unique))
+	for _, id := range unique {
+		if stored, ok := articles[id]; ok {
+			ordered = append(ordered, stored)
+		}
+	}
+	return ordered, nil
+}
+
+func storedArticleFromRow(row articledb.GetArticlesByIDsRow) models.StoredArticle {
+	var publishedAt *time.Time
+	if row.PublishedAt.Valid {
+		publishedAt = &row.PublishedAt.Time
+	}
+	var content string
+	if row.Content != nil {
+		content = *row.Content
+	}
+	return models.StoredArticle{
+		ID:          row.ID,
+		SourceID:    row.SourceID,
+		SourceName:  row.SourceName,
+		Title:       row.Title,
+		Content:     content,
+		URL:         row.Url,
+		PublishedAt: publishedAt,
+	}
+}
+
+func uniqueIDs(ids []uuid.UUID) []uuid.UUID {
+	seen := make(map[uuid.UUID]struct{}, len(ids))
+	unique := make([]uuid.UUID, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	return unique
 }
 
 // contentPointer stores an empty snippet as NULL rather than an empty

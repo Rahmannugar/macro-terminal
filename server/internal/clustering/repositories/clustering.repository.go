@@ -8,6 +8,7 @@ import (
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/clustering/models"
 	clusteringdb "github.com/Rahmannugar/macro-terminal/server/internal/clustering/repositories/generated"
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -17,10 +18,11 @@ import (
 type Repository struct {
 	pool    *pgxpool.Pool
 	queries *clusteringdb.Queries
+	store   *cache.JSONStore
 }
 
-func NewRepository(pool *pgxpool.Pool) *Repository {
-	return &Repository{pool: pool, queries: clusteringdb.New(pool)}
+func NewRepository(pool *pgxpool.Pool, store *cache.JSONStore) *Repository {
+	return &Repository{pool: pool, queries: clusteringdb.New(pool), store: store}
 }
 
 func (repository *Repository) EnqueueMissingClusterJobs(ctx context.Context, limit int32) (int64, error) {
@@ -131,6 +133,7 @@ func (repository *Repository) CreateStoryCluster(ctx context.Context, id uuid.UU
 	}); err != nil {
 		return fmt.Errorf("create story cluster: %w", err)
 	}
+	_ = repository.store.Set(ctx, cache.StoryClusterKey(id), models.StoryCluster{ID: id, Title: title})
 	return nil
 }
 

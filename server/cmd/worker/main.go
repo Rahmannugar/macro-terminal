@@ -103,6 +103,7 @@ func run() (runError error) {
 	if err != nil {
 		return fmt.Errorf("ping Redis: %w", err)
 	}
+	resourceStore := cache.NewJSONStore(redisClient)
 
 	sourceRepository := sourcesrepositories.NewSourceRepository(databasePool)
 	entityRepository := entityrepositories.NewEntityRepository(databasePool)
@@ -114,8 +115,8 @@ func run() (runError error) {
 			logger,
 		),
 		mapping.NewLoader(entityRepository),
-		articlerepositories.NewArticleRepository(databasePool),
-		calendarepositories.NewEventRepository(databasePool),
+		articlerepositories.NewArticleRepository(databasePool, resourceStore),
+		calendarepositories.NewEventRepository(databasePool, resourceStore),
 		logger,
 		ingestion.DefaultCadences(),
 	)
@@ -128,7 +129,7 @@ func run() (runError error) {
 	defer stopWorkers()
 
 	enrichmentJob := enrichment.NewJob(
-		enrichmentrepositories.NewOutboxRepository(databasePool),
+		enrichmentrepositories.NewOutboxRepository(databasePool, resourceStore),
 		entityRepository,
 		ai.NewClient(telemetry.NewHTTPClient(providerFetchTimeout), cfg.AI.APIKey, cfg.AI.Model),
 		cfg.AI.Model,
@@ -150,7 +151,7 @@ func run() (runError error) {
 		logger,
 	)
 	clusteringJob := clustering.NewJob(
-		clusteringrepositories.NewRepository(databasePool),
+		clusteringrepositories.NewRepository(databasePool, resourceStore),
 		articleVectors,
 		cfg.Ahnlich.AIAddr != "",
 		logger,

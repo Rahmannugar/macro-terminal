@@ -3,20 +3,25 @@
 package integration_test
 
 import (
+	"encoding/json"
 	"testing"
 
+	clusteringmodels "github.com/Rahmannugar/macro-terminal/server/internal/clustering/models"
 	clusteringrepositories "github.com/Rahmannugar/macro-terminal/server/internal/clustering/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/common/ids"
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/database/testdb"
 	sourcemodels "github.com/Rahmannugar/macro-terminal/server/internal/sources/models"
 	sourcerepositories "github.com/Rahmannugar/macro-terminal/server/internal/sources/repositories"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 func TestClusteringDiscoveryAndClusterLinks(t *testing.T) {
 	pool := testdb.OpenMigratedDatabase(t)
-	repository := clusteringrepositories.NewRepository(pool)
+	repository := clusteringrepositories.NewRepository(pool, nil)
 
 	sourceRepository := sourcerepositories.NewSourceRepository(pool)
 	source, err := sourceRepository.UpsertSource(t.Context(), sourcemodels.Source{
@@ -157,4 +162,33 @@ func testID(t *testing.T) uuid.UUID {
 		t.Fatalf("generate ID: %v", err)
 	}
 	return id
+}
+
+func TestStoryClusterCacheWriteThrough(t *testing.T) {
+	pool := testdb.OpenMigratedDatabase(t)
+
+	server, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("start miniredis: %v", err)
+	}
+	t.Cleanup(server.Close)
+	store := cache.NewJSONStore(redis.NewClient(&redis.Options{Addr: server.Addr()}))
+	repository := clusteringrepositories.NewRepository(pool, store)
+
+	clusterID := testID(t)
+	if err := repository.CreateStoryCluster(t.Context(), clusterID, "OCC sued by community banks"); err != nil {
+		t.Fatalf("create story cluster: %v", err)
+	}
+
+	raw, err := server.Get(cache.StoryClusterKey(clusterID))
+	if err != nil {
+		t.Fatalf("read cached story cluster: %v", err)
+	}
+	var cached clusteringmodels.StoryCluster
+	if err := json.Unmarshal([]byte(raw), &cached); err != nil {
+		t.Fatalf("decode cached story cluster %q: %v", raw, err)
+	}
+	if cached.ID != clusterID || cached.Title != "OCC sued by community banks" {
+		t.Fatalf("cached story cluster = %+v, want the created record", cached)
+	}
 }

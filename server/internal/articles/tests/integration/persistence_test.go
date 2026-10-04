@@ -3,6 +3,7 @@
 package integration_test
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -11,11 +12,14 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/common/ids"
 	entitymodels "github.com/Rahmannugar/macro-terminal/server/internal/entities/models"
 	entityrepositories "github.com/Rahmannugar/macro-terminal/server/internal/entities/repositories"
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/database/testdb"
 	sourcemodels "github.com/Rahmannugar/macro-terminal/server/internal/sources/models"
 	sourcerepositories "github.com/Rahmannugar/macro-terminal/server/internal/sources/repositories"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 func TestPersistArticlesIsIdempotent(t *testing.T) {
@@ -45,7 +49,7 @@ func TestPersistArticlesIsIdempotent(t *testing.T) {
 		t.Fatalf("create euro entity: %v", err)
 	}
 
-	articleRepository := articlerepositories.NewArticleRepository(pool)
+	articleRepository := articlerepositories.NewArticleRepository(pool, nil)
 	published := time.Date(2026, 10, 1, 8, 30, 0, 0, time.UTC)
 	mapped := articlemodels.PersistEntry{
 		SourceID:    source.ID,
@@ -191,4 +195,125 @@ func equalIDs(a, b []uuid.UUID) bool {
 		}
 	}
 	return true
+}
+
+func newCacheStore(t *testing.T) (*cache.JSONStore, *miniredis.Miniredis) {
+	t.Helper()
+	server, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("start miniredis: %v", err)
+	}
+	t.Cleanup(server.Close)
+	return cache.NewJSONStore(redis.NewClient(&redis.Options{Addr: server.Addr()})), server
+}
+
+func TestArticleCacheWriteThroughAndReadThrough(t *testing.T) {
+	pool := testdb.OpenMigratedDatabase(t)
+
+	sourceRepository := sourcerepositories.NewSourceRepository(pool)
+	source, err := sourceRepository.UpsertSource(t.Context(), sourcemodels.Source{
+		ID: testID(t), Name: "Article Cache Test Source", Type: "news",
+	})
+	if err != nil {
+		t.Fatalf("create source: %v", err)
+	}
+
+	store, server := newCacheStore(t)
+	repository := articlerepositories.NewArticleRepository(pool, store)
+
+	published := time.Date(2026, 10, 2, 9, 0, 0, 0, time.UTC)
+	if _, err := repository.PersistArticles(t.Context(), []articlemodels.PersistEntry{{
+		SourceID:    source.ID,
+		Title:       "Cache fed funds",
+		Content:     "Cached content for the write-through test.",
+		URL:         "https://example.com/cache-fed",
+		PublishedAt: &published,
+	}}); err != nil {
+		t.Fatalf("persist article: %v", err)
+	}
+
+	ids := articleIDs(t, pool, source.ID)
+	if len(ids) != 1 {
+		t.Fatalf("article ids = %v, want one row", ids)
+	}
+	key := cache.ArticleKey(ids[0])
+
+	raw, err := server.Get(key)
+	if err != nil {
+		t.Fatalf("read cached article: %v", err)
+	}
+	var cached articlemodels.StoredArticle
+	if err := json.Unmarshal([]byte(raw), &cached); err != nil {
+		t.Fatalf("decode cached article %q: %v", raw, err)
+	}
+	if cached.Title != "Cache fed funds" || cached.SourceName != source.Name {
+		t.Fatalf("cached article = %+v, want the hydrated row", cached)
+	}
+	if ttl := server.TTL(key); ttl > time.Hour || ttl < 54*time.Minute {
+		t.Fatalf("ttl = %s, want between 54m and 1h", ttl)
+	}
+
+	if _, err := pool.Exec(t.Context(), `DELETE FROM articles WHERE id = $1`, ids[0]); err != nil {
+		t.Fatalf("delete article: %v", err)
+	}
+	found, err := repository.GetArticlesByIDs(t.Context(), ids)
+	if err != nil {
+		t.Fatalf("read through cache: %v", err)
+	}
+	if len(found) != 1 || found[0].Title != "Cache fed funds" {
+		t.Fatalf("articles = %+v, want the cached row without PostgreSQL", found)
+	}
+
+	if err := server.Set(key, "not json"); err != nil {
+		t.Fatalf("corrupt cached article: %v", err)
+	}
+	found, err = repository.GetArticlesByIDs(t.Context(), ids)
+	if err != nil {
+		t.Fatalf("read with corrupt cache: %v", err)
+	}
+	if len(found) != 0 {
+		t.Fatalf("articles = %+v, want a miss that falls back to PostgreSQL", found)
+	}
+}
+
+func TestArticleCacheKeepsWorkingWhenRedisIsUnreachable(t *testing.T) {
+	pool := testdb.OpenMigratedDatabase(t)
+
+	sourceRepository := sourcerepositories.NewSourceRepository(pool)
+	source, err := sourceRepository.UpsertSource(t.Context(), sourcemodels.Source{
+		ID: testID(t), Name: "Article Cache Outage Source", Type: "news",
+	})
+	if err != nil {
+		t.Fatalf("create source: %v", err)
+	}
+
+	store, server := newCacheStore(t)
+	repository := articlerepositories.NewArticleRepository(pool, store)
+
+	entry := articlemodels.PersistEntry{
+		SourceID: source.ID,
+		Title:    "Article written during the outage",
+		URL:      "https://example.com/outage-fed",
+	}
+	if _, err := repository.PersistArticles(t.Context(), []articlemodels.PersistEntry{entry}); err != nil {
+		t.Fatalf("persist during outage: %v", err)
+	}
+
+	server.Close()
+
+	found, err := repository.GetArticlesByIDs(t.Context(), articleIDs(t, pool, source.ID))
+	if err != nil {
+		t.Fatalf("read during outage: %v", err)
+	}
+	if len(found) != 1 || found[0].Title != entry.Title {
+		t.Fatalf("articles = %+v, want PostgreSQL to answer without Redis", found)
+	}
+
+	if _, err := repository.PersistArticles(t.Context(), []articlemodels.PersistEntry{{
+		SourceID: source.ID,
+		Title:    "Second article written during the outage",
+		URL:      "https://example.com/outage-fed-2",
+	}}); err != nil {
+		t.Fatalf("second persist during outage: %v", err)
+	}
 }

@@ -24,3 +24,14 @@ type PersistStats struct {
 	Stored     int
 	LinksAdded int
 }
+
+type StoredEvent struct {
+	ID          uuid.UUID  `json:"id"`
+	SourceID    uuid.UUID  `json:"sourceId"`
+	IndicatorID uuid.UUID  `json:"indicatorId"`
+	ScheduledAt time.Time  `json:"scheduledAt"`
+	ReleasedAt  *time.Time `json:"releasedAt"`
+	Previous    *float64   `json:"previous"`
+	Consensus   *float64   `json:"consensus"`
+	Actual      *float64   `json:"actual"`
+}

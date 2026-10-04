@@ -8,6 +8,7 @@ import (
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/calendar/models"
 	calendardb "github.com/Rahmannugar/macro-terminal/server/internal/calendar/repositories/generated"
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,10 +17,11 @@ import (
 type EventRepository struct {
 	pool    *pgxpool.Pool
 	queries *calendardb.Queries
+	store   *cache.JSONStore
 }
 
-func NewEventRepository(pool *pgxpool.Pool) *EventRepository {
-	return &EventRepository{pool: pool, queries: calendardb.New(pool)}
+func NewEventRepository(pool *pgxpool.Pool, store *cache.JSONStore) *EventRepository {
+	return &EventRepository{pool: pool, queries: calendardb.New(pool), store: store}
 }
 
 // PersistEvents stores one configuration's classified events and their
@@ -44,6 +46,7 @@ func (repository *EventRepository) PersistEvents(
 	defer func() { _ = tx.Rollback(ctx) }()
 	queries := repository.queries.WithTx(tx)
 
+	stored := make([]models.StoredEvent, 0, len(entries))
 	for _, entry := range entries {
 		previous, err := numericValue(entry.Previous)
 		if err != nil {
@@ -71,6 +74,9 @@ func (repository *EventRepository) PersistEvents(
 		if err != nil {
 			return stats, fmt.Errorf("upsert calendar event: %w", err)
 		}
+		if record, err := storedEventFromRow(event); err == nil {
+			stored = append(stored, record)
+		}
 
 		links, err := queries.UpsertCalendarEventEntity(ctx, calendardb.UpsertCalendarEventEntityParams{
 			CalendarEventID: event.ID,
@@ -86,7 +92,72 @@ func (repository *EventRepository) PersistEvents(
 	if err := tx.Commit(ctx); err != nil {
 		return stats, fmt.Errorf("commit persist transaction: %w", err)
 	}
+	for _, record := range stored {
+		_ = repository.store.Set(ctx, cache.CalendarEventKey(record.ID), record)
+	}
 	return stats, nil
+}
+
+// storedEventFromRow flattens the driver-specific row into the plain
+// shape the cache stores, so cached events decode without pgtype.
+func storedEventFromRow(row calendardb.CalendarEvent) (models.StoredEvent, error) {
+	scheduledAt := timeValue(row.ScheduledAt)
+	if scheduledAt == nil {
+		return models.StoredEvent{}, fmt.Errorf("calendar event %s has no scheduled time", row.ID)
+	}
+	previous, err := numericFloat(row.Previous)
+	if err != nil {
+		return models.StoredEvent{}, err
+	}
+	consensus, err := numericFloat(row.Consensus)
+	if err != nil {
+		return models.StoredEvent{}, err
+	}
+	actual, err := numericFloat(row.Actual)
+	if err != nil {
+		return models.StoredEvent{}, err
+	}
+	return models.StoredEvent{
+		ID:          row.ID,
+		SourceID:    row.SourceID,
+		IndicatorID: row.IndicatorID,
+		ScheduledAt: *scheduledAt,
+		ReleasedAt:  timeValue(row.ReleasedAt),
+		Previous:    previous,
+		Consensus:   consensus,
+		Actual:      actual,
+	}, nil
+}
+
+func timeValue(value pgtype.Timestamptz) *time.Time {
+	if !value.Valid {
+		return nil
+	}
+	return &value.Time
+}
+
+func numericFloat(value pgtype.Numeric) (*float64, error) {
+	if !value.Valid {
+		return nil, nil
+	}
+	raw, err := value.Value()
+	if err != nil {
+		return nil, fmt.Errorf("decode numeric: %w", err)
+	}
+	var text string
+	switch decoded := raw.(type) {
+	case string:
+		text = decoded
+	case []byte:
+		text = string(decoded)
+	default:
+		return nil, fmt.Errorf("decode numeric %T", raw)
+	}
+	parsed, err := strconv.ParseFloat(text, 64)
+	if err != nil {
+		return nil, fmt.Errorf("decode numeric %q: %w", text, err)
+	}
+	return &parsed, nil
 }
 
 // numericValue hands PostgreSQL the value as text, which the numeric

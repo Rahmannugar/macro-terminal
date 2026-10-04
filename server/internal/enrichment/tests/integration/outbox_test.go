@@ -3,21 +3,26 @@
 package integration_test
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/common/ids"
+	"github.com/Rahmannugar/macro-terminal/server/internal/enrichment/models"
 	"github.com/Rahmannugar/macro-terminal/server/internal/enrichment/repositories"
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/database/testdb"
 	sourcemodels "github.com/Rahmannugar/macro-terminal/server/internal/sources/models"
 	sourcerepositories "github.com/Rahmannugar/macro-terminal/server/internal/sources/repositories"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 func TestEnrichmentOutboxLifecycle(t *testing.T) {
 	pool := testdb.OpenMigratedDatabase(t)
-	repository := repositories.NewOutboxRepository(pool)
+	repository := repositories.NewOutboxRepository(pool, nil)
 
 	sourceRepository := sourcerepositories.NewSourceRepository(pool)
 	source, err := sourceRepository.UpsertSource(t.Context(), sourcemodels.Source{
@@ -240,4 +245,57 @@ func testID(t *testing.T) uuid.UUID {
 		t.Fatalf("generate ID: %v", err)
 	}
 	return id
+}
+
+func TestEnrichmentCacheWriteThrough(t *testing.T) {
+	pool := testdb.OpenMigratedDatabase(t)
+
+	sourceRepository := sourcerepositories.NewSourceRepository(pool)
+	source, err := sourceRepository.UpsertSource(t.Context(), sourcemodels.Source{
+		ID: testID(t), Name: "Enrichment Cache Test Source", Type: "news",
+	})
+	if err != nil {
+		t.Fatalf("create source: %v", err)
+	}
+	articleID := seedArticle(t, pool, source.ID, "Cache enriched article", "https://example.test/cache-enrichment")
+
+	server, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("start miniredis: %v", err)
+	}
+	t.Cleanup(server.Close)
+	store := cache.NewJSONStore(redis.NewClient(&redis.Options{Addr: server.Addr()}))
+	repository := repositories.NewOutboxRepository(pool, store)
+
+	result := json.RawMessage(`{"topics":["rates"]}`)
+	stored, err := repository.StoreEnrichment(t.Context(), articleID, "cache-test-model", result)
+	if err != nil {
+		t.Fatalf("store enrichment: %v", err)
+	}
+	if !stored {
+		t.Fatal("first store = false, want true")
+	}
+
+	raw, err := server.Get(cache.ArticleEnrichmentKey(articleID))
+	if err != nil {
+		t.Fatalf("read cached enrichment: %v", err)
+	}
+	var cached models.StoredEnrichment
+	if err := json.Unmarshal([]byte(raw), &cached); err != nil {
+		t.Fatalf("decode cached enrichment %q: %v", raw, err)
+	}
+	if cached.ArticleID != articleID || cached.Model != "cache-test-model" || string(cached.Result) != string(result) {
+		t.Fatalf("cached enrichment = %+v, want the stored record", cached)
+	}
+
+	stored, err = repository.StoreEnrichment(t.Context(), articleID, "cache-test-model", result)
+	if err != nil {
+		t.Fatalf("replay store: %v", err)
+	}
+	if stored {
+		t.Fatal("replay store = true, want false for an already stored enrichment")
+	}
+	if raw, err := server.Get(cache.ArticleEnrichmentKey(articleID)); err != nil || !json.Valid([]byte(raw)) {
+		t.Fatalf("cache after replay = (%q, %v), want the untouched record", raw, err)
+	}
 }

@@ -43,11 +43,11 @@ type PersistStats struct {
 
 // StoredArticle is a hydrated article row joined with its source name.
 type StoredArticle struct {
-	ID          uuid.UUID
-	SourceID    uuid.UUID
-	SourceName  string
-	Title       string
-	Content     string
-	URL         string
-	PublishedAt *time.Time
+	ID          uuid.UUID  `json:"id"`
+	SourceID    uuid.UUID  `json:"sourceId"`
+	SourceName  string     `json:"sourceName"`
+	Title       string     `json:"title"`
+	Content     string     `json:"content"`
+	URL         string     `json:"url"`
+	PublishedAt *time.Time `json:"publishedAt"`
 }

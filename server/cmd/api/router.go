@@ -3,11 +3,13 @@ package main
 import (
 	"fmt"
 
+	"github.com/Rahmannugar/macro-terminal/server/internal/articles"
 	articlerepositories "github.com/Rahmannugar/macro-terminal/server/internal/articles/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/clustering"
 	clusteringrepositories "github.com/Rahmannugar/macro-terminal/server/internal/clustering/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/config"
 	"github.com/Rahmannugar/macro-terminal/server/internal/health"
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cors"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/telemetry"
 	"github.com/Rahmannugar/macro-terminal/server/internal/openapi"
@@ -15,12 +17,14 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/vector"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 func newRouter(
 	cfg config.Config,
 	runtime *telemetry.Runtime,
 	database *pgxpool.Pool,
+	redisClient *redis.Client,
 ) (*gin.Engine, error) {
 	if cfg.Environment != config.EnvironmentDevelopment {
 		gin.SetMode(gin.ReleaseMode)
@@ -49,11 +53,14 @@ func newRouter(
 			return nil, fmt.Errorf("connect vector search: %w", err)
 		}
 	}
-	search.RegisterRoutes(router, search.NewService(searcher, articlerepositories.NewArticleRepository(database)))
+	resourceStore := cache.NewJSONStore(redisClient)
+	articleRepository := articlerepositories.NewArticleRepository(database, resourceStore)
+	search.RegisterRoutes(router, search.NewService(searcher, articleRepository))
 	clustering.RegisterRoutes(router, clustering.NewService(
-		clusteringrepositories.NewRepository(database),
+		clusteringrepositories.NewRepository(database, resourceStore),
 		searcher,
-		articlerepositories.NewArticleRepository(database),
+		articleRepository,
 	))
+	articles.RegisterRoutes(router, articleRepository)
 	return router, nil
 }

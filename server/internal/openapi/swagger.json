@@ -1,6 +1,69 @@
 {
     "components": {
         "schemas": {
+            "articles.articleJSON": {
+                "properties": {
+                    "content": {
+                        "example": "The Federal Reserve left its benchmark rate unchanged.",
+                        "type": "string"
+                    },
+                    "id": {
+                        "example": "9d1e4a63-8f6d-4b9c-1f4e-7a553f8b2a60",
+                        "type": "string"
+                    },
+                    "publishedAt": {
+                        "type": "string"
+                    },
+                    "source": {
+                        "$ref": "#/components/schemas/articles.sourceJSON"
+                    },
+                    "title": {
+                        "example": "Fed holds rates steady",
+                        "type": "string"
+                    },
+                    "url": {
+                        "example": "https://www.reuters.com/markets/us/",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "content",
+                    "id",
+                    "publishedAt",
+                    "source",
+                    "title",
+                    "url"
+                ],
+                "type": "object"
+            },
+            "articles.articleResponse": {
+                "properties": {
+                    "article": {
+                        "$ref": "#/components/schemas/articles.articleJSON"
+                    }
+                },
+                "required": [
+                    "article"
+                ],
+                "type": "object"
+            },
+            "articles.sourceJSON": {
+                "properties": {
+                    "id": {
+                        "example": "3f8b2a60-9d1e-4a63-8f6d-2b9c1f4e7a55",
+                        "type": "string"
+                    },
+                    "name": {
+                        "example": "Reuters",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id",
+                    "name"
+                ],
+                "type": "object"
+            },
             "clustering.articleJSON": {
                 "properties": {
                     "content": {
@@ -191,6 +254,68 @@
         "url": ""
     },
     "paths": {
+        "/api/v1/articles/{id}": {
+            "get": {
+                "description": "Returns a single article by id.",
+                "parameters": [
+                    {
+                        "description": "Article id (UUID).",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/articles.articleResponse"
+                                }
+                            }
+                        },
+                        "description": "The article."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request was malformed."
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The article does not exist."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Get one article.",
+                "tags": [
+                    "articles"
+                ]
+            }
+        },
         "/api/v1/articles/{id}/related": {
             "get": {
                 "description": "Returns story cluster mates first (most recent first), then semantically similar indexed articles, deduplicated and excluding the article itself. When semantic search is not configured only cluster mates are returned.",

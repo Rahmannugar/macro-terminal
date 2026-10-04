@@ -1,6 +1,10 @@
 package models
 
-import "github.com/google/uuid"
+import (
+	"encoding/json"
+
+	"github.com/google/uuid"
+)
 
 type ClaimedJob struct {
 	ID        uuid.UUID
@@ -12,4 +16,11 @@ type Article struct {
 	ID      uuid.UUID
 	Title   string
 	Content string
+}
+
+type StoredEnrichment struct {
+	ID        uuid.UUID       `json:"id"`
+	ArticleID uuid.UUID       `json:"articleId"`
+	Model     string          `json:"model"`
+	Result    json.RawMessage `json:"result"`
 }

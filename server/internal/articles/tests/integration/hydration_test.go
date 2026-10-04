@@ -27,7 +27,7 @@ func TestGetArticlesByIDsHydratesWithSource(t *testing.T) {
 		t.Fatalf("create source: %v", err)
 	}
 
-	articleRepository := articlerepositories.NewArticleRepository(pool)
+	articleRepository := articlerepositories.NewArticleRepository(pool, nil)
 	published := time.Date(2026, 10, 2, 9, 15, 0, 0, time.UTC)
 	if _, err := articleRepository.PersistArticles(t.Context(), []articlemodels.PersistEntry{
 		{

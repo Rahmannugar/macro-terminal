@@ -3,6 +3,7 @@
 package integration_test
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -11,11 +12,14 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/common/ids"
 	entitymodels "github.com/Rahmannugar/macro-terminal/server/internal/entities/models"
 	entityrepositories "github.com/Rahmannugar/macro-terminal/server/internal/entities/repositories"
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/database/testdb"
 	sourcemodels "github.com/Rahmannugar/macro-terminal/server/internal/sources/models"
 	sourcerepositories "github.com/Rahmannugar/macro-terminal/server/internal/sources/repositories"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 func TestPersistCalendarEventsIsIdempotentAndRefreshesValues(t *testing.T) {
@@ -43,7 +47,7 @@ func TestPersistCalendarEventsIsIdempotentAndRefreshesValues(t *testing.T) {
 		t.Fatalf("create indicator: %v", err)
 	}
 
-	eventRepository := calendarepositories.NewEventRepository(pool)
+	eventRepository := calendarepositories.NewEventRepository(pool, nil)
 	scheduled := time.Date(2026, 10, 2, 12, 30, 0, 0, time.UTC)
 	released := time.Date(2026, 10, 2, 12, 31, 0, 0, time.UTC)
 	previous, consensus, actual := 3.0, 2.9, 2.8
@@ -180,4 +184,72 @@ func calendarEventID(
 		t.Fatalf("read event ID: %v", err)
 	}
 	return id
+}
+
+func TestEventCacheWriteThrough(t *testing.T) {
+	pool := testdb.OpenMigratedDatabase(t)
+
+	sourceRepository := sourcerepositories.NewSourceRepository(pool)
+	source, err := sourceRepository.UpsertSource(t.Context(), sourcemodels.Source{
+		ID: testID(t), Name: "Calendar Cache Test Source", Type: "calendar",
+	})
+	if err != nil {
+		t.Fatalf("create source: %v", err)
+	}
+
+	entityRepository := entityrepositories.NewEntityRepository(pool)
+	dollar, err := entityRepository.UpsertEntity(t.Context(), entitymodels.Entity{
+		ID: testID(t), Code: "CACE", Name: "Calendar Cache Dollar (test)", Type: "currency",
+	})
+	if err != nil {
+		t.Fatalf("create entity: %v", err)
+	}
+	indicator, err := entityRepository.UpsertIndicator(t.Context(), entitymodels.Indicator{
+		ID: testID(t), Name: "Test Cached CPI", EntityID: dollar.ID, Type: "inflation",
+	})
+	if err != nil {
+		t.Fatalf("create indicator: %v", err)
+	}
+
+	server, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("start miniredis: %v", err)
+	}
+	t.Cleanup(server.Close)
+	store := cache.NewJSONStore(redis.NewClient(&redis.Options{Addr: server.Addr()}))
+	eventRepository := calendarepositories.NewEventRepository(pool, store)
+
+	scheduled := time.Date(2026, 10, 3, 12, 30, 0, 0, time.UTC)
+	released := time.Date(2026, 10, 3, 12, 31, 0, 0, time.UTC)
+	previous, consensus, actual := 3.1, 3.0, 2.9
+	if _, err := eventRepository.PersistEvents(t.Context(), []calendarmodels.PersistEntry{{
+		SourceID: source.ID, IndicatorID: indicator.ID, EntityID: dollar.ID,
+		ScheduledAt: scheduled, ReleasedAt: &released,
+		Previous: &previous, Consensus: &consensus, Actual: &actual,
+	}}); err != nil {
+		t.Fatalf("persist event: %v", err)
+	}
+
+	id := calendarEventID(t, pool, source.ID, indicator.ID, scheduled)
+	key := cache.CalendarEventKey(id)
+	raw, err := server.Get(key)
+	if err != nil {
+		t.Fatalf("read cached event: %v", err)
+	}
+	var cached calendarmodels.StoredEvent
+	if err := json.Unmarshal([]byte(raw), &cached); err != nil {
+		t.Fatalf("decode cached event %q: %v", raw, err)
+	}
+	if cached.ID != id || !cached.ScheduledAt.Equal(scheduled) {
+		t.Fatalf("cached event = %+v, want the stored row", cached)
+	}
+	if cached.Previous == nil || *cached.Previous != 3.1 {
+		t.Fatalf("previous = %v, want 3.1", cached.Previous)
+	}
+	if cached.Actual == nil || *cached.Actual != 2.9 {
+		t.Fatalf("actual = %v, want 2.9", cached.Actual)
+	}
+	if cached.ReleasedAt == nil || !cached.ReleasedAt.Equal(released) {
+		t.Fatalf("releasedAt = %v, want %s", cached.ReleasedAt, released)
+	}
 }

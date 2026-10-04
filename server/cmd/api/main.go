@@ -77,7 +77,7 @@ func run() (runError error) {
 		}
 	}()
 
-	router, err := newRouter(cfg, telemetryRuntime, databasePool)
+	router, err := newRouter(cfg, telemetryRuntime, databasePool, redisClient)
 	if err != nil {
 		return err
 	}

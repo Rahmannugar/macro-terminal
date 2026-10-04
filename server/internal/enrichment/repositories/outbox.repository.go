@@ -8,6 +8,7 @@ import (
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/enrichment/models"
 	enrichmentdb "github.com/Rahmannugar/macro-terminal/server/internal/enrichment/repositories/generated"
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,10 +17,11 @@ import (
 type OutboxRepository struct {
 	pool    *pgxpool.Pool
 	queries *enrichmentdb.Queries
+	store   *cache.JSONStore
 }
 
-func NewOutboxRepository(pool *pgxpool.Pool) *OutboxRepository {
-	return &OutboxRepository{pool: pool, queries: enrichmentdb.New(pool)}
+func NewOutboxRepository(pool *pgxpool.Pool, store *cache.JSONStore) *OutboxRepository {
+	return &OutboxRepository{pool: pool, queries: enrichmentdb.New(pool), store: store}
 }
 
 func (repository *OutboxRepository) EnqueueMissingArticles(ctx context.Context, limit int32) (int64, error) {
@@ -101,14 +103,23 @@ func (repository *OutboxRepository) StoreEnrichment(
 	model string,
 	result json.RawMessage,
 ) (bool, error) {
+	id := uuid.New()
 	rows, err := repository.queries.StoreArticleEnrichment(ctx, enrichmentdb.StoreArticleEnrichmentParams{
-		ID:        uuid.New(),
+		ID:        id,
 		ArticleID: articleID,
 		Model:     model,
 		Result:    result,
 	})
 	if err != nil {
 		return false, fmt.Errorf("store article enrichment: %w", err)
+	}
+	if rows > 0 {
+		_ = repository.store.Set(ctx, cache.ArticleEnrichmentKey(articleID), models.StoredEnrichment{
+			ID:        id,
+			ArticleID: articleID,
+			Model:     model,
+			Result:    result,
+		})
 	}
 	return rows > 0, nil
 }
