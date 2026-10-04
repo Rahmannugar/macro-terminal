@@ -14,6 +14,13 @@ FROM article_story_clusters
 WHERE article_id = $1
 LIMIT 1;
 
+-- name: GetStoryClusterForArticle :one
+SELECT sc.id, sc.title
+FROM article_story_clusters AS link
+JOIN story_clusters AS sc ON sc.id = link.story_cluster_id
+WHERE link.article_id = $1
+LIMIT 1;
+
 -- name: ClusterIDsForArticles :many
 SELECT article_id, story_cluster_id
 FROM article_story_clusters

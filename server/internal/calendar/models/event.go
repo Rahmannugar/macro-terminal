@@ -35,3 +35,10 @@ type StoredEvent struct {
 	Consensus   *float64   `json:"consensus"`
 	Actual      *float64   `json:"actual"`
 }
+
+// EventContext is one event read together with the indicator it measures.
+type EventContext struct {
+	StoredEvent
+	IndicatorName string
+	IndicatorType string
+}

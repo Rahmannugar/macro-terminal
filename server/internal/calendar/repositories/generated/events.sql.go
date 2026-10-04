@@ -12,6 +12,46 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getCalendarEvent = `-- name: GetCalendarEvent :one
+SELECT ce.id, ce.source_id, ce.indicator_id, ce.scheduled_at, ce.released_at,
+       ce.previous, ce.consensus, ce.actual,
+       ei.name AS indicator_name, ei.type AS indicator_type
+FROM calendar_events AS ce
+JOIN economic_indicators AS ei ON ei.id = ce.indicator_id
+WHERE ce.id = $1
+`
+
+type GetCalendarEventRow struct {
+	ID            uuid.UUID
+	SourceID      uuid.UUID
+	IndicatorID   uuid.UUID
+	ScheduledAt   pgtype.Timestamptz
+	ReleasedAt    pgtype.Timestamptz
+	Previous      pgtype.Numeric
+	Consensus     pgtype.Numeric
+	Actual        pgtype.Numeric
+	IndicatorName string
+	IndicatorType string
+}
+
+func (q *Queries) GetCalendarEvent(ctx context.Context, id uuid.UUID) (GetCalendarEventRow, error) {
+	row := q.db.QueryRow(ctx, getCalendarEvent, id)
+	var i GetCalendarEventRow
+	err := row.Scan(
+		&i.ID,
+		&i.SourceID,
+		&i.IndicatorID,
+		&i.ScheduledAt,
+		&i.ReleasedAt,
+		&i.Previous,
+		&i.Consensus,
+		&i.Actual,
+		&i.IndicatorName,
+		&i.IndicatorType,
+	)
+	return i, err
+}
+
 const upsertCalendarEvent = `-- name: UpsertCalendarEvent :one
 INSERT INTO calendar_events (id, source_id, indicator_id, scheduled_at, released_at, previous, consensus, actual)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)

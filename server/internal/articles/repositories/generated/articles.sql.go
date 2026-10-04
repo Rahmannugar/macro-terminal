@@ -57,6 +57,45 @@ func (q *Queries) GetArticlesByIDs(ctx context.Context, ids []uuid.UUID) ([]GetA
 	return items, nil
 }
 
+const getRecentArticleIDsByEntities = `-- name: GetRecentArticleIDsByEntities :many
+SELECT DISTINCT a.id, a.published_at
+FROM articles AS a
+JOIN article_entities AS link ON link.article_id = a.id
+WHERE link.entity_id = ANY($2::uuid[])
+ORDER BY a.published_at DESC NULLS LAST, a.id
+LIMIT $1
+`
+
+type GetRecentArticleIDsByEntitiesParams struct {
+	Limit int32
+	Ids   []uuid.UUID
+}
+
+type GetRecentArticleIDsByEntitiesRow struct {
+	ID          uuid.UUID
+	PublishedAt pgtype.Timestamptz
+}
+
+func (q *Queries) GetRecentArticleIDsByEntities(ctx context.Context, arg GetRecentArticleIDsByEntitiesParams) ([]GetRecentArticleIDsByEntitiesRow, error) {
+	rows, err := q.db.Query(ctx, getRecentArticleIDsByEntities, arg.Limit, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetRecentArticleIDsByEntitiesRow
+	for rows.Next() {
+		var i GetRecentArticleIDsByEntitiesRow
+		if err := rows.Scan(&i.ID, &i.PublishedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const resolveUnmappedArticle = `-- name: ResolveUnmappedArticle :execrows
 DELETE FROM unmapped_articles
 WHERE article_id = $1

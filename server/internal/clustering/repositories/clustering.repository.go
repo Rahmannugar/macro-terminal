@@ -148,6 +148,17 @@ func (repository *Repository) LinkArticleToCluster(ctx context.Context, articleI
 	return linked, nil
 }
 
+func (repository *Repository) StoryClusterForArticle(ctx context.Context, articleID uuid.UUID) (models.StoryCluster, bool, error) {
+	row, err := repository.queries.GetStoryClusterForArticle(ctx, articleID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return models.StoryCluster{}, false, nil
+	}
+	if err != nil {
+		return models.StoryCluster{}, false, fmt.Errorf("get story cluster for article: %w", err)
+	}
+	return models.StoryCluster{ID: row.ID, Title: row.Title}, true, nil
+}
+
 func (repository *Repository) MembersOfClusterForArticle(ctx context.Context, articleID uuid.UUID) ([]uuid.UUID, error) {
 	members, err := repository.queries.MembersOfClusterForArticle(ctx, articleID)
 	if err != nil {

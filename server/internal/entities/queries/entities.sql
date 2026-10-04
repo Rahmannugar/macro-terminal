@@ -101,6 +101,26 @@ SET entity_id = EXCLUDED.entity_id,
     updated_at = now()
 RETURNING id, name, type, entity_id, indicator_id, created_at, updated_at;
 
+-- name: GetEntitiesForArticle :many
+SELECT e.id, e.code, e.name, e.type, e.created_at, e.updated_at
+FROM article_entities AS link
+JOIN entities AS e ON e.id = link.entity_id
+WHERE link.article_id = $1
+ORDER BY e.code;
+
+-- name: GetEntitiesForCalendarEvent :many
+SELECT e.id, e.code, e.name, e.type, e.created_at, e.updated_at
+FROM calendar_event_entities AS link
+JOIN entities AS e ON e.id = link.entity_id
+WHERE link.calendar_event_id = $1
+ORDER BY e.code;
+
+-- name: ListKnowledgeTermsForEntities :many
+SELECT id, name, type, entity_id, indicator_id, created_at, updated_at
+FROM knowledge_terms
+WHERE entity_id = ANY(sqlc.arg(ids)::uuid[])
+ORDER BY name, type;
+
 -- name: ListIndicators :many
 SELECT id, name, entity_id, type, created_at, updated_at
 FROM economic_indicators

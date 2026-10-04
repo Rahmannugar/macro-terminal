@@ -87,3 +87,8 @@ WHERE id = $1;
 INSERT INTO article_enrichments (id, article_id, model, result)
 VALUES ($1, $2, $3, $4)
 ON CONFLICT (article_id) DO NOTHING;
+
+-- name: GetArticleEnrichment :one
+SELECT id, article_id, model, result
+FROM article_enrichments
+WHERE article_id = $1;

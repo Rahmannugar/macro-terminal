@@ -97,6 +97,22 @@ func (repository *OutboxRepository) Article(ctx context.Context, id uuid.UUID) (
 	return models.Article{ID: row.ID, Title: row.Title, Content: row.Content}, nil
 }
 
+func (repository *OutboxRepository) ArticleEnrichment(ctx context.Context, articleID uuid.UUID) (models.StoredEnrichment, bool, error) {
+	row, err := repository.queries.GetArticleEnrichment(ctx, articleID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return models.StoredEnrichment{}, false, nil
+	}
+	if err != nil {
+		return models.StoredEnrichment{}, false, fmt.Errorf("get article enrichment: %w", err)
+	}
+	return models.StoredEnrichment{
+		ID:        row.ID,
+		ArticleID: row.ArticleID,
+		Model:     row.Model,
+		Result:    row.Result,
+	}, true, nil
+}
+
 func (repository *OutboxRepository) StoreEnrichment(
 	ctx context.Context,
 	articleID uuid.UUID,

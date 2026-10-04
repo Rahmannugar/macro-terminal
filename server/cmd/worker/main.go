@@ -26,6 +26,8 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/telemetry"
 	"github.com/Rahmannugar/macro-terminal/server/internal/ingestion"
 	"github.com/Rahmannugar/macro-terminal/server/internal/mapping"
+	"github.com/Rahmannugar/macro-terminal/server/internal/notification"
+	notificationrepositories "github.com/Rahmannugar/macro-terminal/server/internal/notification/repositories"
 	sourcesrepositories "github.com/Rahmannugar/macro-terminal/server/internal/sources/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/vector"
 )
@@ -156,8 +158,12 @@ func run() (runError error) {
 		cfg.Ahnlich.AIAddr != "",
 		logger,
 	)
+	notificationJob := notification.NewJob(
+		notificationrepositories.NewRepository(databasePool),
+		logger,
+	)
 
-	results := make(chan workerResult, 6)
+	results := make(chan workerResult, 7)
 	go func() {
 		results <- workerResult{name: "ingestion-runner", err: ingestionRunner.Run(workerContext)}
 	}()
@@ -180,6 +186,7 @@ func run() (runError error) {
 				enrichmentJob.Wake()
 				indexingJob.Wake()
 				clusteringJob.Wake()
+				notificationJob.Wake()
 			},
 		)}
 	}()
@@ -192,13 +199,16 @@ func run() (runError error) {
 	go func() {
 		results <- workerResult{name: "clustering-job", err: clusteringJob.Run(workerContext)}
 	}()
-	logger.Info("worker started", "jobs", 6)
+	go func() {
+		results <- workerResult{name: "notification-job", err: notificationJob.Run(workerContext)}
+	}()
+	logger.Info("worker started", "jobs", 7)
 
 	<-workerContext.Done()
 	stopWorkers()
 	shutdownTimer := time.NewTimer(shutdownTimeout)
 	defer shutdownTimer.Stop()
-	for completed := 0; completed < 6; completed++ {
+	for completed := 0; completed < 7; completed++ {
 		select {
 		case result := <-results:
 			if result.err != nil && !errors.Is(result.err, context.Canceled) {

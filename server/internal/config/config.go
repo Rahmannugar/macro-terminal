@@ -16,10 +16,11 @@ import (
 )
 
 const (
-	environmentPrefix   = "MACRO_TERMINAL_"
-	defaultHTTPPort     = 8080
-	defaultPostgresPort = 5432
-	defaultAIModel      = "gemini-3.1-flash-lite"
+	environmentPrefix       = "MACRO_TERMINAL_"
+	defaultHTTPPort         = 8080
+	defaultPostgresPort     = 5432
+	defaultAIModel          = "gemini-3.1-flash-lite"
+	defaultExplanationModel = "gemini-3.5-flash-lite"
 )
 
 type Environment string
@@ -67,8 +68,9 @@ type Auth struct {
 }
 
 type AI struct {
-	APIKey string
-	Model  string
+	APIKey           string
+	Model            string
+	ExplanationModel string
 }
 
 type Ahnlich struct {
@@ -159,6 +161,10 @@ func Load() (Config, error) {
 	cfg.AI.Model = defaultAIModel
 	if model := strings.TrimSpace(k.String("ai.model")); model != "" {
 		cfg.AI.Model = model
+	}
+	cfg.AI.ExplanationModel = defaultExplanationModel
+	if model := strings.TrimSpace(k.String("ai.explanation_model")); model != "" {
+		cfg.AI.ExplanationModel = model
 	}
 	cfg.Ahnlich.AIAddr = strings.TrimSpace(k.String("ahnlich.ai_addr"))
 

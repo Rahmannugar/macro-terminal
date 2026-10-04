@@ -13,3 +13,11 @@ RETURNING *;
 INSERT INTO calendar_event_entities (calendar_event_id, entity_id)
 VALUES ($1, $2)
 ON CONFLICT (calendar_event_id, entity_id) DO NOTHING;
+
+-- name: GetCalendarEvent :one
+SELECT ce.id, ce.source_id, ce.indicator_id, ce.scheduled_at, ce.released_at,
+       ce.previous, ce.consensus, ce.actual,
+       ei.name AS indicator_name, ei.type AS indicator_type
+FROM calendar_events AS ce
+JOIN economic_indicators AS ei ON ei.id = ce.indicator_id
+WHERE ce.id = $1;

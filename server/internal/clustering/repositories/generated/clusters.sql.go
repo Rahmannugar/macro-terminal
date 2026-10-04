@@ -105,6 +105,26 @@ func (q *Queries) GetArticleTitles(ctx context.Context, ids []uuid.UUID) ([]GetA
 	return items, nil
 }
 
+const getStoryClusterForArticle = `-- name: GetStoryClusterForArticle :one
+SELECT sc.id, sc.title
+FROM article_story_clusters AS link
+JOIN story_clusters AS sc ON sc.id = link.story_cluster_id
+WHERE link.article_id = $1
+LIMIT 1
+`
+
+type GetStoryClusterForArticleRow struct {
+	ID    uuid.UUID
+	Title string
+}
+
+func (q *Queries) GetStoryClusterForArticle(ctx context.Context, articleID uuid.UUID) (GetStoryClusterForArticleRow, error) {
+	row := q.db.QueryRow(ctx, getStoryClusterForArticle, articleID)
+	var i GetStoryClusterForArticleRow
+	err := row.Scan(&i.ID, &i.Title)
+	return i, err
+}
+
 const linkArticleToCluster = `-- name: LinkArticleToCluster :execrows
 INSERT INTO article_story_clusters (article_id, story_cluster_id)
 VALUES ($1, $2)

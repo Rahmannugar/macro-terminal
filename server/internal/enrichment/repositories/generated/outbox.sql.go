@@ -148,6 +148,31 @@ func (q *Queries) FailOutboxJobPermanently(ctx context.Context, arg FailOutboxJo
 	return err
 }
 
+const getArticleEnrichment = `-- name: GetArticleEnrichment :one
+SELECT id, article_id, model, result
+FROM article_enrichments
+WHERE article_id = $1
+`
+
+type GetArticleEnrichmentRow struct {
+	ID        uuid.UUID
+	ArticleID uuid.UUID
+	Model     string
+	Result    json.RawMessage
+}
+
+func (q *Queries) GetArticleEnrichment(ctx context.Context, articleID uuid.UUID) (GetArticleEnrichmentRow, error) {
+	row := q.db.QueryRow(ctx, getArticleEnrichment, articleID)
+	var i GetArticleEnrichmentRow
+	err := row.Scan(
+		&i.ID,
+		&i.ArticleID,
+		&i.Model,
+		&i.Result,
+	)
+	return i, err
+}
+
 const getArticleForEnrichment = `-- name: GetArticleForEnrichment :one
 SELECT id, title, coalesce(content, '') AS content
 FROM articles

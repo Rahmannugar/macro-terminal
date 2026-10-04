@@ -131,6 +131,29 @@
                 ],
                 "type": "object"
             },
+            "explanation.explanationJSON": {
+                "properties": {
+                    "text": {
+                        "example": "The Federal Reserve held its benchmark rate unchanged, keeping policy restrictive as inflation eases slowly.",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "text"
+                ],
+                "type": "object"
+            },
+            "explanation.explanationResponse": {
+                "properties": {
+                    "explanation": {
+                        "$ref": "#/components/schemas/explanation.explanationJSON"
+                    }
+                },
+                "required": [
+                    "explanation"
+                ],
+                "type": "object"
+            },
             "health.response": {
                 "properties": {
                     "status": {
@@ -316,6 +339,78 @@
                 ]
             }
         },
+        "/api/v1/articles/{id}/explain": {
+            "post": {
+                "description": "Generates a one-shot contextual explanation of the article from its enrichment, graph entities, affected asset pairs, story cluster, related coverage, and knowledge terms. The generated answer is cached briefly and regenerated after it expires.",
+                "parameters": [
+                    {
+                        "description": "Article id (UUID).",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/explanation.explanationResponse"
+                                }
+                            }
+                        },
+                        "description": "The explanation."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request was malformed."
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The article does not exist."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The explanation service is unavailable."
+                    }
+                },
+                "summary": "Explain one article with AI.",
+                "tags": [
+                    "articles"
+                ]
+            }
+        },
         "/api/v1/articles/{id}/related": {
             "get": {
                 "description": "Returns story cluster mates first (most recent first), then semantically similar indexed articles, deduplicated and excluding the article itself. When semantic search is not configured only cluster mates are returned.",
@@ -403,6 +498,78 @@
                 "summary": "Get articles related to one article.",
                 "tags": [
                     "articles"
+                ]
+            }
+        },
+        "/api/v1/calendar-events/{id}/explain": {
+            "post": {
+                "description": "Generates a one-shot contextual explanation of the calendar event from its indicator, values, linked entities, affected asset pairs, and recent related coverage. The generated answer is cached briefly and regenerated after it expires.",
+                "parameters": [
+                    {
+                        "description": "Calendar event id (UUID).",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/explanation.explanationResponse"
+                                }
+                            }
+                        },
+                        "description": "The explanation."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request was malformed."
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The calendar event does not exist."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The explanation service is unavailable."
+                    }
+                },
+                "summary": "Explain one calendar event with AI.",
+                "tags": [
+                    "calendar"
                 ]
             }
         },

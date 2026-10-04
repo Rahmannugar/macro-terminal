@@ -226,6 +226,56 @@ func (repository *EntityRepository) UpsertKnowledgeTerm(
 	}, nil
 }
 
+func (repository *EntityRepository) EntitiesForArticle(ctx context.Context, articleID uuid.UUID) ([]models.Entity, error) {
+	rows, err := repository.queries.GetEntitiesForArticle(ctx, articleID)
+	if err != nil {
+		return nil, fmt.Errorf("get entities for article: %w", err)
+	}
+	entities := make([]models.Entity, 0, len(rows))
+	for _, row := range rows {
+		entities = append(entities, mapEntity(row))
+	}
+	return entities, nil
+}
+
+func (repository *EntityRepository) EntitiesForCalendarEvent(ctx context.Context, calendarEventID uuid.UUID) ([]models.Entity, error) {
+	rows, err := repository.queries.GetEntitiesForCalendarEvent(ctx, calendarEventID)
+	if err != nil {
+		return nil, fmt.Errorf("get entities for calendar event: %w", err)
+	}
+	entities := make([]models.Entity, 0, len(rows))
+	for _, row := range rows {
+		entities = append(entities, mapEntity(row))
+	}
+	return entities, nil
+}
+
+func (repository *EntityRepository) KnowledgeTermsForEntities(
+	ctx context.Context,
+	entityIDs []uuid.UUID,
+) ([]models.KnowledgeTerm, error) {
+	if len(entityIDs) == 0 {
+		return nil, nil
+	}
+	rows, err := repository.queries.ListKnowledgeTermsForEntities(ctx, entityIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list knowledge terms for entities: %w", err)
+	}
+	terms := make([]models.KnowledgeTerm, 0, len(rows))
+	for _, row := range rows {
+		terms = append(terms, models.KnowledgeTerm{
+			ID:          row.ID,
+			Name:        row.Name,
+			Type:        row.Type,
+			EntityID:    fromNullableUUID(row.EntityID),
+			IndicatorID: fromNullableUUID(row.IndicatorID),
+			CreatedAt:   row.CreatedAt.Time,
+			UpdatedAt:   row.UpdatedAt.Time,
+		})
+	}
+	return terms, nil
+}
+
 func (repository *EntityRepository) ListIndicators(ctx context.Context) ([]models.Indicator, error) {
 	rows, err := repository.queries.ListIndicators(ctx)
 	if err != nil {

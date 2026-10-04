@@ -2,12 +2,18 @@ package main
 
 import (
 	"fmt"
+	"time"
 
+	"github.com/Rahmannugar/macro-terminal/server/internal/ai"
 	"github.com/Rahmannugar/macro-terminal/server/internal/articles"
 	articlerepositories "github.com/Rahmannugar/macro-terminal/server/internal/articles/repositories"
+	calendarrepositories "github.com/Rahmannugar/macro-terminal/server/internal/calendar/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/clustering"
 	clusteringrepositories "github.com/Rahmannugar/macro-terminal/server/internal/clustering/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/config"
+	enrichmentrepositories "github.com/Rahmannugar/macro-terminal/server/internal/enrichment/repositories"
+	entityrepositories "github.com/Rahmannugar/macro-terminal/server/internal/entities/repositories"
+	"github.com/Rahmannugar/macro-terminal/server/internal/explanation"
 	"github.com/Rahmannugar/macro-terminal/server/internal/health"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cors"
@@ -19,6 +25,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 )
+
+const aiHTTPTimeout = 30 * time.Second
 
 func newRouter(
 	cfg config.Config,
@@ -55,12 +63,20 @@ func newRouter(
 	}
 	resourceStore := cache.NewJSONStore(redisClient)
 	articleRepository := articlerepositories.NewArticleRepository(database, resourceStore)
+	clusterRepository := clusteringrepositories.NewRepository(database, resourceStore)
+	relatedService := clustering.NewService(clusterRepository, searcher, articleRepository)
 	search.RegisterRoutes(router, search.NewService(searcher, articleRepository))
-	clustering.RegisterRoutes(router, clustering.NewService(
-		clusteringrepositories.NewRepository(database, resourceStore),
-		searcher,
-		articleRepository,
-	))
+	clustering.RegisterRoutes(router, relatedService)
 	articles.RegisterRoutes(router, articleRepository)
+	explanation.RegisterRoutes(router, explanation.NewService(
+		articleRepository,
+		enrichmentrepositories.NewOutboxRepository(database, resourceStore),
+		entityrepositories.NewEntityRepository(database),
+		calendarrepositories.NewEventRepository(database, resourceStore),
+		clusterRepository,
+		relatedService,
+		ai.NewExplainer(telemetry.NewHTTPClient(aiHTTPTimeout), cfg.AI.APIKey, cfg.AI.ExplanationModel),
+		cache.NewJSONStoreWithTTL(redisClient, explanation.CacheTTL),
+	))
 	return router, nil
 }

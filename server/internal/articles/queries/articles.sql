@@ -28,3 +28,11 @@ SELECT a.id, a.source_id, s.name AS source_name, a.title, a.content, a.url, a.pu
 FROM articles AS a
 JOIN sources AS s ON s.id = a.source_id
 WHERE a.id = ANY(sqlc.arg(ids)::uuid[]);
+
+-- name: GetRecentArticleIDsByEntities :many
+SELECT DISTINCT a.id, a.published_at
+FROM articles AS a
+JOIN article_entities AS link ON link.article_id = a.id
+WHERE link.entity_id = ANY(sqlc.arg(ids)::uuid[])
+ORDER BY a.published_at DESC NULLS LAST, a.id
+LIMIT $1;

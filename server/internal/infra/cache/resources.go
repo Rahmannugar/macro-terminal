@@ -25,11 +25,25 @@ type JSONStore struct {
 }
 
 func NewJSONStore(client *redis.Client) *JSONStore {
-	return &JSONStore{client: client, ttl: resourceTTL}
+	return NewJSONStoreWithTTL(client, resourceTTL)
+}
+
+// NewJSONStoreWithTTL builds a store whose entries expire after ttl
+// (still jittered downward by up to 10 percent).
+func NewJSONStoreWithTTL(client *redis.Client, ttl time.Duration) *JSONStore {
+	return &JSONStore{client: client, ttl: ttl}
 }
 
 func ArticleKey(id uuid.UUID) string {
 	return resourcePrefix + "article:" + id.String()
+}
+
+func ExplainArticleKey(id uuid.UUID) string {
+	return resourcePrefix + "explain:article:" + id.String()
+}
+
+func ExplainCalendarEventKey(id uuid.UUID) string {
+	return resourcePrefix + "explain:calendar_event:" + id.String()
 }
 
 func ArticleEnrichmentKey(id uuid.UUID) string {

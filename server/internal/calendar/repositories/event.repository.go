@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -10,6 +11,7 @@ import (
 	calendardb "github.com/Rahmannugar/macro-terminal/server/internal/calendar/repositories/generated"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -96,6 +98,46 @@ func (repository *EventRepository) PersistEvents(
 		_ = repository.store.Set(ctx, cache.CalendarEventKey(record.ID), record)
 	}
 	return stats, nil
+}
+
+func (repository *EventRepository) CalendarEvent(ctx context.Context, id uuid.UUID) (models.EventContext, bool, error) {
+	row, err := repository.queries.GetCalendarEvent(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return models.EventContext{}, false, nil
+	}
+	if err != nil {
+		return models.EventContext{}, false, fmt.Errorf("get calendar event: %w", err)
+	}
+	scheduledAt := timeValue(row.ScheduledAt)
+	if scheduledAt == nil {
+		return models.EventContext{}, false, fmt.Errorf("calendar event %s has no scheduled time", row.ID)
+	}
+	previous, err := numericFloat(row.Previous)
+	if err != nil {
+		return models.EventContext{}, false, err
+	}
+	consensus, err := numericFloat(row.Consensus)
+	if err != nil {
+		return models.EventContext{}, false, err
+	}
+	actual, err := numericFloat(row.Actual)
+	if err != nil {
+		return models.EventContext{}, false, err
+	}
+	return models.EventContext{
+		StoredEvent: models.StoredEvent{
+			ID:          row.ID,
+			SourceID:    row.SourceID,
+			IndicatorID: row.IndicatorID,
+			ScheduledAt: *scheduledAt,
+			ReleasedAt:  timeValue(row.ReleasedAt),
+			Previous:    previous,
+			Consensus:   consensus,
+			Actual:      actual,
+		},
+		IndicatorName: row.IndicatorName,
+		IndicatorType: row.IndicatorType,
+	}, true, nil
 }
 
 // storedEventFromRow flattens the driver-specific row into the plain

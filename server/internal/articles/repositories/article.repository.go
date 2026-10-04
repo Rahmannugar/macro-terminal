@@ -157,6 +157,31 @@ func (repository *ArticleRepository) GetArticlesByIDs(ctx context.Context, ids [
 	return ordered, nil
 }
 
+// RecentArticlesByEntities returns the newest articles linked to any of
+// the entities, hydrating through the cache-backed lookup so stored rows
+// stay authoritative.
+func (repository *ArticleRepository) RecentArticlesByEntities(
+	ctx context.Context,
+	entityIDs []uuid.UUID,
+	limit int,
+) ([]models.StoredArticle, error) {
+	if len(entityIDs) == 0 || limit <= 0 {
+		return nil, nil
+	}
+	rows, err := repository.queries.GetRecentArticleIDsByEntities(ctx, articledb.GetRecentArticleIDsByEntitiesParams{
+		Limit: int32(limit),
+		Ids:   entityIDs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("get recent article ids by entities: %w", err)
+	}
+	ids := make([]uuid.UUID, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ID)
+	}
+	return repository.GetArticlesByIDs(ctx, ids)
+}
+
 func storedArticleFromRow(row articledb.GetArticlesByIDsRow) models.StoredArticle {
 	var publishedAt *time.Time
 	if row.PublishedAt.Valid {

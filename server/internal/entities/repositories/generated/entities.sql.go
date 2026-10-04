@@ -76,6 +76,76 @@ func (q *Queries) CreateEntityPair(ctx context.Context, arg CreateEntityPairPara
 	return i, err
 }
 
+const getEntitiesForArticle = `-- name: GetEntitiesForArticle :many
+SELECT e.id, e.code, e.name, e.type, e.created_at, e.updated_at
+FROM article_entities AS link
+JOIN entities AS e ON e.id = link.entity_id
+WHERE link.article_id = $1
+ORDER BY e.code
+`
+
+func (q *Queries) GetEntitiesForArticle(ctx context.Context, articleID uuid.UUID) ([]Entity, error) {
+	rows, err := q.db.Query(ctx, getEntitiesForArticle, articleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Entity
+	for rows.Next() {
+		var i Entity
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.Type,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getEntitiesForCalendarEvent = `-- name: GetEntitiesForCalendarEvent :many
+SELECT e.id, e.code, e.name, e.type, e.created_at, e.updated_at
+FROM calendar_event_entities AS link
+JOIN entities AS e ON e.id = link.entity_id
+WHERE link.calendar_event_id = $1
+ORDER BY e.code
+`
+
+func (q *Queries) GetEntitiesForCalendarEvent(ctx context.Context, calendarEventID uuid.UUID) ([]Entity, error) {
+	rows, err := q.db.Query(ctx, getEntitiesForCalendarEvent, calendarEventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Entity
+	for rows.Next() {
+		var i Entity
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.Type,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getEntityByCode = `-- name: GetEntityByCode :one
 SELECT id, code, name, type, created_at, updated_at
 FROM entities
@@ -379,6 +449,41 @@ func (q *Queries) ListIndicators(ctx context.Context) ([]EconomicIndicator, erro
 			&i.Name,
 			&i.EntityID,
 			&i.Type,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listKnowledgeTermsForEntities = `-- name: ListKnowledgeTermsForEntities :many
+SELECT id, name, type, entity_id, indicator_id, created_at, updated_at
+FROM knowledge_terms
+WHERE entity_id = ANY($1::uuid[])
+ORDER BY name, type
+`
+
+func (q *Queries) ListKnowledgeTermsForEntities(ctx context.Context, ids []uuid.UUID) ([]KnowledgeTerm, error) {
+	rows, err := q.db.Query(ctx, listKnowledgeTermsForEntities, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []KnowledgeTerm
+	for rows.Next() {
+		var i KnowledgeTerm
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Type,
+			&i.EntityID,
+			&i.IndicatorID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
