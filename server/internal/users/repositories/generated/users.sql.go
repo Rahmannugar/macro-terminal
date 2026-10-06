@@ -74,6 +74,74 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByIDRow
 	return i, err
 }
 
+const listUsers = `-- name: ListUsers :many
+SELECT id, username, authlier_subject_id, role, status, created_at, updated_at
+FROM users
+WHERE ($1::text IS NULL OR role = $1::text)
+  AND ($2::text IS NULL OR status = $2::text)
+  AND (
+      $3::timestamptz IS NULL
+      OR (created_at, id) < (
+          $3::timestamptz,
+          $4::uuid
+      )
+  )
+ORDER BY created_at DESC, id DESC
+LIMIT $5
+`
+
+type ListUsersParams struct {
+	Role            *string
+	Status          *string
+	CursorCreatedAt pgtype.Timestamptz
+	CursorID        pgtype.UUID
+	PageSize        int32
+}
+
+type ListUsersRow struct {
+	ID                uuid.UUID
+	Username          *string
+	AuthlierSubjectID string
+	Role              string
+	Status            string
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
+func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]ListUsersRow, error) {
+	rows, err := q.db.Query(ctx, listUsers,
+		arg.Role,
+		arg.Status,
+		arg.CursorCreatedAt,
+		arg.CursorID,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUsersRow
+	for rows.Next() {
+		var i ListUsersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Username,
+			&i.AuthlierSubjectID,
+			&i.Role,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const resolveUserByAuthlierSubjectID = `-- name: ResolveUserByAuthlierSubjectID :one
 WITH inserted AS (
     INSERT INTO users (id, authlier_subject_id, role)
@@ -146,6 +214,43 @@ type UpdateRoleRow struct {
 func (q *Queries) UpdateRole(ctx context.Context, arg UpdateRoleParams) (UpdateRoleRow, error) {
 	row := q.db.QueryRow(ctx, updateRole, arg.ID, arg.Role)
 	var i UpdateRoleRow
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.AuthlierSubjectID,
+		&i.Role,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateUserStatus = `-- name: UpdateUserStatus :one
+UPDATE users
+SET status = $2, updated_at = now()
+WHERE id = $1
+RETURNING id, username, authlier_subject_id, role, status, created_at, updated_at
+`
+
+type UpdateUserStatusParams struct {
+	ID     uuid.UUID
+	Status string
+}
+
+type UpdateUserStatusRow struct {
+	ID                uuid.UUID
+	Username          *string
+	AuthlierSubjectID string
+	Role              string
+	Status            string
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
+func (q *Queries) UpdateUserStatus(ctx context.Context, arg UpdateUserStatusParams) (UpdateUserStatusRow, error) {
+	row := q.db.QueryRow(ctx, updateUserStatus, arg.ID, arg.Status)
+	var i UpdateUserStatusRow
 	err := row.Scan(
 		&i.ID,
 		&i.Username,

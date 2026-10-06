@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Rahmannugar/macro-terminal/server/internal/adminjobs"
+	adminjobsrepositories "github.com/Rahmannugar/macro-terminal/server/internal/adminjobs/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/ai"
 	"github.com/Rahmannugar/macro-terminal/server/internal/articles"
 	articlerepositories "github.com/Rahmannugar/macro-terminal/server/internal/articles/repositories"
@@ -21,6 +23,8 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/telemetry"
 	"github.com/Rahmannugar/macro-terminal/server/internal/openapi"
 	"github.com/Rahmannugar/macro-terminal/server/internal/search"
+	"github.com/Rahmannugar/macro-terminal/server/internal/users"
+	userrepositories "github.com/Rahmannugar/macro-terminal/server/internal/users/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/vector"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -60,6 +64,11 @@ func newRouter(
 		return nil, err
 	}
 	authentication.RegisterRoutes(router, authComponents.service, authComponents.handler, authComponents.sessionCookie)
+
+	adminGroup := router.Group("/api/v1/admin")
+	adminGroup.Use(authentication.RequireAdmin(authComponents.service))
+	users.RegisterAdminRoutes(adminGroup, users.NewAdminService(userrepositories.NewUserRepository(database)))
+	adminjobs.RegisterRoutes(adminGroup, adminjobsrepositories.NewJobRepository(database))
 
 	var searcher vector.Searcher
 	if cfg.Ahnlich.AIAddr != "" {

@@ -8,6 +8,7 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/users/models"
 	userdb "github.com/Rahmannugar/macro-terminal/server/internal/users/repositories/generated"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -76,6 +77,49 @@ func (repository *UserRepository) UpdateRole(
 		return models.User{}, fmt.Errorf("update role: %w", err)
 	}
 	return userFromRow(row.ID, row.Username, row.AuthlierSubjectID, row.Role, row.Status, row.CreatedAt.Time, row.UpdatedAt.Time), nil
+}
+
+func (repository *UserRepository) UpdateUserStatus(
+	ctx context.Context,
+	id uuid.UUID,
+	status string,
+) (models.User, error) {
+	row, err := repository.queries.UpdateUserStatus(ctx, userdb.UpdateUserStatusParams{ID: id, Status: status})
+	if err != nil {
+		return models.User{}, fmt.Errorf("update user status: %w", err)
+	}
+	return userFromRow(row.ID, row.Username, row.AuthlierSubjectID, row.Role, row.Status, row.CreatedAt.Time, row.UpdatedAt.Time), nil
+}
+
+func (repository *UserRepository) ListUsers(
+	ctx context.Context,
+	role *string,
+	status *string,
+	cursor *models.ListCursor,
+	limit int32,
+) ([]models.User, *models.ListCursor, error) {
+	params := userdb.ListUsersParams{
+		Role:     role,
+		Status:   status,
+		PageSize: limit + 1,
+	}
+	if cursor != nil {
+		params.CursorCreatedAt = pgtype.Timestamptz{Time: cursor.CreatedAt, Valid: true}
+		params.CursorID = pgtype.UUID{Bytes: cursor.ID, Valid: true}
+	}
+	rows, err := repository.queries.ListUsers(ctx, params)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list users: %w", err)
+	}
+	users := make([]models.User, 0, min(len(rows), int(limit)))
+	for index, row := range rows {
+		if int32(index) == limit {
+			last := users[len(users)-1]
+			return users, &models.ListCursor{CreatedAt: last.CreatedAt, ID: last.ID}, nil
+		}
+		users = append(users, userFromRow(row.ID, row.Username, row.AuthlierSubjectID, row.Role, row.Status, row.CreatedAt.Time, row.UpdatedAt.Time))
+	}
+	return users, nil, nil
 }
 
 func userFromRow(

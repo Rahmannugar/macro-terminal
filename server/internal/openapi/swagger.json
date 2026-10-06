@@ -1,6 +1,78 @@
 {
     "components": {
         "schemas": {
+            "adminjobs.jobJSON": {
+                "properties": {
+                    "attempts": {
+                        "example": 8,
+                        "type": "integer"
+                    },
+                    "createdAt": {
+                        "example": "2026-10-06T09:00:00Z",
+                        "type": "string"
+                    },
+                    "id": {
+                        "example": "3b033aa5-a1a9-404a-aac7-096b5361b7be",
+                        "type": "string"
+                    },
+                    "lastError": {
+                        "example": "provider returned 503",
+                        "type": "string"
+                    },
+                    "status": {
+                        "example": "failed",
+                        "type": "string"
+                    },
+                    "type": {
+                        "example": "article_enrichment",
+                        "type": "string"
+                    },
+                    "updatedAt": {
+                        "example": "2026-10-06T09:30:00Z",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "attempts",
+                    "createdAt",
+                    "id",
+                    "lastError",
+                    "status",
+                    "type",
+                    "updatedAt"
+                ],
+                "type": "object"
+            },
+            "adminjobs.jobListResponse": {
+                "properties": {
+                    "jobs": {
+                        "items": {
+                            "$ref": "#/components/schemas/adminjobs.jobJSON"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "nextCursor": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "jobs",
+                    "nextCursor"
+                ],
+                "type": "object"
+            },
+            "adminjobs.jobResponse": {
+                "properties": {
+                    "job": {
+                        "$ref": "#/components/schemas/adminjobs.jobJSON"
+                    }
+                },
+                "required": [
+                    "job"
+                ],
+                "type": "object"
+            },
             "articles.articleJSON": {
                 "properties": {
                     "content": {
@@ -340,6 +412,73 @@
                     "name"
                 ],
                 "type": "object"
+            },
+            "users.adminUserJSON": {
+                "properties": {
+                    "createdAt": {
+                        "example": "2026-10-06T09:00:00Z",
+                        "type": "string"
+                    },
+                    "id": {
+                        "example": "9d1e4a63-8f6d-4b9c-1f4e-7a553f8b2a60",
+                        "type": "string"
+                    },
+                    "role": {
+                        "example": "admin",
+                        "type": "string"
+                    },
+                    "status": {
+                        "example": "active",
+                        "type": "string"
+                    },
+                    "updatedAt": {
+                        "example": "2026-10-06T09:00:00Z",
+                        "type": "string"
+                    },
+                    "username": {
+                        "example": "macrofan",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "createdAt",
+                    "id",
+                    "role",
+                    "status",
+                    "updatedAt",
+                    "username"
+                ],
+                "type": "object"
+            },
+            "users.adminUserResponse": {
+                "properties": {
+                    "user": {
+                        "$ref": "#/components/schemas/users.adminUserJSON"
+                    }
+                },
+                "required": [
+                    "user"
+                ],
+                "type": "object"
+            },
+            "users.userListResponse": {
+                "properties": {
+                    "nextCursor": {
+                        "type": "string"
+                    },
+                    "users": {
+                        "items": {
+                            "$ref": "#/components/schemas/users.adminUserJSON"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "required": [
+                    "nextCursor",
+                    "users"
+                ],
+                "type": "object"
             }
         }
     },
@@ -473,6 +612,416 @@
                 "summary": "Set the account username.",
                 "tags": [
                     "account"
+                ]
+            }
+        },
+        "/api/v1/admin/jobs/failed": {
+            "get": {
+                "description": "Returns durable work that exhausted its retries, newest first, optionally filtered by job type. These rows are the dead-letter queue: replay a job to return it to normal processing. Pass the returned nextCursor to fetch the next page.",
+                "parameters": [
+                    {
+                        "description": "Filter by job type, for example article_enrichment or email_delivery.",
+                        "in": "query",
+                        "name": "type",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Page size between 1 and 100. Defaults to 25.",
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Opaque cursor returned as nextCursor by the previous page.",
+                        "in": "query",
+                        "name": "cursor",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/adminjobs.jobListResponse"
+                                }
+                            }
+                        },
+                        "description": "The failed jobs and the cursor for the next page, if any."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "A limit or cursor is invalid."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "List failed jobs.",
+                "tags": [
+                    "admin"
+                ]
+            }
+        },
+        "/api/v1/admin/jobs/{id}/replay": {
+            "post": {
+                "description": "Returns a dead-lettered job to pending state with its attempt counter reset, so workers pick it up again under normal retry rules. Replaying an already pending job is a no-op; jobs in any other state are refused.",
+                "parameters": [
+                    {
+                        "description": "Job id (UUID).",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/adminjobs.jobResponse"
+                                }
+                            }
+                        },
+                        "description": "The job, now pending."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The id is not a valid UUID."
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "No job has that id."
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The job is not in a replayable state."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Replay a failed job.",
+                "tags": [
+                    "admin"
+                ]
+            }
+        },
+        "/api/v1/admin/users": {
+            "get": {
+                "description": "Returns accounts newest first with their role and status, optionally filtered by role or status. Pass the returned nextCursor to fetch the next page.",
+                "parameters": [
+                    {
+                        "description": "Filter by role: admin or user.",
+                        "in": "query",
+                        "name": "role",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Filter by status: active or suspended.",
+                        "in": "query",
+                        "name": "status",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Page size between 1 and 100. Defaults to 25.",
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Opaque cursor returned as nextCursor by the previous page.",
+                        "in": "query",
+                        "name": "cursor",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/users.userListResponse"
+                                }
+                            }
+                        },
+                        "description": "The accounts and the cursor for the next page, if any."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "A filter, limit, or cursor is invalid."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "List user accounts.",
+                "tags": [
+                    "admin"
+                ]
+            }
+        },
+        "/api/v1/admin/users/{id}/promote": {
+            "post": {
+                "description": "Grants the account full administrative access. Promoting an account that is already an administrator changes nothing. Administrators cannot be demoted.",
+                "parameters": [
+                    {
+                        "description": "User id (UUID).",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/users.adminUserResponse"
+                                }
+                            }
+                        },
+                        "description": "The updated account."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The id is not a valid UUID."
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "No account has that id."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Promote a user to administrator.",
+                "tags": [
+                    "admin"
+                ]
+            }
+        },
+        "/api/v1/admin/users/{id}/reactivate": {
+            "post": {
+                "description": "Returns the account to active status so its sessions work again. Reactivating an already active account changes nothing.",
+                "parameters": [
+                    {
+                        "description": "User id (UUID).",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/users.adminUserResponse"
+                                }
+                            }
+                        },
+                        "description": "The updated account."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The id is not a valid UUID."
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "No account has that id."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Reactivate a suspended user account.",
+                "tags": [
+                    "admin"
+                ]
+            }
+        },
+        "/api/v1/admin/users/{id}/suspend": {
+            "post": {
+                "description": "Marks the account suspended. Every request the account makes is refused with a suspension error from then on. Suspending an already suspended account changes nothing, and an administrator cannot suspend their own account.",
+                "parameters": [
+                    {
+                        "description": "User id (UUID).",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/users.adminUserResponse"
+                                }
+                            }
+                        },
+                        "description": "The updated account."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The id is not a valid UUID."
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "No account has that id."
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The administrator tried to suspend their own account."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Suspend a user account.",
+                "tags": [
+                    "admin"
                 ]
             }
         },
