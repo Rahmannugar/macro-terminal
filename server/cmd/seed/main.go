@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log/slog"
 	"os"
@@ -21,13 +22,25 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
-	if err := run(); err != nil {
+	var adminUsername, adminEmail, adminPassword string
+	flag.StringVar(&adminUsername, "username", "", "admin display username (optional)")
+	flag.StringVar(&adminEmail, "email", "", "admin email")
+	flag.StringVar(&adminPassword, "password", "", "admin password")
+	flag.Parse()
+
+	if err := run(adminUsername, adminEmail, adminPassword); err != nil {
 		logger.Error("seed failed", "error", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(adminUsername string, adminEmail string, adminPassword string) error {
+	if (adminEmail == "") != (adminPassword == "") {
+		return fmt.Errorf("seed admin email and password must be provided together")
+	}
+	if adminUsername != "" && adminEmail == "" {
+		return fmt.Errorf("seed admin username requires email and password")
+	}
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("load configuration: %w", err)
@@ -102,6 +115,14 @@ func run() error {
 			}
 			indicatorTermsUpserted++
 		}
+	}
+
+	if adminEmail != "" {
+		normalizedEmail, err := ensureAdmin(ctx, pool, adminUsername, adminEmail, adminPassword)
+		if err != nil {
+			return err
+		}
+		slog.Info("seed admin ready", "email", normalizedEmail)
 	}
 
 	slog.Info(

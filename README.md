@@ -21,6 +21,10 @@ https://excalidraw.com/#json=gNTtu36lxwijy3kd2t7Uo,SkG-HvFr6X2ghNG1eyBWyg
 - OpenTelemetry → New Relic
 - Docker
 
+## Web scraping
+
+Two sources are scraped from web pages using HTML selectors: **People's Bank of China (PBOC)** (`pbc.gov.cn`) and **IEA** (`iea.org`) — their listing pages and their article bodies. Every other source is retrieved from its published feed or API.
+
 ## Layout
 
 ```

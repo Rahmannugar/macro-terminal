@@ -58,9 +58,9 @@ tasks:
       - go tool tern migrate --config server/internal/infra/database/tern.conf --migrations db/migrations
 
   seed:
-    desc: Seed the initial source universe (idempotent)
+    desc: Seed the initial source universe (idempotent); add -- -email <address> -password <secret> [-username <name>] to bootstrap the first admin
     cmds:
-      - go run ./server/cmd/seed
+      - go run ./server/cmd/seed {{.CLI_ARGS}}
 
   reindex:
     desc: Reset article indexing work so vectors rebuild from PostgreSQL

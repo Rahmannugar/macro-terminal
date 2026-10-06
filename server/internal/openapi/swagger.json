@@ -64,6 +64,82 @@
                 ],
                 "type": "object"
             },
+            "authentication.accountJSON": {
+                "properties": {
+                    "email": {
+                        "example": "reader@example.com",
+                        "type": "string"
+                    },
+                    "id": {
+                        "example": "9d1e4a63-8f6d-4b9c-1f4e-7a553f8b2a60",
+                        "type": "string"
+                    },
+                    "role": {
+                        "example": "user",
+                        "type": "string"
+                    },
+                    "status": {
+                        "example": "active",
+                        "type": "string"
+                    },
+                    "username": {
+                        "example": "macrofan",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "email",
+                    "id",
+                    "role",
+                    "status",
+                    "username"
+                ],
+                "type": "object"
+            },
+            "authentication.accountResponse": {
+                "properties": {
+                    "account": {
+                        "$ref": "#/components/schemas/authentication.accountJSON"
+                    },
+                    "session": {
+                        "$ref": "#/components/schemas/authentication.sessionJSON"
+                    }
+                },
+                "required": [
+                    "account",
+                    "session"
+                ],
+                "type": "object"
+            },
+            "authentication.sessionJSON": {
+                "properties": {
+                    "createdAt": {
+                        "example": "2026-10-06T09:00:00Z",
+                        "type": "string"
+                    },
+                    "expiresAt": {
+                        "example": "2026-10-13T09:00:00Z",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "createdAt",
+                    "expiresAt"
+                ],
+                "type": "object"
+            },
+            "authentication.updateUsernameRequest": {
+                "properties": {
+                    "username": {
+                        "example": "macrofan",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "username"
+                ],
+                "type": "object"
+            },
             "clustering.articleJSON": {
                 "properties": {
                     "content": {
@@ -277,6 +353,129 @@
         "url": ""
     },
     "paths": {
+        "/api/v1/account": {
+            "get": {
+                "description": "Resolves the session cookie to the local account, creating the user projection on first use. The email comes from the identity provider.",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/authentication.accountResponse"
+                                }
+                            }
+                        },
+                        "description": "The account and its session."
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "No valid session exists."
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The account is suspended."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Get the signed-in account.",
+                "tags": [
+                    "account"
+                ]
+            },
+            "patch": {
+                "description": "Stores a display username on the signed-in account. The username is optional and is not used to sign in.",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/authentication.updateUsernameRequest",
+                                "summary": "body",
+                                "description": "The username to store, 1 to 64 characters."
+                            }
+                        }
+                    },
+                    "description": "The username to store, 1 to 64 characters.",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/authentication.accountResponse"
+                                }
+                            }
+                        },
+                        "description": "The updated account and its session."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The username is missing or too long."
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "No valid session exists."
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The account is suspended."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Set the account username.",
+                "tags": [
+                    "account"
+                ]
+            }
+        },
         "/api/v1/articles/{id}": {
             "get": {
                 "description": "Returns a single article by id.",

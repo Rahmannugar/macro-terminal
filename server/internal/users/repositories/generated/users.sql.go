@@ -13,16 +13,17 @@ import (
 )
 
 const getUserByAuthlierSubjectID = `-- name: GetUserByAuthlierSubjectID :one
-SELECT id, username, authlier_subject_id, role, created_at, updated_at
+SELECT id, username, authlier_subject_id, role, status, created_at, updated_at
 FROM users
 WHERE authlier_subject_id = $1
 `
 
 type GetUserByAuthlierSubjectIDRow struct {
 	ID                uuid.UUID
-	Username          string
+	Username          *string
 	AuthlierSubjectID string
 	Role              string
+	Status            string
 	CreatedAt         pgtype.Timestamptz
 	UpdatedAt         pgtype.Timestamptz
 }
@@ -35,6 +36,7 @@ func (q *Queries) GetUserByAuthlierSubjectID(ctx context.Context, authlierSubjec
 		&i.Username,
 		&i.AuthlierSubjectID,
 		&i.Role,
+		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -42,16 +44,17 @@ func (q *Queries) GetUserByAuthlierSubjectID(ctx context.Context, authlierSubjec
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, username, authlier_subject_id, role, created_at, updated_at
+SELECT id, username, authlier_subject_id, role, status, created_at, updated_at
 FROM users
 WHERE id = $1
 `
 
 type GetUserByIDRow struct {
 	ID                uuid.UUID
-	Username          string
+	Username          *string
 	AuthlierSubjectID string
 	Role              string
+	Status            string
 	CreatedAt         pgtype.Timestamptz
 	UpdatedAt         pgtype.Timestamptz
 }
@@ -64,6 +67,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByIDRow
 		&i.Username,
 		&i.AuthlierSubjectID,
 		&i.Role,
+		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -72,49 +76,119 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (GetUserByIDRow
 
 const resolveUserByAuthlierSubjectID = `-- name: ResolveUserByAuthlierSubjectID :one
 WITH inserted AS (
-    INSERT INTO users (id, username, authlier_subject_id, role)
-    VALUES ($1, $2, $3, $4)
+    INSERT INTO users (id, authlier_subject_id, role)
+    VALUES ($1, $2, $3)
     ON CONFLICT (authlier_subject_id) DO NOTHING
-    RETURNING id, username, authlier_subject_id, role, created_at, updated_at
+    RETURNING id, username, authlier_subject_id, role, status, created_at, updated_at
 )
-SELECT id, username, authlier_subject_id, role, created_at, updated_at
+SELECT id, username, authlier_subject_id, role, status, created_at, updated_at
 FROM inserted
 UNION ALL
-SELECT id, username, authlier_subject_id, role, created_at, updated_at
+SELECT id, username, authlier_subject_id, role, status, created_at, updated_at
 FROM users
-WHERE authlier_subject_id = $3
+WHERE authlier_subject_id = $2
 LIMIT 1
 `
 
 type ResolveUserByAuthlierSubjectIDParams struct {
 	ID                uuid.UUID
-	Username          string
 	AuthlierSubjectID string
 	Role              string
 }
 
 type ResolveUserByAuthlierSubjectIDRow struct {
 	ID                uuid.UUID
-	Username          string
+	Username          *string
 	AuthlierSubjectID string
 	Role              string
+	Status            string
 	CreatedAt         pgtype.Timestamptz
 	UpdatedAt         pgtype.Timestamptz
 }
 
 func (q *Queries) ResolveUserByAuthlierSubjectID(ctx context.Context, arg ResolveUserByAuthlierSubjectIDParams) (ResolveUserByAuthlierSubjectIDRow, error) {
-	row := q.db.QueryRow(ctx, resolveUserByAuthlierSubjectID,
-		arg.ID,
-		arg.Username,
-		arg.AuthlierSubjectID,
-		arg.Role,
-	)
+	row := q.db.QueryRow(ctx, resolveUserByAuthlierSubjectID, arg.ID, arg.AuthlierSubjectID, arg.Role)
 	var i ResolveUserByAuthlierSubjectIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.Username,
 		&i.AuthlierSubjectID,
 		&i.Role,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateRole = `-- name: UpdateRole :one
+UPDATE users
+SET role = $2, updated_at = now()
+WHERE id = $1
+RETURNING id, username, authlier_subject_id, role, status, created_at, updated_at
+`
+
+type UpdateRoleParams struct {
+	ID   uuid.UUID
+	Role string
+}
+
+type UpdateRoleRow struct {
+	ID                uuid.UUID
+	Username          *string
+	AuthlierSubjectID string
+	Role              string
+	Status            string
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
+func (q *Queries) UpdateRole(ctx context.Context, arg UpdateRoleParams) (UpdateRoleRow, error) {
+	row := q.db.QueryRow(ctx, updateRole, arg.ID, arg.Role)
+	var i UpdateRoleRow
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.AuthlierSubjectID,
+		&i.Role,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateUsername = `-- name: UpdateUsername :one
+UPDATE users
+SET username = $2, updated_at = now()
+WHERE id = $1
+RETURNING id, username, authlier_subject_id, role, status, created_at, updated_at
+`
+
+type UpdateUsernameParams struct {
+	ID       uuid.UUID
+	Username *string
+}
+
+type UpdateUsernameRow struct {
+	ID                uuid.UUID
+	Username          *string
+	AuthlierSubjectID string
+	Role              string
+	Status            string
+	CreatedAt         pgtype.Timestamptz
+	UpdatedAt         pgtype.Timestamptz
+}
+
+func (q *Queries) UpdateUsername(ctx context.Context, arg UpdateUsernameParams) (UpdateUsernameRow, error) {
+	row := q.db.QueryRow(ctx, updateUsername, arg.ID, arg.Username)
+	var i UpdateUsernameRow
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.AuthlierSubjectID,
+		&i.Role,
+		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

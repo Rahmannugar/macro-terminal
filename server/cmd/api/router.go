@@ -7,6 +7,7 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/ai"
 	"github.com/Rahmannugar/macro-terminal/server/internal/articles"
 	articlerepositories "github.com/Rahmannugar/macro-terminal/server/internal/articles/repositories"
+	"github.com/Rahmannugar/macro-terminal/server/internal/authentication"
 	calendarrepositories "github.com/Rahmannugar/macro-terminal/server/internal/calendar/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/clustering"
 	clusteringrepositories "github.com/Rahmannugar/macro-terminal/server/internal/clustering/repositories"
@@ -53,6 +54,12 @@ func newRouter(
 	if err := openapi.RegisterRoutes(router); err != nil {
 		return nil, fmt.Errorf("register OpenAPI routes: %w", err)
 	}
+
+	authComponents, err := newAuthenticationComponents(cfg, database, redisClient)
+	if err != nil {
+		return nil, err
+	}
+	authentication.RegisterRoutes(router, authComponents.service, authComponents.handler, authComponents.sessionCookie)
 
 	var searcher vector.Searcher
 	if cfg.Ahnlich.AIAddr != "" {

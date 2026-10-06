@@ -25,6 +25,8 @@ import (
 	indexingrepositories "github.com/Rahmannugar/macro-terminal/server/internal/indexing/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/database"
+	emaildelivery "github.com/Rahmannugar/macro-terminal/server/internal/infra/emaildelivery"
+	emaildeliveryrepositories "github.com/Rahmannugar/macro-terminal/server/internal/infra/emaildelivery/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/telemetry"
 	"github.com/Rahmannugar/macro-terminal/server/internal/ingestion"
 	"github.com/Rahmannugar/macro-terminal/server/internal/mapping"
@@ -170,8 +172,26 @@ func run() (runError error) {
 		sourceFetcher,
 		logger,
 	)
+	emailQueue, err := emaildelivery.NewQueue(databasePool, cfg.Auth.OTPHMACSecret)
+	if err != nil {
+		return fmt.Errorf("configure email delivery queue: %w", err)
+	}
+	emailSender, err := emaildelivery.NewResendSender(
+		telemetry.NewHTTPClient(providerFetchTimeout),
+		cfg.Resend.APIKey,
+		cfg.Resend.NoReplyFrom,
+	)
+	if err != nil {
+		return fmt.Errorf("configure email delivery sender: %w", err)
+	}
+	emailJob := emaildelivery.NewJob(
+		emaildeliveryrepositories.NewRepository(databasePool),
+		emailQueue,
+		emailSender,
+		logger,
+	)
 
-	results := make(chan workerResult, 8)
+	results := make(chan workerResult, 9)
 	go func() {
 		results <- workerResult{name: "ingestion-runner", err: ingestionRunner.Run(workerContext)}
 	}()
@@ -196,6 +216,7 @@ func run() (runError error) {
 				clusteringJob.Wake()
 				notificationJob.Wake()
 				hydrationJob.Wake()
+				emailJob.Wake()
 			},
 		)}
 	}()
@@ -214,13 +235,16 @@ func run() (runError error) {
 	go func() {
 		results <- workerResult{name: "hydration-job", err: hydrationJob.Run(workerContext)}
 	}()
-	logger.Info("worker started", "jobs", 8)
+	go func() {
+		results <- workerResult{name: "email-delivery-job", err: emailJob.Run(workerContext)}
+	}()
+	logger.Info("worker started", "jobs", 9)
 
 	<-workerContext.Done()
 	stopWorkers()
 	shutdownTimer := time.NewTimer(shutdownTimeout)
 	defer shutdownTimer.Stop()
-	for completed := 0; completed < 8; completed++ {
+	for completed := 0; completed < 9; completed++ {
 		select {
 		case result := <-results:
 			if result.err != nil && !errors.Is(result.err, context.Canceled) {

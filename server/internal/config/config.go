@@ -1,10 +1,12 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io/fs"
 	"net"
+	"net/mail"
 	"net/url"
 	"strconv"
 	"strings"
@@ -38,6 +40,7 @@ type Config struct {
 	Auth        Auth
 	AI          AI
 	Ahnlich     Ahnlich
+	Resend      Resend
 }
 
 type HTTP struct {
@@ -65,6 +68,12 @@ type Auth struct {
 	ClientBaseURL  string
 	TrustedOrigins []string
 	TrustedProxies []string
+	OTPHMACSecret  []byte
+}
+
+type Resend struct {
+	APIKey      string
+	NoReplyFrom string
 }
 
 type AI struct {
@@ -157,6 +166,15 @@ func Load() (Config, error) {
 	cfg.Auth.ClientBaseURL = k.String("auth.client_base_url")
 	cfg.Auth.TrustedOrigins = commaSeparated(k.String("auth.trusted_origins"))
 	cfg.Auth.TrustedProxies = commaSeparated(k.String("auth.trusted_proxies"))
+	if encodedSecret := strings.TrimSpace(k.String("auth.otp_hmac_secret")); encodedSecret != "" {
+		decodedSecret, err := base64.StdEncoding.DecodeString(encodedSecret)
+		if err != nil {
+			return Config{}, fmt.Errorf("MACRO_TERMINAL_AUTH_OTP_HMAC_SECRET must be base64 encoded: %w", err)
+		}
+		cfg.Auth.OTPHMACSecret = decodedSecret
+	}
+	cfg.Resend.APIKey = strings.TrimSpace(k.String("resend.api_key"))
+	cfg.Resend.NoReplyFrom = strings.TrimSpace(k.String("resend.noreply_from"))
 	cfg.AI.APIKey = strings.TrimSpace(k.String("ai.api_key"))
 	cfg.AI.Model = defaultAIModel
 	if model := strings.TrimSpace(k.String("ai.model")); model != "" {
@@ -221,6 +239,15 @@ func (cfg Config) Validate() error {
 	}
 	if err := validateOrigin("MACRO_TERMINAL_AUTH_CLIENT_BASE_URL", cfg.Auth.ClientBaseURL, cfg.Environment); err != nil {
 		return err
+	}
+	if len(cfg.Auth.OTPHMACSecret) < 32 {
+		return fmt.Errorf("MACRO_TERMINAL_AUTH_OTP_HMAC_SECRET must decode to at least 32 bytes")
+	}
+	if cfg.Resend.APIKey == "" {
+		return fmt.Errorf("MACRO_TERMINAL_RESEND_API_KEY is required")
+	}
+	if _, err := mail.ParseAddress(cfg.Resend.NoReplyFrom); err != nil {
+		return fmt.Errorf("MACRO_TERMINAL_RESEND_NOREPLY_FROM must be a valid email sender: %w", err)
 	}
 	return nil
 }
