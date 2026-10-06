@@ -129,6 +129,60 @@ func TestPersistArticlesIsIdempotent(t *testing.T) {
 	assertCounts(t, pool, 2, 3, 0)
 }
 
+func TestPersistArticlesKeepsStoredContentWhenDeliveryHasNone(t *testing.T) {
+	pool := testdb.OpenMigratedDatabase(t)
+
+	sourceRepository := sourcerepositories.NewSourceRepository(pool)
+	source, err := sourceRepository.UpsertSource(t.Context(), sourcemodels.Source{
+		ID:   testID(t),
+		Name: "Article Content Preservation Source",
+		Type: "news",
+	})
+	if err != nil {
+		t.Fatalf("create source: %v", err)
+	}
+
+	articleRepository := articlerepositories.NewArticleRepository(pool, nil)
+	entry := articlemodels.PersistEntry{
+		SourceID: source.ID,
+		Title:    "PBOC adjusts policy tools",
+		Content:  "<p>Hydrated article body.</p>",
+		URL:      "https://example.com/pboc-tools",
+	}
+	if _, err := articleRepository.PersistArticles(t.Context(), []articlemodels.PersistEntry{entry}); err != nil {
+		t.Fatalf("persist article: %v", err)
+	}
+
+	// A listing re-delivery without a body must not erase stored content.
+	emptyDelivery := entry
+	emptyDelivery.Content = ""
+	if _, err := articleRepository.PersistArticles(t.Context(), []articlemodels.PersistEntry{emptyDelivery}); err != nil {
+		t.Fatalf("persist empty delivery: %v", err)
+	}
+	assertContent(t, pool, source.ID, entry.URL, entry.Content)
+
+	// A delivery with new text still wins.
+	entry.Content = "<p>Updated full text.</p>"
+	if _, err := articleRepository.PersistArticles(t.Context(), []articlemodels.PersistEntry{entry}); err != nil {
+		t.Fatalf("persist updated delivery: %v", err)
+	}
+	assertContent(t, pool, source.ID, entry.URL, entry.Content)
+}
+
+func assertContent(t *testing.T, pool *pgxpool.Pool, sourceID uuid.UUID, url, want string) {
+	t.Helper()
+	var got *string
+	if err := pool.QueryRow(t.Context(),
+		`SELECT content FROM articles WHERE source_id = $1 AND url = $2`,
+		sourceID, url,
+	).Scan(&got); err != nil {
+		t.Fatalf("read stored content: %v", err)
+	}
+	if got == nil || *got != want {
+		t.Fatalf("stored content = %v, want %q", got, want)
+	}
+}
+
 func testID(t *testing.T) uuid.UUID {
 	t.Helper()
 

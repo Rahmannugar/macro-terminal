@@ -6,7 +6,7 @@ import (
 )
 
 const sampleRSS = `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0">
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
   <channel>
     <title>Example Feed</title>
     <link>https://example.com</link>
@@ -16,6 +16,7 @@ const sampleRSS = `<?xml version="1.0" encoding="UTF-8"?>
       <link>https://example.com/fed</link>
       <guid>urn:fed-1</guid>
       <description>The Federal Reserve kept rates unchanged.</description>
+      <content:encoded><![CDATA[<p>The Federal Reserve held its benchmark rate steady, citing resilient growth.</p>]]></content:encoded>
       <pubDate>Tue, 29 Sep 2026 12:30:00 GMT</pubDate>
     </item>
     <item>
@@ -45,6 +46,12 @@ func TestRSSAdapterParse(t *testing.T) {
 	if first.URL != "https://example.com/fed" {
 		t.Fatalf("first URL = %q", first.URL)
 	}
+	if first.Content != "<p>The Federal Reserve held its benchmark rate steady, citing resilient growth.</p>" {
+		t.Fatalf("first Content = %q, want the feed's full content", first.Content)
+	}
+	if first.Summary != "The Federal Reserve kept rates unchanged." {
+		t.Fatalf("first Summary = %q", first.Summary)
+	}
 	if first.Published.IsZero() {
 		t.Fatalf("first Published should be parsed from pubDate")
 	}
@@ -52,6 +59,9 @@ func TestRSSAdapterParse(t *testing.T) {
 	second := result.Items[1]
 	if second.GUID != "https://example.com/two" {
 		t.Fatalf("GUID should fall back to link, got %q", second.GUID)
+	}
+	if second.Content != "" {
+		t.Fatalf("second Content = %q, want empty without content:encoded", second.Content)
 	}
 	if !second.Published.IsZero() {
 		t.Fatalf("second Published should be zero without a date")

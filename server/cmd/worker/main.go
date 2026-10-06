@@ -19,6 +19,8 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/enrichment"
 	enrichmentrepositories "github.com/Rahmannugar/macro-terminal/server/internal/enrichment/repositories"
 	entityrepositories "github.com/Rahmannugar/macro-terminal/server/internal/entities/repositories"
+	"github.com/Rahmannugar/macro-terminal/server/internal/hydration"
+	hydrationrepositories "github.com/Rahmannugar/macro-terminal/server/internal/hydration/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/indexing"
 	indexingrepositories "github.com/Rahmannugar/macro-terminal/server/internal/indexing/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
@@ -109,13 +111,14 @@ func run() (runError error) {
 
 	sourceRepository := sourcesrepositories.NewSourceRepository(databasePool)
 	entityRepository := entityrepositories.NewEntityRepository(databasePool)
+	sourceFetcher := ingestion.NewFetcher(
+		telemetry.NewHTTPClient(providerFetchTimeout),
+		ingestion.NewDefaultBreaker(),
+		logger,
+	)
 	ingestionRunner := ingestion.NewRunner(
 		sourceRepository,
-		ingestion.NewFetcher(
-			telemetry.NewHTTPClient(providerFetchTimeout),
-			ingestion.NewDefaultBreaker(),
-			logger,
-		),
+		sourceFetcher,
 		mapping.NewLoader(entityRepository),
 		articlerepositories.NewArticleRepository(databasePool, resourceStore),
 		calendarepositories.NewEventRepository(databasePool, resourceStore),
@@ -162,8 +165,13 @@ func run() (runError error) {
 		notificationrepositories.NewRepository(databasePool),
 		logger,
 	)
+	hydrationJob := hydration.NewJob(
+		hydrationrepositories.NewRepository(databasePool, resourceStore),
+		sourceFetcher,
+		logger,
+	)
 
-	results := make(chan workerResult, 7)
+	results := make(chan workerResult, 8)
 	go func() {
 		results <- workerResult{name: "ingestion-runner", err: ingestionRunner.Run(workerContext)}
 	}()
@@ -187,6 +195,7 @@ func run() (runError error) {
 				indexingJob.Wake()
 				clusteringJob.Wake()
 				notificationJob.Wake()
+				hydrationJob.Wake()
 			},
 		)}
 	}()
@@ -202,13 +211,16 @@ func run() (runError error) {
 	go func() {
 		results <- workerResult{name: "notification-job", err: notificationJob.Run(workerContext)}
 	}()
-	logger.Info("worker started", "jobs", 7)
+	go func() {
+		results <- workerResult{name: "hydration-job", err: hydrationJob.Run(workerContext)}
+	}()
+	logger.Info("worker started", "jobs", 8)
 
 	<-workerContext.Done()
 	stopWorkers()
 	shutdownTimer := time.NewTimer(shutdownTimeout)
 	defer shutdownTimer.Stop()
-	for completed := 0; completed < 7; completed++ {
+	for completed := 0; completed < 8; completed++ {
 		select {
 		case result := <-results:
 			if result.err != nil && !errors.Is(result.err, context.Canceled) {

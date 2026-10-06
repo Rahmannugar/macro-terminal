@@ -25,6 +25,7 @@ func (rssAdapter) Parse(body []byte) (Result, error) {
 			GUID:    entry.GUID,
 			Title:   entry.Title,
 			URL:     entry.Link,
+			Content: entry.Content,
 			Summary: entry.Description,
 		}
 		// Some feeds have no GUID; the link serves as the ID instead.

@@ -18,6 +18,7 @@ type Selectors struct {
 	URL        string `json:"url"`                   // element holding the link; empty = the item itself, else the first link inside it
 	Date       string `json:"date"`                  // element holding the publication date; empty = no date
 	DateLayout string `json:"date_layout,omitempty"` // Go layout for the date text; empty = 2006-01-02
+	Content    string `json:"content,omitempty"`     // element holding the article body on a linked article page; empty = no body hydration
 }
 
 // ParseSelectors reads the "selectors" object out of a source configuration.

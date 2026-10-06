@@ -22,6 +22,7 @@ import (
 type FeedItem struct {
 	Title     string
 	URL       string
+	Content   string
 	Summary   string
 	Published time.Time
 }
@@ -41,7 +42,7 @@ type Input struct {
 type Candidate struct {
 	SourceID    uuid.UUID
 	Title       string
-	Content     string    // snippet only — full publisher text is a licensing question
+	Content     string    // feed-provided text: the full content when the feed ships it, otherwise the summary
 	URL         string    // canonical: no tracking parameters, no fragment
 	PublishedAt time.Time // zero when the provider supplied no date
 }
@@ -102,10 +103,14 @@ func newCandidate(in Input, item FeedItem) (Candidate, bool) {
 	if title == "" {
 		return Candidate{}, false
 	}
+	content := strings.TrimSpace(item.Content)
+	if content == "" {
+		content = strings.TrimSpace(item.Summary)
+	}
 	return Candidate{
 		SourceID:    in.SourceID,
 		Title:       title,
-		Content:     strings.TrimSpace(item.Summary),
+		Content:     content,
 		URL:         canonical,
 		PublishedAt: item.Published,
 	}, true

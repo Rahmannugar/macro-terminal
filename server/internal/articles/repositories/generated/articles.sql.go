@@ -115,7 +115,10 @@ INSERT INTO articles (id, source_id, title, content, url, published_at)
 VALUES ($1, $2, $3, $4, $5, $6)
 ON CONFLICT (source_id, url) DO UPDATE
 SET title = EXCLUDED.title,
-    content = EXCLUDED.content,
+    content = CASE
+                  WHEN EXCLUDED.content IS NULL OR btrim(EXCLUDED.content) = '' THEN articles.content
+                  ELSE EXCLUDED.content
+        END,
     published_at = COALESCE(EXCLUDED.published_at, articles.published_at),
     updated_at = now()
 RETURNING id, source_id, title, content, url, published_at, created_at, updated_at

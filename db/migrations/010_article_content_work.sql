@@ -1,0 +1,9 @@
+-- Content discovery finds articles with no queued article_content row.
+
+CREATE INDEX outbox_article_content_lookup_idx
+    ON outbox ((payload->>'article_id'))
+    WHERE type = 'article_content';
+
+---- create above / drop below ----
+
+DROP INDEX outbox_article_content_lookup_idx;

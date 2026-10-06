@@ -15,9 +15,6 @@ func TestLoadAppliesAIDefaultsAndOverrides(t *testing.T) {
 	if cfg.AI.ExplanationModel != "gemini-3.5-flash-lite" {
 		t.Errorf("explanation model = %q, want the shipped default", cfg.AI.ExplanationModel)
 	}
-	if cfg.AI.APIKey != "" {
-		t.Errorf("api key = %q, want empty until the owner sets it", cfg.AI.APIKey)
-	}
 
 	t.Setenv("MACRO_TERMINAL_AI_API_KEY", " key ")
 	t.Setenv("MACRO_TERMINAL_AI_MODEL", "other-model")

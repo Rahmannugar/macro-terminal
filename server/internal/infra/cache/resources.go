@@ -91,6 +91,15 @@ func (store *JSONStore) Set(ctx context.Context, key string, value any) error {
 	return store.client.Set(ctx, key, payload, store.expiry()).Err()
 }
 
+// Delete drops cached values so the next read repopulates them from
+// PostgreSQL. Best effort by the same contract as Set.
+func (store *JSONStore) Delete(ctx context.Context, keys ...string) error {
+	if store == nil || len(keys) == 0 {
+		return nil
+	}
+	return store.client.Del(ctx, keys...).Err()
+}
+
 func (store *JSONStore) expiry() time.Duration {
 	var value [8]byte
 	if _, err := rand.Read(value[:]); err != nil {

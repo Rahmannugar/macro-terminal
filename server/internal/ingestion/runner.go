@@ -256,6 +256,7 @@ func (runner *Runner) fetchOne(
 		feedItems = append(feedItems, normalization.FeedItem{
 			Title:     item.Title,
 			URL:       item.URL,
+			Content:   item.Content,
 			Summary:   item.Summary,
 			Published: item.Published,
 		})

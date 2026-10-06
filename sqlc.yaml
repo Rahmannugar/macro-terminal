@@ -155,3 +155,23 @@ sql:
             go_type:
               import: github.com/google/uuid
               type: UUID
+  - name: hydration
+    engine: postgresql
+    schema: db/migrations
+    queries: server/internal/hydration/queries
+    gen:
+      go:
+        package: hydrationdb
+        out: server/internal/hydration/repositories/generated
+        sql_package: pgx/v5
+        emit_pointers_for_null_types: true
+        omit_unused_structs: true
+        overrides:
+          - db_type: uuid
+            go_type:
+              import: github.com/google/uuid
+              type: UUID
+          - db_type: jsonb
+            go_type:
+              import: encoding/json
+              type: RawMessage

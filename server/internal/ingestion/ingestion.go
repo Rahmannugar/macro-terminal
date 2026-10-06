@@ -38,6 +38,7 @@ type Item struct {
 	GUID      string
 	Title     string
 	URL       string
+	Content   string
 	Summary   string
 	Published time.Time
 }

@@ -48,6 +48,27 @@ func TestArticlesNormalizesFeedItems(t *testing.T) {
 	}
 }
 
+func TestArticlesPrefersFullContentOverSummary(t *testing.T) {
+	candidates, _ := Articles(Input{
+		SourceID:   uuid.New(),
+		SourceType: "news",
+		ConfigType: "rss",
+		Items: []FeedItem{{
+			Title:   "Fed keeps rates steady",
+			URL:     "https://example.com/story",
+			Content: "  <p>The full article body the feed shipped.</p> ",
+			Summary: "Short teaser.",
+		}},
+	})
+
+	if len(candidates) != 1 {
+		t.Fatalf("candidates = %d, want 1", len(candidates))
+	}
+	if got := candidates[0].Content; got != "<p>The full article body the feed shipped.</p>" {
+		t.Errorf("Content = %q, want the feed's full content", got)
+	}
+}
+
 func TestArticlesDropsDuplicatesByCanonicalURL(t *testing.T) {
 	candidates, stats := Articles(Input{
 		SourceType: "news",
