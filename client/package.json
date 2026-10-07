@@ -10,10 +10,11 @@
     "lint": "biome lint .",
     "format": "biome format --write .",
     "typecheck": "tsc --noEmit",
-    "check": "biome check . && tsc --noEmit",
+    "check": "biome check . && tsc -b",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.104.1",
     "authrail": "^1.2.0",
     "byte-datepicker": "^3.0.1",
     "react": "^19.2.8",

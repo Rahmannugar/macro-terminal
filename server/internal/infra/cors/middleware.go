@@ -8,7 +8,7 @@ import (
 
 const (
 	allowedHeaders = "Content-Type, Idempotency-Key"
-	allowedMethods = "GET, POST, PUT, DELETE, OPTIONS"
+	allowedMethods = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
 	exposedHeaders = "Idempotency-Replayed"
 )
 
