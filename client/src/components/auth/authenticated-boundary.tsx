@@ -51,7 +51,7 @@ export function AuthenticatedBoundary({
   );
 }
 
-export function AdminBoundary({ children }: { children: ReactNode }) {
+export function AdminBoundary({ children }: { children: (account: Account) => ReactNode }) {
   const account = useAccount();
 
   if (account.isPending) return <AccountLoading />;
@@ -65,7 +65,7 @@ export function AdminBoundary({ children }: { children: ReactNode }) {
       fallback={<AccountLoading />}
       denied={<AdminsOnlyScreen />}
     >
-      {children}
+      {children(account.data)}
     </RailBoundary>
   );
 }
@@ -130,15 +130,11 @@ export function SuspendedScreen() {
 
 function AdminsOnlyScreen() {
   return (
-    <div className="flex min-h-svh items-center justify-center bg-background px-5">
-      <div className="w-full max-w-[400px] rounded-xl border border-border bg-card p-7">
-        <h1 className="font-display text-[22px] font-semibold tracking-[-0.03em]">
-          Admins only
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Your account does not have access to this area of Macro Terminal.
-        </p>
-      </div>
+    <div className="mx-auto my-16 w-full max-w-[440px] rounded-xl border border-border bg-card p-7">
+      <h1 className="font-display text-[22px] font-semibold tracking-[-0.03em]">Admins only</h1>
+      <p className="mt-2 text-sm text-muted-foreground">
+        Your account does not have access to this area of Macro Terminal.
+      </p>
     </div>
   );
 }
