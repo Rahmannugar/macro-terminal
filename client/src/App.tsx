@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Outlet, Route, Routes } from "react-router";
 import { AppShell } from "./components/app-shell";
 import { AdminBoundary, AuthenticatedBoundary } from "./components/auth/authenticated-boundary";
+import { PwaBanners } from "./components/pwa-banner";
 import { CalendarEventsScreen } from "./routes/admin/calendar-events";
 import { EntitiesScreen } from "./routes/admin/entities";
 import { EntityPairsScreen } from "./routes/admin/entity-pairs";
@@ -33,28 +34,31 @@ function AdminGuard() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/sign-in" element={<SignInRoute />} />
-        <Route path="/sign-up" element={<SignUpRoute />} />
-        <Route path="/verify-email" element={<VerifyEmailRoute />} />
-        <Route element={<RootLayout />}>
-          <Route path="/" element={<HomeRoute />} />
-          <Route path="/admin" element={<AdminGuard />}>
-            <Route index element={<Navigate to="/admin/users" replace />} />
-            <Route path="users" element={<UsersScreen />} />
-            <Route path="jobs" element={<FailedJobsScreen />} />
-            <Route path="entities" element={<EntitiesScreen />} />
-            <Route path="entity-pairs" element={<EntityPairsScreen />} />
-            <Route path="indicators" element={<IndicatorsScreen />} />
-            <Route path="knowledge-terms" element={<KnowledgeTermsScreen />} />
-            <Route path="sources" element={<SourcesScreen />} />
-            <Route path="source-configurations" element={<SourceConfigurationsScreen />} />
-            <Route path="calendar-events" element={<CalendarEventsScreen />} />
+    <>
+      <PwaBanners />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/sign-in" element={<SignInRoute />} />
+          <Route path="/sign-up" element={<SignUpRoute />} />
+          <Route path="/verify-email" element={<VerifyEmailRoute />} />
+          <Route element={<RootLayout />}>
+            <Route path="/" element={<HomeRoute />} />
+            <Route path="/admin" element={<AdminGuard />}>
+              <Route index element={<Navigate to="/admin/users" replace />} />
+              <Route path="users" element={<UsersScreen />} />
+              <Route path="jobs" element={<FailedJobsScreen />} />
+              <Route path="entities" element={<EntitiesScreen />} />
+              <Route path="entity-pairs" element={<EntityPairsScreen />} />
+              <Route path="indicators" element={<IndicatorsScreen />} />
+              <Route path="knowledge-terms" element={<KnowledgeTermsScreen />} />
+              <Route path="sources" element={<SourcesScreen />} />
+              <Route path="source-configurations" element={<SourceConfigurationsScreen />} />
+              <Route path="calendar-events" element={<CalendarEventsScreen />} />
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Route>
-      </Routes>
-    </BrowserRouter>
+        </Routes>
+      </BrowserRouter>
+    </>
   );
 }
