@@ -14,8 +14,7 @@ export function HomeRoute() {
         Welcome back{data.account.username ? `, ${data.account.username}` : ""}
       </h1>
       <p className="mt-2 max-w-[560px] text-sm text-muted-foreground">
-        Macro intelligence and fundamental research terminal. Terminal views arrive with the
-        next slice.
+        Macro intelligence and fundamental research terminal.
       </p>
       <div className="mt-6 flex flex-wrap gap-3 text-sm">
         <span className="rounded-full bg-secondary px-3 py-1 font-medium">
@@ -23,26 +22,38 @@ export function HomeRoute() {
         </span>
         <span className="rounded-full bg-secondary px-3 py-1">{data.account.status}</span>
       </div>
+
+      <div className="mt-10">
+        <h2 className="text-sm font-semibold">Terminal</h2>
+        <div className="mt-3 grid max-w-[720px] gap-3 sm:grid-cols-2">
+          <Shortcut
+            to="/search"
+            title="Search"
+            description="Semantic search across the article archive."
+          />
+        </div>
+      </div>
+
       {isAdmin ? (
         <div className="mt-10">
           <h2 className="text-sm font-semibold">Admin</h2>
           <div className="mt-3 grid max-w-[720px] gap-3 sm:grid-cols-2">
-            <AdminShortcut
+            <Shortcut
               to="/admin/users"
               title="Users"
               description="Accounts, roles, suspension."
             />
-            <AdminShortcut
+            <Shortcut
               to="/admin/jobs"
               title="Failed jobs"
               description="Retry exhausted work."
             />
-            <AdminShortcut
+            <Shortcut
               to="/admin/entities"
               title="Configuration"
               description="Entities, pairs, indicators, terms."
             />
-            <AdminShortcut
+            <Shortcut
               to="/admin/source-configurations"
               title="Sources"
               description="Configurations and fetch payloads."
@@ -54,7 +65,7 @@ export function HomeRoute() {
   );
 }
 
-function AdminShortcut({
+function Shortcut({
   to,
   title,
   description,

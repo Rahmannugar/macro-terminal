@@ -19,9 +19,13 @@ export function apiURL(path: string): string {
   return new URL(path, base).toString();
 }
 
-export async function apiRequest(path: string, init: RequestInit = {}): Promise<unknown> {
+export async function apiRequest(
+  path: string,
+  init: RequestInit = {},
+  timeoutMs = requestTimeout,
+): Promise<unknown> {
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), requestTimeout);
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(apiURL(path), {
       ...init,

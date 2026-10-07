@@ -8,7 +8,13 @@ type NavItem = { label: string; to: string; end?: boolean };
 type NavSection = { label: string; adminOnly?: boolean; items: NavItem[] };
 
 const navigation: NavSection[] = [
-  { label: "Overview", items: [{ label: "Home", to: "/", end: true }] },
+  {
+    label: "Overview",
+    items: [
+      { label: "Home", to: "/", end: true },
+      { label: "Search", to: "/search" },
+    ],
+  },
   {
     label: "Admin",
     adminOnly: true,

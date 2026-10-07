@@ -11,7 +11,9 @@ import { KnowledgeTermsScreen } from "./routes/admin/knowledge-terms";
 import { SourceConfigurationsScreen } from "./routes/admin/source-configurations";
 import { SourcesScreen } from "./routes/admin/sources";
 import { UsersScreen } from "./routes/admin/users";
+import { ArticleRoute } from "./routes/article";
 import { HomeRoute } from "./routes/home";
+import { SearchRoute } from "./routes/search";
 import { SignInRoute } from "./routes/sign-in";
 import { SignUpRoute } from "./routes/sign-up";
 import { VerifyEmailRoute } from "./routes/verify-email";
@@ -43,6 +45,8 @@ export default function App() {
           <Route path="/verify-email" element={<VerifyEmailRoute />} />
           <Route element={<RootLayout />}>
             <Route path="/" element={<HomeRoute />} />
+            <Route path="/search" element={<SearchRoute />} />
+            <Route path="/articles/:id" element={<ArticleRoute />} />
             <Route path="/admin" element={<AdminGuard />}>
               <Route index element={<Navigate to="/admin/users" replace />} />
               <Route path="users" element={<UsersScreen />} />
