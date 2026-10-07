@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/Rahmannugar/macro-terminal/server/internal/common/paging"
 	"github.com/Rahmannugar/macro-terminal/server/internal/entities/models"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -204,6 +205,58 @@ func (repository *fakeEntityRepository) UnsubscribeUserAsset(
 ) error {
 	delete(repository.assets, userID.String()+"/"+entityPairID.String())
 	return nil
+}
+
+func (repository *fakeEntityRepository) IndicatorByID(
+	_ context.Context,
+	id uuid.UUID,
+) (models.Indicator, error) {
+	for _, indicator := range repository.indicators {
+		if indicator.ID == id {
+			return indicator, nil
+		}
+	}
+	return models.Indicator{}, pgx.ErrNoRows
+}
+
+func (repository *fakeEntityRepository) CreateIndicator(
+	_ context.Context,
+	indicator models.Indicator,
+) (models.Indicator, error) {
+	repository.indicators[indicator.Name+"\x00"+indicator.EntityID.String()] = indicator
+	return indicator, nil
+}
+
+func (repository *fakeEntityRepository) CreateKnowledgeTerm(
+	_ context.Context,
+	term models.KnowledgeTerm,
+) (models.KnowledgeTerm, error) {
+	repository.terms[knowledgeTermKey(term.Name, term.Type)] = term
+	return term, nil
+}
+
+func (repository *fakeEntityRepository) ListEntitiesPage(
+	context.Context, *paging.Cursor, int32,
+) ([]models.Entity, *paging.Cursor, error) {
+	return nil, nil, nil
+}
+
+func (repository *fakeEntityRepository) ListEntityPairsPage(
+	context.Context, *paging.Cursor, int32,
+) ([]models.EntityPair, *paging.Cursor, error) {
+	return nil, nil, nil
+}
+
+func (repository *fakeEntityRepository) ListIndicatorsPage(
+	context.Context, *paging.Cursor, int32,
+) ([]models.Indicator, *paging.Cursor, error) {
+	return nil, nil, nil
+}
+
+func (repository *fakeEntityRepository) ListKnowledgeTermsPage(
+	context.Context, *paging.Cursor, int32,
+) ([]models.KnowledgeTerm, *paging.Cursor, error) {
+	return nil, nil, nil
 }
 
 func TestCreateEntityValidation(t *testing.T) {
@@ -468,5 +521,99 @@ func TestEnsureKnowledgeTermIsIdempotent(t *testing.T) {
 	}
 	if len(repository.terms) != 1 {
 		t.Fatalf("terms = %d, want 1 (name and type identify the row)", len(repository.terms))
+	}
+}
+
+func TestCreateIndicatorValidation(t *testing.T) {
+	service := NewEntityService(newFakeEntityRepository())
+
+	if _, err := service.CreateIndicator(context.Background(), "", "labor", "US"); !errors.Is(err, ErrIndicatorNameRequired) {
+		t.Fatalf("blank name error = %v, want %v", err, ErrIndicatorNameRequired)
+	}
+	if _, err := service.CreateIndicator(context.Background(), "NFP", "", "US"); !errors.Is(err, ErrIndicatorTypeRequired) {
+		t.Fatalf("blank type error = %v, want %v", err, ErrIndicatorTypeRequired)
+	}
+	if _, err := service.CreateIndicator(context.Background(), "NFP", "labor", "MISSING"); !errors.Is(err, ErrEntityNotFound) {
+		t.Fatalf("unknown entity error = %v, want %v", err, ErrEntityNotFound)
+	}
+}
+
+func TestCreateIndicatorStoresAndResolves(t *testing.T) {
+	service := NewEntityService(newFakeEntityRepository())
+	if _, err := service.CreateEntity(context.Background(), "US", "United States", "country"); err != nil {
+		t.Fatalf("seed entity: %v", err)
+	}
+
+	created, err := service.CreateIndicator(context.Background(), "Nonfarm Payrolls", "labor", "US")
+	if err != nil {
+		t.Fatalf("CreateIndicator(): %v", err)
+	}
+	if created.ID == uuid.Nil || created.EntityID == uuid.Nil {
+		t.Fatalf("CreateIndicator() = %+v, want an id and entity link", created)
+	}
+
+	found, err := service.IndicatorByID(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("IndicatorByID(): %v", err)
+	}
+	if found.Name != "Nonfarm Payrolls" {
+		t.Fatalf("IndicatorByID() name = %q, want %q", found.Name, "Nonfarm Payrolls")
+	}
+	if _, err := service.IndicatorByID(context.Background(), uuid.New()); !errors.Is(err, ErrIndicatorNotFound) {
+		t.Fatalf("unknown indicator error = %v, want %v", err, ErrIndicatorNotFound)
+	}
+}
+
+func TestCreateKnowledgeTermLinkRules(t *testing.T) {
+	service := NewEntityService(newFakeEntityRepository())
+	if _, err := service.CreateEntity(context.Background(), "US", "United States", "country"); err != nil {
+		t.Fatalf("seed US: %v", err)
+	}
+	if _, err := service.CreateEntity(context.Background(), "CA", "Canada", "country"); err != nil {
+		t.Fatalf("seed CA: %v", err)
+	}
+	indicator, err := service.CreateIndicator(context.Background(), "CPI", "inflation", "US")
+	if err != nil {
+		t.Fatalf("seed indicator: %v", err)
+	}
+
+	if _, err := service.CreateKnowledgeTerm(context.Background(), "price index", "alias", "", nil); !errors.Is(err, ErrKnowledgeTermLinkRequired) {
+		t.Fatalf("no link error = %v, want %v", err, ErrKnowledgeTermLinkRequired)
+	}
+	if _, err := service.CreateKnowledgeTerm(context.Background(), "price index", "alias", "MISSING", nil); !errors.Is(err, ErrEntityNotFound) {
+		t.Fatalf("unknown entity error = %v, want %v", err, ErrEntityNotFound)
+	}
+
+	entityOnly, err := service.CreateKnowledgeTerm(context.Background(), "jobs report", "alias", "US", nil)
+	if err != nil {
+		t.Fatalf("entity-only term: %v", err)
+	}
+	if entityOnly.EntityID == uuid.Nil || entityOnly.IndicatorID != uuid.Nil {
+		t.Fatalf("entity-only term = %+v, want an entity and no indicator", entityOnly)
+	}
+
+	missing := uuid.New()
+	if _, err := service.CreateKnowledgeTerm(context.Background(), "price index", "alias", "", &missing); !errors.Is(err, ErrIndicatorNotFound) {
+		t.Fatalf("unknown indicator error = %v, want %v", err, ErrIndicatorNotFound)
+	}
+
+	indicatorOnly, err := service.CreateKnowledgeTerm(context.Background(), "cpi", "alias", "", &indicator.ID)
+	if err != nil {
+		t.Fatalf("indicator-only term: %v", err)
+	}
+	if indicatorOnly.IndicatorID != indicator.ID || indicatorOnly.EntityID != indicator.EntityID {
+		t.Fatalf("indicator-only term = %+v, want the indicator's entity link", indicatorOnly)
+	}
+
+	if _, err := service.CreateKnowledgeTerm(context.Background(), "headline cpi", "alias", "CA", &indicator.ID); !errors.Is(err, ErrKnowledgeTermEntityMismatch) {
+		t.Fatalf("mismatched entity error = %v, want %v", err, ErrKnowledgeTermEntityMismatch)
+	}
+
+	both, err := service.CreateKnowledgeTerm(context.Background(), "us cpi", "alias", "US", &indicator.ID)
+	if err != nil {
+		t.Fatalf("indicator with matching entity term: %v", err)
+	}
+	if both.EntityID != indicator.EntityID || both.IndicatorID != indicator.ID {
+		t.Fatalf("both-links term = %+v, want both links set", both)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Rahmannugar/macro-terminal/server/internal/common/paging"
 	"github.com/Rahmannugar/macro-terminal/server/internal/users/models"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -13,7 +14,7 @@ import (
 
 type fakeAdminUsers struct {
 	users      []models.User
-	next       *models.ListCursor
+	next       *paging.Cursor
 	user       models.User
 	listErr    error
 	getErr     error
@@ -21,13 +22,13 @@ type fakeAdminUsers struct {
 	gotRole    *string
 	gotStatus  *string
 	gotLimit   int32
-	gotCursor  *models.ListCursor
+	gotCursor  *paging.Cursor
 	updatedTo  string
 	updateCall int
 	getCall    int
 }
 
-func (fake *fakeAdminUsers) ListUsers(_ context.Context, role *string, status *string, cursor *models.ListCursor, limit int32) ([]models.User, *models.ListCursor, error) {
+func (fake *fakeAdminUsers) ListUsers(_ context.Context, role *string, status *string, cursor *paging.Cursor, limit int32) ([]models.User, *paging.Cursor, error) {
 	fake.gotRole = role
 	fake.gotStatus = status
 	fake.gotCursor = cursor
@@ -88,8 +89,8 @@ func TestListValidatesFiltersAndReturnsPage(t *testing.T) {
 		t.Errorf("limit/cursor = %d/%v, want 25/none", fake.gotLimit, fake.gotCursor)
 	}
 
-	cursor := &models.ListCursor{CreatedAt: time.Unix(0, 1759750000000000000).UTC(), ID: uuid.New()}
-	next := &models.ListCursor{CreatedAt: time.Unix(0, 1759740000000000000).UTC(), ID: uuid.New()}
+	cursor := &paging.Cursor{At: time.Unix(0, 1759750000000000000).UTC(), ID: uuid.New()}
+	next := &paging.Cursor{At: time.Unix(0, 1759740000000000000).UTC(), ID: uuid.New()}
 	fake.next = next
 	page, err = service.List(context.Background(), nil, nil, cursor, 10)
 	if err != nil {

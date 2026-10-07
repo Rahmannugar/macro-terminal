@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Rahmannugar/macro-terminal/server/internal/common/paging"
 	"github.com/Rahmannugar/macro-terminal/server/internal/sources/models"
 	sourcedb "github.com/Rahmannugar/macro-terminal/server/internal/sources/repositories/generated"
 	"github.com/google/uuid"
@@ -183,6 +184,85 @@ func (repository *SourceRepository) UpdateSourceConfiguration(
 	})
 	if err != nil {
 		return models.SourceConfiguration{}, fmt.Errorf("update source configuration: %w", err)
+	}
+	return mapConfiguration(row), nil
+}
+
+func (repository *SourceRepository) ListSourcesPage(
+	ctx context.Context,
+	cursor *paging.Cursor,
+	limit int32,
+) ([]models.Source, *paging.Cursor, error) {
+	params := sourcedb.ListSourcesPageParams{PageSize: limit + 1}
+	if cursor != nil {
+		params.CursorCreatedAt = pgtype.Timestamptz{Time: cursor.At, Valid: true}
+		params.CursorID = pgtype.UUID{Bytes: cursor.ID, Valid: true}
+	}
+	rows, err := repository.queries.ListSourcesPage(ctx, params)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list sources page: %w", err)
+	}
+	sources := make([]models.Source, 0, min(len(rows), int(limit)))
+	for index, row := range rows {
+		if int32(index) == limit {
+			last := sources[len(sources)-1]
+			return sources, &paging.Cursor{At: last.CreatedAt, ID: last.ID}, nil
+		}
+		sources = append(sources, mapSource(row))
+	}
+	return sources, nil, nil
+}
+
+func (repository *SourceRepository) CreateSource(ctx context.Context, source models.Source) (models.Source, error) {
+	row, err := repository.queries.CreateSource(ctx, sourcedb.CreateSourceParams{
+		ID:   source.ID,
+		Name: source.Name,
+		Type: source.Type,
+	})
+	if err != nil {
+		return models.Source{}, fmt.Errorf("create source: %w", err)
+	}
+	return mapSource(row), nil
+}
+
+func (repository *SourceRepository) ListSourceConfigurationsPage(
+	ctx context.Context,
+	cursor *paging.Cursor,
+	limit int32,
+) ([]models.SourceConfiguration, *paging.Cursor, error) {
+	params := sourcedb.ListSourceConfigurationsPageParams{PageSize: limit + 1}
+	if cursor != nil {
+		params.CursorCreatedAt = pgtype.Timestamptz{Time: cursor.At, Valid: true}
+		params.CursorID = pgtype.UUID{Bytes: cursor.ID, Valid: true}
+	}
+	rows, err := repository.queries.ListSourceConfigurationsPage(ctx, params)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list source configurations page: %w", err)
+	}
+	configurations := make([]models.SourceConfiguration, 0, min(len(rows), int(limit)))
+	for index, row := range rows {
+		if int32(index) == limit {
+			last := configurations[len(configurations)-1]
+			return configurations, &paging.Cursor{At: last.CreatedAt, ID: last.ID}, nil
+		}
+		configurations = append(configurations, mapConfiguration(row))
+	}
+	return configurations, nil, nil
+}
+
+func (repository *SourceRepository) SourceConfigurationByID(
+	ctx context.Context,
+	id uuid.UUID,
+) (models.SourceConfiguration, error) {
+	row, err := repository.queries.GetSourceConfigurationByID(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return models.SourceConfiguration{}, fmt.Errorf(
+			"get source configuration by ID: %w",
+			models.ErrSourceConfigurationNotFound,
+		)
+	}
+	if err != nil {
+		return models.SourceConfiguration{}, fmt.Errorf("get source configuration by ID: %w", err)
 	}
 	return mapConfiguration(row), nil
 }

@@ -76,6 +76,73 @@ func (q *Queries) CreateEntityPair(ctx context.Context, arg CreateEntityPairPara
 	return i, err
 }
 
+const createIndicator = `-- name: CreateIndicator :one
+INSERT INTO economic_indicators (id, name, entity_id, type)
+VALUES ($1, $2, $3, $4)
+RETURNING id, name, entity_id, type, created_at, updated_at
+`
+
+type CreateIndicatorParams struct {
+	ID       uuid.UUID
+	Name     string
+	EntityID uuid.UUID
+	Type     string
+}
+
+func (q *Queries) CreateIndicator(ctx context.Context, arg CreateIndicatorParams) (EconomicIndicator, error) {
+	row := q.db.QueryRow(ctx, createIndicator,
+		arg.ID,
+		arg.Name,
+		arg.EntityID,
+		arg.Type,
+	)
+	var i EconomicIndicator
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.EntityID,
+		&i.Type,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createKnowledgeTerm = `-- name: CreateKnowledgeTerm :one
+INSERT INTO knowledge_terms (id, name, type, entity_id, indicator_id)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, name, type, entity_id, indicator_id, created_at, updated_at
+`
+
+type CreateKnowledgeTermParams struct {
+	ID          uuid.UUID
+	Name        string
+	Type        string
+	EntityID    pgtype.UUID
+	IndicatorID pgtype.UUID
+}
+
+func (q *Queries) CreateKnowledgeTerm(ctx context.Context, arg CreateKnowledgeTermParams) (KnowledgeTerm, error) {
+	row := q.db.QueryRow(ctx, createKnowledgeTerm,
+		arg.ID,
+		arg.Name,
+		arg.Type,
+		arg.EntityID,
+		arg.IndicatorID,
+	)
+	var i KnowledgeTerm
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Type,
+		&i.EntityID,
+		&i.IndicatorID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getEntitiesForArticle = `-- name: GetEntitiesForArticle :many
 SELECT e.id, e.code, e.name, e.type, e.created_at, e.updated_at
 FROM article_entities AS link
@@ -226,6 +293,26 @@ func (q *Queries) GetEntityPairBySymbol(ctx context.Context, symbol string) (Ent
 	return i, err
 }
 
+const getIndicatorByID = `-- name: GetIndicatorByID :one
+SELECT id, name, entity_id, type, created_at, updated_at
+FROM economic_indicators
+WHERE id = $1
+`
+
+func (q *Queries) GetIndicatorByID(ctx context.Context, id uuid.UUID) (EconomicIndicator, error) {
+	row := q.db.QueryRow(ctx, getIndicatorByID, id)
+	var i EconomicIndicator
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.EntityID,
+		&i.Type,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listEntities = `-- name: ListEntities :many
 SELECT id, code, name, type, created_at, updated_at
 FROM entities
@@ -234,6 +321,53 @@ ORDER BY code
 
 func (q *Queries) ListEntities(ctx context.Context) ([]Entity, error) {
 	rows, err := q.db.Query(ctx, listEntities)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Entity
+	for rows.Next() {
+		var i Entity
+		if err := rows.Scan(
+			&i.ID,
+			&i.Code,
+			&i.Name,
+			&i.Type,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEntitiesPage = `-- name: ListEntitiesPage :many
+SELECT id, code, name, type, created_at, updated_at
+FROM entities
+WHERE (
+    $1::timestamptz IS NULL
+    OR (created_at, id) < (
+        $1::timestamptz,
+        $2::uuid
+    )
+)
+ORDER BY created_at DESC, id DESC
+LIMIT $3
+`
+
+type ListEntitiesPageParams struct {
+	CursorCreatedAt pgtype.Timestamptz
+	CursorID        pgtype.UUID
+	PageSize        int32
+}
+
+func (q *Queries) ListEntitiesPage(ctx context.Context, arg ListEntitiesPageParams) ([]Entity, error) {
+	rows, err := q.db.Query(ctx, listEntitiesPage, arg.CursorCreatedAt, arg.CursorID, arg.PageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -397,6 +531,53 @@ func (q *Queries) ListEntityPairsContainingEntity(ctx context.Context, baseEntit
 	return items, nil
 }
 
+const listEntityPairsPage = `-- name: ListEntityPairsPage :many
+SELECT id, base_entity_id, quote_entity_id, symbol, created_at, updated_at
+FROM entity_pairs
+WHERE (
+    $1::timestamptz IS NULL
+    OR (created_at, id) < (
+        $1::timestamptz,
+        $2::uuid
+    )
+)
+ORDER BY created_at DESC, id DESC
+LIMIT $3
+`
+
+type ListEntityPairsPageParams struct {
+	CursorCreatedAt pgtype.Timestamptz
+	CursorID        pgtype.UUID
+	PageSize        int32
+}
+
+func (q *Queries) ListEntityPairsPage(ctx context.Context, arg ListEntityPairsPageParams) ([]EntityPair, error) {
+	rows, err := q.db.Query(ctx, listEntityPairsPage, arg.CursorCreatedAt, arg.CursorID, arg.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EntityPair
+	for rows.Next() {
+		var i EntityPair
+		if err := rows.Scan(
+			&i.ID,
+			&i.BaseEntityID,
+			&i.QuoteEntityID,
+			&i.Symbol,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listIndicatorKnowledgeTerms = `-- name: ListIndicatorKnowledgeTerms :many
 SELECT name, indicator_id
 FROM knowledge_terms
@@ -462,6 +643,53 @@ func (q *Queries) ListIndicators(ctx context.Context) ([]EconomicIndicator, erro
 	return items, nil
 }
 
+const listIndicatorsPage = `-- name: ListIndicatorsPage :many
+SELECT id, name, entity_id, type, created_at, updated_at
+FROM economic_indicators
+WHERE (
+    $1::timestamptz IS NULL
+    OR (created_at, id) < (
+        $1::timestamptz,
+        $2::uuid
+    )
+)
+ORDER BY created_at DESC, id DESC
+LIMIT $3
+`
+
+type ListIndicatorsPageParams struct {
+	CursorCreatedAt pgtype.Timestamptz
+	CursorID        pgtype.UUID
+	PageSize        int32
+}
+
+func (q *Queries) ListIndicatorsPage(ctx context.Context, arg ListIndicatorsPageParams) ([]EconomicIndicator, error) {
+	rows, err := q.db.Query(ctx, listIndicatorsPage, arg.CursorCreatedAt, arg.CursorID, arg.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EconomicIndicator
+	for rows.Next() {
+		var i EconomicIndicator
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.EntityID,
+			&i.Type,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listKnowledgeTermsForEntities = `-- name: ListKnowledgeTermsForEntities :many
 SELECT id, name, type, entity_id, indicator_id, created_at, updated_at
 FROM knowledge_terms
@@ -471,6 +699,54 @@ ORDER BY name, type
 
 func (q *Queries) ListKnowledgeTermsForEntities(ctx context.Context, ids []uuid.UUID) ([]KnowledgeTerm, error) {
 	rows, err := q.db.Query(ctx, listKnowledgeTermsForEntities, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []KnowledgeTerm
+	for rows.Next() {
+		var i KnowledgeTerm
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Type,
+			&i.EntityID,
+			&i.IndicatorID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listKnowledgeTermsPage = `-- name: ListKnowledgeTermsPage :many
+SELECT id, name, type, entity_id, indicator_id, created_at, updated_at
+FROM knowledge_terms
+WHERE (
+    $1::timestamptz IS NULL
+    OR (created_at, id) < (
+        $1::timestamptz,
+        $2::uuid
+    )
+)
+ORDER BY created_at DESC, id DESC
+LIMIT $3
+`
+
+type ListKnowledgeTermsPageParams struct {
+	CursorCreatedAt pgtype.Timestamptz
+	CursorID        pgtype.UUID
+	PageSize        int32
+}
+
+func (q *Queries) ListKnowledgeTermsPage(ctx context.Context, arg ListKnowledgeTermsPageParams) ([]KnowledgeTerm, error) {
+	rows, err := q.db.Query(ctx, listKnowledgeTermsPage, arg.CursorCreatedAt, arg.CursorID, arg.PageSize)
 	if err != nil {
 		return nil, err
 	}

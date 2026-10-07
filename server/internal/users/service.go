@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/Rahmannugar/macro-terminal/server/internal/common/paging"
 	"github.com/Rahmannugar/macro-terminal/server/internal/users/models"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -20,7 +21,7 @@ const (
 )
 
 type AdminUsers interface {
-	ListUsers(ctx context.Context, role *string, status *string, cursor *models.ListCursor, limit int32) ([]models.User, *models.ListCursor, error)
+	ListUsers(ctx context.Context, role *string, status *string, cursor *paging.Cursor, limit int32) ([]models.User, *paging.Cursor, error)
 	UserByID(ctx context.Context, id uuid.UUID) (models.User, error)
 	UpdateUserStatus(ctx context.Context, id uuid.UUID, status string) (models.User, error)
 	UpdateRole(ctx context.Context, id uuid.UUID, role string) (models.User, error)
@@ -28,7 +29,7 @@ type AdminUsers interface {
 
 type UserPage struct {
 	Users      []models.User
-	NextCursor *models.ListCursor
+	NextCursor *paging.Cursor
 }
 
 type AdminService struct {
@@ -43,7 +44,7 @@ func (service *AdminService) List(
 	ctx context.Context,
 	role *string,
 	status *string,
-	cursor *models.ListCursor,
+	cursor *paging.Cursor,
 	limit int32,
 ) (UserPage, error) {
 	if role != nil && *role != models.RoleAdmin && *role != models.RoleUser {

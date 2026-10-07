@@ -72,3 +72,39 @@ FROM source_configurations
 WHERE source_id = sqlc.arg(source_id)
   AND type = sqlc.arg(config_type)
 ORDER BY id;
+
+-- name: ListSourcesPage :many
+SELECT *
+FROM sources
+WHERE (
+    sqlc.narg('cursor_created_at')::timestamptz IS NULL
+    OR (created_at, id) < (
+        sqlc.narg('cursor_created_at')::timestamptz,
+        sqlc.narg('cursor_id')::uuid
+    )
+)
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg('page_size');
+
+-- name: CreateSource :one
+INSERT INTO sources (id, name, type)
+VALUES ($1, $2, $3)
+RETURNING *;
+
+-- name: ListSourceConfigurationsPage :many
+SELECT *
+FROM source_configurations
+WHERE (
+    sqlc.narg('cursor_created_at')::timestamptz IS NULL
+    OR (created_at, id) < (
+        sqlc.narg('cursor_created_at')::timestamptz,
+        sqlc.narg('cursor_id')::uuid
+    )
+)
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg('page_size');
+
+-- name: GetSourceConfigurationByID :one
+SELECT *
+FROM source_configurations
+WHERE id = $1;

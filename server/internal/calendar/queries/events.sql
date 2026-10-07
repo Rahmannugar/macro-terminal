@@ -21,3 +21,21 @@ SELECT ce.id, ce.source_id, ce.indicator_id, ce.scheduled_at, ce.released_at,
 FROM calendar_events AS ce
 JOIN economic_indicators AS ei ON ei.id = ce.indicator_id
 WHERE ce.id = $1;
+
+-- name: ListCalendarEventsPage :many
+SELECT *
+FROM calendar_events
+WHERE (
+    sqlc.narg('cursor_created_at')::timestamptz IS NULL
+    OR (created_at, id) < (
+        sqlc.narg('cursor_created_at')::timestamptz,
+        sqlc.narg('cursor_id')::uuid
+    )
+)
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg('page_size');
+
+-- name: CreateCalendarEvent :one
+INSERT INTO calendar_events (id, source_id, indicator_id, scheduled_at, released_at, previous, consensus, actual)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING *;

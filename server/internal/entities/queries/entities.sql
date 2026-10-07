@@ -139,3 +139,70 @@ ON CONFLICT (name, entity_id) DO UPDATE
 SET type = EXCLUDED.type,
     updated_at = now()
 RETURNING id, name, entity_id, type, created_at, updated_at;
+
+-- name: ListEntitiesPage :many
+SELECT *
+FROM entities
+WHERE (
+    sqlc.narg('cursor_created_at')::timestamptz IS NULL
+    OR (created_at, id) < (
+        sqlc.narg('cursor_created_at')::timestamptz,
+        sqlc.narg('cursor_id')::uuid
+    )
+)
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg('page_size');
+
+-- name: ListEntityPairsPage :many
+SELECT *
+FROM entity_pairs
+WHERE (
+    sqlc.narg('cursor_created_at')::timestamptz IS NULL
+    OR (created_at, id) < (
+        sqlc.narg('cursor_created_at')::timestamptz,
+        sqlc.narg('cursor_id')::uuid
+    )
+)
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg('page_size');
+
+-- name: ListIndicatorsPage :many
+SELECT *
+FROM economic_indicators
+WHERE (
+    sqlc.narg('cursor_created_at')::timestamptz IS NULL
+    OR (created_at, id) < (
+        sqlc.narg('cursor_created_at')::timestamptz,
+        sqlc.narg('cursor_id')::uuid
+    )
+)
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg('page_size');
+
+-- name: GetIndicatorByID :one
+SELECT *
+FROM economic_indicators
+WHERE id = $1;
+
+-- name: CreateIndicator :one
+INSERT INTO economic_indicators (id, name, entity_id, type)
+VALUES ($1, $2, $3, $4)
+RETURNING *;
+
+-- name: ListKnowledgeTermsPage :many
+SELECT *
+FROM knowledge_terms
+WHERE (
+    sqlc.narg('cursor_created_at')::timestamptz IS NULL
+    OR (created_at, id) < (
+        sqlc.narg('cursor_created_at')::timestamptz,
+        sqlc.narg('cursor_id')::uuid
+    )
+)
+ORDER BY created_at DESC, id DESC
+LIMIT sqlc.arg('page_size');
+
+-- name: CreateKnowledgeTerm :one
+INSERT INTO knowledge_terms (id, name, type, entity_id, indicator_id)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING *;

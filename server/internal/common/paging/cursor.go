@@ -1,4 +1,6 @@
-package models
+// Package paging is the shared keyset-pagination contract: an opaque
+// cursor over a (sort timestamp, id) pair, used by every list endpoint.
+package paging
 
 import (
 	"encoding/base64"
@@ -14,17 +16,19 @@ const cursorSeparator = "."
 
 var ErrCursorInvalid = errors.New("cursor is invalid")
 
-type ListCursor struct {
-	UpdatedAt time.Time
-	ID        uuid.UUID
+// Cursor is the sort timestamp of the previous page's last row plus that
+// row's id, which breaks timestamp ties.
+type Cursor struct {
+	At time.Time
+	ID uuid.UUID
 }
 
-func EncodeCursor(cursor ListCursor) string {
-	payload := strconv.FormatInt(cursor.UpdatedAt.UnixNano(), 10) + cursorSeparator + cursor.ID.String()
+func EncodeCursor(cursor Cursor) string {
+	payload := strconv.FormatInt(cursor.At.UnixNano(), 10) + cursorSeparator + cursor.ID.String()
 	return base64.RawURLEncoding.EncodeToString([]byte(payload))
 }
 
-func DecodeCursor(value string) (*ListCursor, error) {
+func DecodeCursor(value string) (*Cursor, error) {
 	if value == "" {
 		return nil, nil
 	}
@@ -44,5 +48,5 @@ func DecodeCursor(value string) (*ListCursor, error) {
 	if err != nil {
 		return nil, ErrCursorInvalid
 	}
-	return &ListCursor{UpdatedAt: time.Unix(0, nanoseconds).UTC(), ID: id}, nil
+	return &Cursor{At: time.Unix(0, nanoseconds).UTC(), ID: id}, nil
 }

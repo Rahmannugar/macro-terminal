@@ -9,6 +9,7 @@ import (
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/calendar/models"
 	calendardb "github.com/Rahmannugar/macro-terminal/server/internal/calendar/repositories/generated"
+	"github.com/Rahmannugar/macro-terminal/server/internal/common/paging"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -100,6 +101,97 @@ func (repository *EventRepository) PersistEvents(
 	return stats, nil
 }
 
+// CreateCalendarEvent stores an administrator-created event and its
+// entity links in one transaction, then refreshes the cache entry the
+// read path uses.
+func (repository *EventRepository) CreateCalendarEvent(
+	ctx context.Context,
+	entry models.CreateEventEntry,
+) (models.EventRecord, error) {
+	previous, err := numericValue(entry.Previous)
+	if err != nil {
+		return models.EventRecord{}, err
+	}
+	consensus, err := numericValue(entry.Consensus)
+	if err != nil {
+		return models.EventRecord{}, err
+	}
+	actual, err := numericValue(entry.Actual)
+	if err != nil {
+		return models.EventRecord{}, err
+	}
+
+	tx, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return models.EventRecord{}, fmt.Errorf("begin create calendar event: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	queries := repository.queries.WithTx(tx)
+
+	event, err := queries.CreateCalendarEvent(ctx, calendardb.CreateCalendarEventParams{
+		ID:          uuid.New(),
+		SourceID:    entry.SourceID,
+		IndicatorID: entry.IndicatorID,
+		ScheduledAt: timestampValueUnchecked(entry.ScheduledAt),
+		ReleasedAt:  timestampValue(entry.ReleasedAt),
+		Previous:    previous,
+		Consensus:   consensus,
+		Actual:      actual,
+	})
+	if err != nil {
+		return models.EventRecord{}, fmt.Errorf("create calendar event: %w", err)
+	}
+	for _, entityID := range entry.EntityIDs {
+		if _, err := queries.UpsertCalendarEventEntity(ctx, calendardb.UpsertCalendarEventEntityParams{
+			CalendarEventID: event.ID,
+			EntityID:        entityID,
+		}); err != nil {
+			return models.EventRecord{}, fmt.Errorf("link calendar event entity: %w", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return models.EventRecord{}, fmt.Errorf("commit create calendar event: %w", err)
+	}
+
+	record, err := eventRecordFromRow(event)
+	if err != nil {
+		return models.EventRecord{}, fmt.Errorf("read created calendar event: %w", err)
+	}
+	if stored, err := storedEventFromRow(event); err == nil {
+		_ = repository.store.Set(ctx, cache.CalendarEventKey(stored.ID), stored)
+	}
+	return record, nil
+}
+
+func (repository *EventRepository) ListCalendarEventsPage(
+	ctx context.Context,
+	cursor *paging.Cursor,
+	limit int32,
+) ([]models.EventRecord, *paging.Cursor, error) {
+	params := calendardb.ListCalendarEventsPageParams{PageSize: limit + 1}
+	if cursor != nil {
+		params.CursorCreatedAt = pgtype.Timestamptz{Time: cursor.At, Valid: true}
+		params.CursorID = pgtype.UUID{Bytes: cursor.ID, Valid: true}
+	}
+	rows, err := repository.queries.ListCalendarEventsPage(ctx, params)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list calendar events page: %w", err)
+	}
+	events := make([]models.EventRecord, 0, min(len(rows), int(limit)))
+	for index, row := range rows {
+		if int32(index) == limit {
+			last := events[len(events)-1]
+			return events, &paging.Cursor{At: last.CreatedAt, ID: last.ID}, nil
+		}
+		record, err := eventRecordFromRow(row)
+		if err != nil {
+			return nil, nil, err
+		}
+		events = append(events, record)
+	}
+	return events, nil, nil
+}
+
 func (repository *EventRepository) CalendarEvent(ctx context.Context, id uuid.UUID) (models.EventContext, bool, error) {
 	row, err := repository.queries.GetCalendarEvent(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -168,6 +260,25 @@ func storedEventFromRow(row calendardb.CalendarEvent) (models.StoredEvent, error
 		Previous:    previous,
 		Consensus:   consensus,
 		Actual:      actual,
+	}, nil
+}
+
+func eventRecordFromRow(row calendardb.CalendarEvent) (models.EventRecord, error) {
+	stored, err := storedEventFromRow(row)
+	if err != nil {
+		return models.EventRecord{}, err
+	}
+	return models.EventRecord{
+		ID:          stored.ID,
+		SourceID:    stored.SourceID,
+		IndicatorID: stored.IndicatorID,
+		ScheduledAt: stored.ScheduledAt,
+		ReleasedAt:  stored.ReleasedAt,
+		Previous:    stored.Previous,
+		Consensus:   stored.Consensus,
+		Actual:      stored.Actual,
+		CreatedAt:   row.CreatedAt.Time,
+		UpdatedAt:   row.UpdatedAt.Time,
 	}, nil
 }
 

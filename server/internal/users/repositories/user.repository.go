@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Rahmannugar/macro-terminal/server/internal/common/paging"
 	"github.com/Rahmannugar/macro-terminal/server/internal/users/models"
 	userdb "github.com/Rahmannugar/macro-terminal/server/internal/users/repositories/generated"
 	"github.com/google/uuid"
@@ -95,16 +96,16 @@ func (repository *UserRepository) ListUsers(
 	ctx context.Context,
 	role *string,
 	status *string,
-	cursor *models.ListCursor,
+	cursor *paging.Cursor,
 	limit int32,
-) ([]models.User, *models.ListCursor, error) {
+) ([]models.User, *paging.Cursor, error) {
 	params := userdb.ListUsersParams{
 		Role:     role,
 		Status:   status,
 		PageSize: limit + 1,
 	}
 	if cursor != nil {
-		params.CursorCreatedAt = pgtype.Timestamptz{Time: cursor.CreatedAt, Valid: true}
+		params.CursorCreatedAt = pgtype.Timestamptz{Time: cursor.At, Valid: true}
 		params.CursorID = pgtype.UUID{Bytes: cursor.ID, Valid: true}
 	}
 	rows, err := repository.queries.ListUsers(ctx, params)
@@ -115,7 +116,7 @@ func (repository *UserRepository) ListUsers(
 	for index, row := range rows {
 		if int32(index) == limit {
 			last := users[len(users)-1]
-			return users, &models.ListCursor{CreatedAt: last.CreatedAt, ID: last.ID}, nil
+			return users, &paging.Cursor{At: last.CreatedAt, ID: last.ID}, nil
 		}
 		users = append(users, userFromRow(row.ID, row.Username, row.AuthlierSubjectID, row.Role, row.Status, row.CreatedAt.Time, row.UpdatedAt.Time))
 	}

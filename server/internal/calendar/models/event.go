@@ -42,3 +42,31 @@ type EventContext struct {
 	IndicatorName string
 	IndicatorType string
 }
+
+// CreateEventEntry is an administrator-created event and the entities it
+// links to; the links may be empty.
+type CreateEventEntry struct {
+	SourceID    uuid.UUID
+	IndicatorID uuid.UUID
+	ScheduledAt time.Time
+	ReleasedAt  *time.Time
+	Previous    *float64
+	Consensus   *float64
+	Actual      *float64
+	EntityIDs   []uuid.UUID
+}
+
+// EventRecord is one stored event with its write timestamps, as returned
+// by admin create and list.
+type EventRecord struct {
+	ID          uuid.UUID
+	SourceID    uuid.UUID
+	IndicatorID uuid.UUID
+	ScheduledAt time.Time
+	ReleasedAt  *time.Time
+	Previous    *float64
+	Consensus   *float64
+	Actual      *float64
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/Rahmannugar/macro-terminal/server/internal/common/paging"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/database/testdb"
 	"github.com/Rahmannugar/macro-terminal/server/internal/users"
 	"github.com/Rahmannugar/macro-terminal/server/internal/users/models"
@@ -114,7 +115,7 @@ func TestAdminUserListingAndMutations(t *testing.T) {
 func walkUserPages(t *testing.T, repository *userrepositories.UserRepository, pageSize int32) map[uuid.UUID]bool {
 	t.Helper()
 	seen := make(map[uuid.UUID]bool)
-	var cursor *models.ListCursor
+	var cursor *paging.Cursor
 	for pages := 0; ; pages++ {
 		if pages > 10 {
 			t.Fatal("cursor walk did not terminate")

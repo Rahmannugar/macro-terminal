@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/adminjobs/models"
+	"github.com/Rahmannugar/macro-terminal/server/internal/common/paging"
 	"github.com/Rahmannugar/macro-terminal/server/internal/openapi"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -19,7 +20,7 @@ import (
 
 type fakeFailedJobs struct {
 	list        []models.Job
-	next        *models.ListCursor
+	next        *paging.Cursor
 	job         models.Job
 	replayed    models.Job
 	listErr     error
@@ -27,11 +28,11 @@ type fakeFailedJobs struct {
 	replayErr   error
 	gotType     *string
 	gotLimit    int32
-	gotCursor   *models.ListCursor
+	gotCursor   *paging.Cursor
 	replayCalls int
 }
 
-func (fake *fakeFailedJobs) FailedJobs(_ context.Context, jobType *string, cursor *models.ListCursor, limit int32) ([]models.Job, *models.ListCursor, error) {
+func (fake *fakeFailedJobs) FailedJobs(_ context.Context, jobType *string, cursor *paging.Cursor, limit int32) ([]models.Job, *paging.Cursor, error) {
 	fake.gotType = jobType
 	fake.gotLimit = limit
 	fake.gotCursor = cursor

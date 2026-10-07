@@ -12,6 +12,7 @@ import (
 	"github.com/Rahmannugar/authlier"
 	"github.com/Rahmannugar/authlier/emailpassword"
 	"github.com/Rahmannugar/macro-terminal/server/internal/authentication"
+	"github.com/Rahmannugar/macro-terminal/server/internal/common/paging"
 	"github.com/Rahmannugar/macro-terminal/server/internal/openapi"
 	"github.com/Rahmannugar/macro-terminal/server/internal/users/models"
 	"github.com/gin-gonic/gin"
@@ -82,7 +83,7 @@ func TestListUsersReturnsMatchingAccounts(t *testing.T) {
 			Role:   models.RoleAdmin,
 			Status: models.StatusActive,
 		}},
-		next: &models.ListCursor{CreatedAt: time.Unix(0, 1759750000000000000).UTC(), ID: uuid.New()},
+		next: &paging.Cursor{At: time.Unix(0, 1759750000000000000).UTC(), ID: uuid.New()},
 	}
 	router := adminRouter(t, fake)
 
@@ -100,7 +101,7 @@ func TestListUsersReturnsMatchingAccounts(t *testing.T) {
 	if body.NextCursor == nil {
 		t.Fatal("nextCursor = nil, want the encoded cursor for the next page")
 	}
-	decoded, err := models.DecodeCursor(*body.NextCursor)
+	decoded, err := paging.DecodeCursor(*body.NextCursor)
 	if err != nil || decoded == nil || *decoded != *fake.next {
 		t.Errorf("decoded nextCursor = %v/%v, want the cursor the repository returned", decoded, err)
 	}

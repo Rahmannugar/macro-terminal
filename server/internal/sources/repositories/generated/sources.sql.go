@@ -13,6 +13,31 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createSource = `-- name: CreateSource :one
+INSERT INTO sources (id, name, type)
+VALUES ($1, $2, $3)
+RETURNING id, name, type, created_at, updated_at
+`
+
+type CreateSourceParams struct {
+	ID   uuid.UUID
+	Name string
+	Type string
+}
+
+func (q *Queries) CreateSource(ctx context.Context, arg CreateSourceParams) (Source, error) {
+	row := q.db.QueryRow(ctx, createSource, arg.ID, arg.Name, arg.Type)
+	var i Source
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Type,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createSourceConfiguration = `-- name: CreateSourceConfiguration :one
 INSERT INTO source_configurations (id, source_id, type, config)
 VALUES ($1, $2, $3, $4)
@@ -84,6 +109,27 @@ func (q *Queries) GetSourceByName(ctx context.Context, name string) (Source, err
 	return i, err
 }
 
+const getSourceConfigurationByID = `-- name: GetSourceConfigurationByID :one
+SELECT id, source_id, type, config, created_at, updated_at, last_run_at
+FROM source_configurations
+WHERE id = $1
+`
+
+func (q *Queries) GetSourceConfigurationByID(ctx context.Context, id uuid.UUID) (SourceConfiguration, error) {
+	row := q.db.QueryRow(ctx, getSourceConfigurationByID, id)
+	var i SourceConfiguration
+	err := row.Scan(
+		&i.ID,
+		&i.SourceID,
+		&i.Type,
+		&i.Config,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LastRunAt,
+	)
+	return i, err
+}
+
 const getSourceConfigurationByURL = `-- name: GetSourceConfigurationByURL :one
 SELECT id, source_id, type, config, created_at, updated_at, last_run_at
 FROM source_configurations
@@ -123,6 +169,54 @@ ORDER BY type, id
 
 func (q *Queries) ListSourceConfigurations(ctx context.Context, sourceID uuid.UUID) ([]SourceConfiguration, error) {
 	rows, err := q.db.Query(ctx, listSourceConfigurations, sourceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SourceConfiguration
+	for rows.Next() {
+		var i SourceConfiguration
+		if err := rows.Scan(
+			&i.ID,
+			&i.SourceID,
+			&i.Type,
+			&i.Config,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.LastRunAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSourceConfigurationsPage = `-- name: ListSourceConfigurationsPage :many
+SELECT id, source_id, type, config, created_at, updated_at, last_run_at
+FROM source_configurations
+WHERE (
+    $1::timestamptz IS NULL
+    OR (created_at, id) < (
+        $1::timestamptz,
+        $2::uuid
+    )
+)
+ORDER BY created_at DESC, id DESC
+LIMIT $3
+`
+
+type ListSourceConfigurationsPageParams struct {
+	CursorCreatedAt pgtype.Timestamptz
+	CursorID        pgtype.UUID
+	PageSize        int32
+}
+
+func (q *Queries) ListSourceConfigurationsPage(ctx context.Context, arg ListSourceConfigurationsPageParams) ([]SourceConfiguration, error) {
+	rows, err := q.db.Query(ctx, listSourceConfigurationsPage, arg.CursorCreatedAt, arg.CursorID, arg.PageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -214,6 +308,52 @@ ORDER BY name
 
 func (q *Queries) ListSources(ctx context.Context) ([]Source, error) {
 	rows, err := q.db.Query(ctx, listSources)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Source
+	for rows.Next() {
+		var i Source
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Type,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSourcesPage = `-- name: ListSourcesPage :many
+SELECT id, name, type, created_at, updated_at
+FROM sources
+WHERE (
+    $1::timestamptz IS NULL
+    OR (created_at, id) < (
+        $1::timestamptz,
+        $2::uuid
+    )
+)
+ORDER BY created_at DESC, id DESC
+LIMIT $3
+`
+
+type ListSourcesPageParams struct {
+	CursorCreatedAt pgtype.Timestamptz
+	CursorID        pgtype.UUID
+	PageSize        int32
+}
+
+func (q *Queries) ListSourcesPage(ctx context.Context, arg ListSourcesPageParams) ([]Source, error) {
+	rows, err := q.db.Query(ctx, listSourcesPage, arg.CursorCreatedAt, arg.CursorID, arg.PageSize)
 	if err != nil {
 		return nil, err
 	}

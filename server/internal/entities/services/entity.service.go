@@ -7,25 +7,29 @@ import (
 	"strings"
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/common/ids"
+	"github.com/Rahmannugar/macro-terminal/server/internal/common/paging"
 	"github.com/Rahmannugar/macro-terminal/server/internal/entities/models"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
 var (
-	ErrEntityCodeRequired        = errors.New("entity code is required")
-	ErrEntityNameRequired        = errors.New("entity name is required")
-	ErrEntityTypeRequired        = errors.New("entity type is required")
-	ErrEntityCodeExists          = errors.New("entity code already exists")
-	ErrEntityNotFound            = errors.New("entity not found")
-	ErrPairSymbolRequired        = errors.New("entity pair symbol is required")
-	ErrPairEntitiesMustDiffer    = errors.New("entity pair requires two different entities")
-	ErrPairSymbolExists          = errors.New("entity pair symbol already exists")
-	ErrEntityPairNotFound        = errors.New("entity pair not found")
-	ErrKnowledgeTermNameRequired = errors.New("knowledge term name is required")
-	ErrKnowledgeTermTypeRequired = errors.New("knowledge term type is required")
-	ErrIndicatorNameRequired     = errors.New("indicator name is required")
-	ErrIndicatorTypeRequired     = errors.New("indicator type is required")
+	ErrEntityCodeRequired          = errors.New("entity code is required")
+	ErrEntityNameRequired          = errors.New("entity name is required")
+	ErrEntityTypeRequired          = errors.New("entity type is required")
+	ErrEntityCodeExists            = errors.New("entity code already exists")
+	ErrEntityNotFound              = errors.New("entity not found")
+	ErrPairSymbolRequired          = errors.New("entity pair symbol is required")
+	ErrPairEntitiesMustDiffer      = errors.New("entity pair requires two different entities")
+	ErrPairSymbolExists            = errors.New("entity pair symbol already exists")
+	ErrEntityPairNotFound          = errors.New("entity pair not found")
+	ErrKnowledgeTermNameRequired   = errors.New("knowledge term name is required")
+	ErrKnowledgeTermTypeRequired   = errors.New("knowledge term type is required")
+	ErrKnowledgeTermLinkRequired   = errors.New("knowledge term must link to an entity or an indicator")
+	ErrKnowledgeTermEntityMismatch = errors.New("knowledge term entity does not match the indicator entity")
+	ErrIndicatorNameRequired       = errors.New("indicator name is required")
+	ErrIndicatorTypeRequired       = errors.New("indicator type is required")
+	ErrIndicatorNotFound           = errors.New("indicator not found")
 )
 
 type EntityRepository interface {
@@ -43,6 +47,13 @@ type EntityRepository interface {
 	ListIndicators(context.Context) ([]models.Indicator, error)
 	ListIndicatorKnowledgeTerms(context.Context) ([]models.IndicatorTerm, error)
 	UpsertIndicator(context.Context, models.Indicator) (models.Indicator, error)
+	IndicatorByID(context.Context, uuid.UUID) (models.Indicator, error)
+	CreateIndicator(context.Context, models.Indicator) (models.Indicator, error)
+	CreateKnowledgeTerm(context.Context, models.KnowledgeTerm) (models.KnowledgeTerm, error)
+	ListEntitiesPage(context.Context, *paging.Cursor, int32) ([]models.Entity, *paging.Cursor, error)
+	ListEntityPairsPage(context.Context, *paging.Cursor, int32) ([]models.EntityPair, *paging.Cursor, error)
+	ListIndicatorsPage(context.Context, *paging.Cursor, int32) ([]models.Indicator, *paging.Cursor, error)
+	ListKnowledgeTermsPage(context.Context, *paging.Cursor, int32) ([]models.KnowledgeTerm, *paging.Cursor, error)
 }
 
 type EntityService struct {
@@ -305,6 +316,158 @@ func (service *EntityService) EnsureIndicatorTerm(
 		return models.KnowledgeTerm{}, fmt.Errorf("upsert indicator knowledge term: %w", err)
 	}
 	return upserted, nil
+}
+
+func (service *EntityService) ListEntitiesPage(
+	ctx context.Context,
+	cursor *paging.Cursor,
+	limit int32,
+) ([]models.Entity, *paging.Cursor, error) {
+	return service.repository.ListEntitiesPage(ctx, cursor, limit)
+}
+
+func (service *EntityService) ListEntityPairsPage(
+	ctx context.Context,
+	cursor *paging.Cursor,
+	limit int32,
+) ([]models.EntityPair, *paging.Cursor, error) {
+	return service.repository.ListEntityPairsPage(ctx, cursor, limit)
+}
+
+func (service *EntityService) ListIndicatorsPage(
+	ctx context.Context,
+	cursor *paging.Cursor,
+	limit int32,
+) ([]models.Indicator, *paging.Cursor, error) {
+	return service.repository.ListIndicatorsPage(ctx, cursor, limit)
+}
+
+func (service *EntityService) ListKnowledgeTermsPage(
+	ctx context.Context,
+	cursor *paging.Cursor,
+	limit int32,
+) ([]models.KnowledgeTerm, *paging.Cursor, error) {
+	return service.repository.ListKnowledgeTermsPage(ctx, cursor, limit)
+}
+
+func (service *EntityService) EntityByCode(ctx context.Context, code string) (models.Entity, error) {
+	code = strings.TrimSpace(code)
+	entity, err := service.repository.EntityByCode(ctx, code)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return models.Entity{}, fmt.Errorf("%w: %s", ErrEntityNotFound, code)
+	}
+	if err != nil {
+		return models.Entity{}, fmt.Errorf("find entity by code: %w", err)
+	}
+	return entity, nil
+}
+
+func (service *EntityService) IndicatorByID(ctx context.Context, id uuid.UUID) (models.Indicator, error) {
+	indicator, err := service.repository.IndicatorByID(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return models.Indicator{}, fmt.Errorf("%w: %s", ErrIndicatorNotFound, id)
+	}
+	if err != nil {
+		return models.Indicator{}, fmt.Errorf("find indicator by ID: %w", err)
+	}
+	return indicator, nil
+}
+
+// CreateIndicator creates an economic series for an existing entity; a
+// duplicate name under the same entity is rejected by the unique key.
+func (service *EntityService) CreateIndicator(
+	ctx context.Context,
+	name, indicatorType, entityCode string,
+) (models.Indicator, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return models.Indicator{}, ErrIndicatorNameRequired
+	}
+	indicatorType = strings.TrimSpace(indicatorType)
+	if indicatorType == "" {
+		return models.Indicator{}, ErrIndicatorTypeRequired
+	}
+
+	entity, err := service.EntityByCode(ctx, entityCode)
+	if err != nil {
+		return models.Indicator{}, err
+	}
+
+	id, err := ids.New()
+	if err != nil {
+		return models.Indicator{}, fmt.Errorf("generate indicator ID: %w", err)
+	}
+
+	created, err := service.repository.CreateIndicator(ctx, models.Indicator{
+		ID:       id,
+		Name:     name,
+		EntityID: entity.ID,
+		Type:     indicatorType,
+	})
+	if err != nil {
+		return models.Indicator{}, fmt.Errorf("create indicator: %w", err)
+	}
+	return created, nil
+}
+
+// CreateKnowledgeTerm stores a phrase linked to an entity, to an
+// indicator, or to both; an indicator link always carries the
+// indicator's own entity.
+func (service *EntityService) CreateKnowledgeTerm(
+	ctx context.Context,
+	name, termType, entityCode string,
+	indicatorID *uuid.UUID,
+) (models.KnowledgeTerm, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return models.KnowledgeTerm{}, ErrKnowledgeTermNameRequired
+	}
+	termType = strings.TrimSpace(termType)
+	if termType == "" {
+		return models.KnowledgeTerm{}, ErrKnowledgeTermTypeRequired
+	}
+
+	term := models.KnowledgeTerm{Name: name, Type: termType}
+	if indicatorID != nil {
+		indicator, err := service.IndicatorByID(ctx, *indicatorID)
+		if err != nil {
+			return models.KnowledgeTerm{}, err
+		}
+		term.EntityID = indicator.EntityID
+		term.IndicatorID = indicator.ID
+		if strings.TrimSpace(entityCode) != "" {
+			entity, err := service.EntityByCode(ctx, entityCode)
+			if err != nil {
+				return models.KnowledgeTerm{}, err
+			}
+			if entity.ID != indicator.EntityID {
+				return models.KnowledgeTerm{}, fmt.Errorf(
+					"%w: %s", ErrKnowledgeTermEntityMismatch, entityCode,
+				)
+			}
+		}
+	} else {
+		if strings.TrimSpace(entityCode) == "" {
+			return models.KnowledgeTerm{}, ErrKnowledgeTermLinkRequired
+		}
+		entity, err := service.EntityByCode(ctx, entityCode)
+		if err != nil {
+			return models.KnowledgeTerm{}, err
+		}
+		term.EntityID = entity.ID
+	}
+
+	id, err := ids.New()
+	if err != nil {
+		return models.KnowledgeTerm{}, fmt.Errorf("generate knowledge term ID: %w", err)
+	}
+	term.ID = id
+
+	created, err := service.repository.CreateKnowledgeTerm(ctx, term)
+	if err != nil {
+		return models.KnowledgeTerm{}, fmt.Errorf("create knowledge term: %w", err)
+	}
+	return created, nil
 }
 
 func (service *EntityService) validatePair(

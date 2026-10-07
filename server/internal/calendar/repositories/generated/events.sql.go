@@ -12,6 +12,50 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createCalendarEvent = `-- name: CreateCalendarEvent :one
+INSERT INTO calendar_events (id, source_id, indicator_id, scheduled_at, released_at, previous, consensus, actual)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, source_id, indicator_id, scheduled_at, released_at, previous, consensus, actual, created_at, updated_at
+`
+
+type CreateCalendarEventParams struct {
+	ID          uuid.UUID
+	SourceID    uuid.UUID
+	IndicatorID uuid.UUID
+	ScheduledAt pgtype.Timestamptz
+	ReleasedAt  pgtype.Timestamptz
+	Previous    pgtype.Numeric
+	Consensus   pgtype.Numeric
+	Actual      pgtype.Numeric
+}
+
+func (q *Queries) CreateCalendarEvent(ctx context.Context, arg CreateCalendarEventParams) (CalendarEvent, error) {
+	row := q.db.QueryRow(ctx, createCalendarEvent,
+		arg.ID,
+		arg.SourceID,
+		arg.IndicatorID,
+		arg.ScheduledAt,
+		arg.ReleasedAt,
+		arg.Previous,
+		arg.Consensus,
+		arg.Actual,
+	)
+	var i CalendarEvent
+	err := row.Scan(
+		&i.ID,
+		&i.SourceID,
+		&i.IndicatorID,
+		&i.ScheduledAt,
+		&i.ReleasedAt,
+		&i.Previous,
+		&i.Consensus,
+		&i.Actual,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const getCalendarEvent = `-- name: GetCalendarEvent :one
 SELECT ce.id, ce.source_id, ce.indicator_id, ce.scheduled_at, ce.released_at,
        ce.previous, ce.consensus, ce.actual,
@@ -50,6 +94,57 @@ func (q *Queries) GetCalendarEvent(ctx context.Context, id uuid.UUID) (GetCalend
 		&i.IndicatorType,
 	)
 	return i, err
+}
+
+const listCalendarEventsPage = `-- name: ListCalendarEventsPage :many
+SELECT id, source_id, indicator_id, scheduled_at, released_at, previous, consensus, actual, created_at, updated_at
+FROM calendar_events
+WHERE (
+    $1::timestamptz IS NULL
+    OR (created_at, id) < (
+        $1::timestamptz,
+        $2::uuid
+    )
+)
+ORDER BY created_at DESC, id DESC
+LIMIT $3
+`
+
+type ListCalendarEventsPageParams struct {
+	CursorCreatedAt pgtype.Timestamptz
+	CursorID        pgtype.UUID
+	PageSize        int32
+}
+
+func (q *Queries) ListCalendarEventsPage(ctx context.Context, arg ListCalendarEventsPageParams) ([]CalendarEvent, error) {
+	rows, err := q.db.Query(ctx, listCalendarEventsPage, arg.CursorCreatedAt, arg.CursorID, arg.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CalendarEvent
+	for rows.Next() {
+		var i CalendarEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.SourceID,
+			&i.IndicatorID,
+			&i.ScheduledAt,
+			&i.ReleasedAt,
+			&i.Previous,
+			&i.Consensus,
+			&i.Actual,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const upsertCalendarEvent = `-- name: UpsertCalendarEvent :one

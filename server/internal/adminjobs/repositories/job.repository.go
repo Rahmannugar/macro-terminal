@@ -7,6 +7,7 @@ import (
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/adminjobs/models"
 	adminjobsdb "github.com/Rahmannugar/macro-terminal/server/internal/adminjobs/repositories/generated"
+	"github.com/Rahmannugar/macro-terminal/server/internal/common/paging"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -23,15 +24,15 @@ func NewJobRepository(pool *pgxpool.Pool) *JobRepository {
 func (repository *JobRepository) FailedJobs(
 	ctx context.Context,
 	jobType *string,
-	cursor *models.ListCursor,
+	cursor *paging.Cursor,
 	limit int32,
-) ([]models.Job, *models.ListCursor, error) {
+) ([]models.Job, *paging.Cursor, error) {
 	params := adminjobsdb.ListFailedOutboxJobsParams{
 		Type:     jobType,
 		PageSize: limit + 1,
 	}
 	if cursor != nil {
-		params.CursorUpdatedAt = pgtype.Timestamptz{Time: cursor.UpdatedAt, Valid: true}
+		params.CursorUpdatedAt = pgtype.Timestamptz{Time: cursor.At, Valid: true}
 		params.CursorID = pgtype.UUID{Bytes: cursor.ID, Valid: true}
 	}
 	rows, err := repository.queries.ListFailedOutboxJobs(ctx, params)
@@ -42,7 +43,7 @@ func (repository *JobRepository) FailedJobs(
 	for index, row := range rows {
 		if int32(index) == limit {
 			last := jobs[len(jobs)-1]
-			return jobs, &models.ListCursor{UpdatedAt: last.UpdatedAt, ID: last.ID}, nil
+			return jobs, &paging.Cursor{At: last.UpdatedAt, ID: last.ID}, nil
 		}
 		jobs = append(jobs, jobFromRow(row.ID, row.Type, row.Status, row.Attempts, row.LastError, row.CreatedAt.Time, row.UpdatedAt.Time))
 	}

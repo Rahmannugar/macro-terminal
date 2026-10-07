@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/authentication"
+	"github.com/Rahmannugar/macro-terminal/server/internal/common/paging"
 	"github.com/Rahmannugar/macro-terminal/server/internal/openapi"
 	"github.com/Rahmannugar/macro-terminal/server/internal/users/models"
 	"github.com/gin-gonic/gin"
@@ -57,7 +58,7 @@ func listUsers(service *AdminService) gin.HandlerFunc {
 			writeFailure(ctx, http.StatusBadRequest, "invalid_limit", "Limit must be a number between 1 and 100.")
 			return
 		}
-		cursor, err := models.DecodeCursor(ctx.Query("cursor"))
+		cursor, err := paging.DecodeCursor(ctx.Query("cursor"))
 		if err != nil {
 			writeFailure(ctx, http.StatusBadRequest, "invalid_cursor", "Use the next cursor returned by the previous page.")
 			return
@@ -172,7 +173,7 @@ func newUserListResponse(page UserPage) userListResponse {
 	}
 	response := userListResponse{Users: users}
 	if page.NextCursor != nil {
-		encoded := models.EncodeCursor(*page.NextCursor)
+		encoded := paging.EncodeCursor(*page.NextCursor)
 		response.NextCursor = &encoded
 	}
 	return response

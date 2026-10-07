@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/Rahmannugar/macro-terminal/server/internal/common/paging"
 	"github.com/Rahmannugar/macro-terminal/server/internal/entities/models"
 	entitydb "github.com/Rahmannugar/macro-terminal/server/internal/entities/repositories/generated"
 	"github.com/google/uuid"
@@ -335,6 +336,147 @@ func (repository *EntityRepository) UpsertIndicator(
 	}, nil
 }
 
+func (repository *EntityRepository) ListEntitiesPage(
+	ctx context.Context,
+	cursor *paging.Cursor,
+	limit int32,
+) ([]models.Entity, *paging.Cursor, error) {
+	params := entitydb.ListEntitiesPageParams{PageSize: limit + 1}
+	if cursor != nil {
+		params.CursorCreatedAt = pgtype.Timestamptz{Time: cursor.At, Valid: true}
+		params.CursorID = pgtype.UUID{Bytes: cursor.ID, Valid: true}
+	}
+	rows, err := repository.queries.ListEntitiesPage(ctx, params)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list entities page: %w", err)
+	}
+	entities := make([]models.Entity, 0, min(len(rows), int(limit)))
+	for index, row := range rows {
+		if int32(index) == limit {
+			last := entities[len(entities)-1]
+			return entities, &paging.Cursor{At: last.CreatedAt, ID: last.ID}, nil
+		}
+		entities = append(entities, mapEntity(row))
+	}
+	return entities, nil, nil
+}
+
+func (repository *EntityRepository) ListEntityPairsPage(
+	ctx context.Context,
+	cursor *paging.Cursor,
+	limit int32,
+) ([]models.EntityPair, *paging.Cursor, error) {
+	params := entitydb.ListEntityPairsPageParams{PageSize: limit + 1}
+	if cursor != nil {
+		params.CursorCreatedAt = pgtype.Timestamptz{Time: cursor.At, Valid: true}
+		params.CursorID = pgtype.UUID{Bytes: cursor.ID, Valid: true}
+	}
+	rows, err := repository.queries.ListEntityPairsPage(ctx, params)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list entity pairs page: %w", err)
+	}
+	pairs := make([]models.EntityPair, 0, min(len(rows), int(limit)))
+	for index, row := range rows {
+		if int32(index) == limit {
+			last := pairs[len(pairs)-1]
+			return pairs, &paging.Cursor{At: last.CreatedAt, ID: last.ID}, nil
+		}
+		pairs = append(pairs, mapEntityPair(row))
+	}
+	return pairs, nil, nil
+}
+
+func (repository *EntityRepository) ListIndicatorsPage(
+	ctx context.Context,
+	cursor *paging.Cursor,
+	limit int32,
+) ([]models.Indicator, *paging.Cursor, error) {
+	params := entitydb.ListIndicatorsPageParams{PageSize: limit + 1}
+	if cursor != nil {
+		params.CursorCreatedAt = pgtype.Timestamptz{Time: cursor.At, Valid: true}
+		params.CursorID = pgtype.UUID{Bytes: cursor.ID, Valid: true}
+	}
+	rows, err := repository.queries.ListIndicatorsPage(ctx, params)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list indicators page: %w", err)
+	}
+	indicators := make([]models.Indicator, 0, min(len(rows), int(limit)))
+	for index, row := range rows {
+		if int32(index) == limit {
+			last := indicators[len(indicators)-1]
+			return indicators, &paging.Cursor{At: last.CreatedAt, ID: last.ID}, nil
+		}
+		indicators = append(indicators, mapIndicator(row))
+	}
+	return indicators, nil, nil
+}
+
+func (repository *EntityRepository) ListKnowledgeTermsPage(
+	ctx context.Context,
+	cursor *paging.Cursor,
+	limit int32,
+) ([]models.KnowledgeTerm, *paging.Cursor, error) {
+	params := entitydb.ListKnowledgeTermsPageParams{PageSize: limit + 1}
+	if cursor != nil {
+		params.CursorCreatedAt = pgtype.Timestamptz{Time: cursor.At, Valid: true}
+		params.CursorID = pgtype.UUID{Bytes: cursor.ID, Valid: true}
+	}
+	rows, err := repository.queries.ListKnowledgeTermsPage(ctx, params)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list knowledge terms page: %w", err)
+	}
+	terms := make([]models.KnowledgeTerm, 0, min(len(rows), int(limit)))
+	for index, row := range rows {
+		if int32(index) == limit {
+			last := terms[len(terms)-1]
+			return terms, &paging.Cursor{At: last.CreatedAt, ID: last.ID}, nil
+		}
+		terms = append(terms, mapKnowledgeTerm(row))
+	}
+	return terms, nil, nil
+}
+
+func (repository *EntityRepository) IndicatorByID(ctx context.Context, id uuid.UUID) (models.Indicator, error) {
+	row, err := repository.queries.GetIndicatorByID(ctx, id)
+	if err != nil {
+		return models.Indicator{}, fmt.Errorf("get indicator by ID: %w", err)
+	}
+	return mapIndicator(row), nil
+}
+
+func (repository *EntityRepository) CreateIndicator(
+	ctx context.Context,
+	indicator models.Indicator,
+) (models.Indicator, error) {
+	row, err := repository.queries.CreateIndicator(ctx, entitydb.CreateIndicatorParams{
+		ID:       indicator.ID,
+		Name:     indicator.Name,
+		EntityID: indicator.EntityID,
+		Type:     indicator.Type,
+	})
+	if err != nil {
+		return models.Indicator{}, fmt.Errorf("create indicator: %w", err)
+	}
+	return mapIndicator(row), nil
+}
+
+func (repository *EntityRepository) CreateKnowledgeTerm(
+	ctx context.Context,
+	term models.KnowledgeTerm,
+) (models.KnowledgeTerm, error) {
+	row, err := repository.queries.CreateKnowledgeTerm(ctx, entitydb.CreateKnowledgeTermParams{
+		ID:          term.ID,
+		Name:        term.Name,
+		Type:        term.Type,
+		EntityID:    toNullableUUID(term.EntityID),
+		IndicatorID: toNullableUUID(term.IndicatorID),
+	})
+	if err != nil {
+		return models.KnowledgeTerm{}, fmt.Errorf("create knowledge term: %w", err)
+	}
+	return mapKnowledgeTerm(row), nil
+}
+
 // An unlinked column becomes the zero UUID.
 func fromNullableUUID(value pgtype.UUID) uuid.UUID {
 	if !value.Valid {
@@ -369,5 +511,28 @@ func mapEntityPair(row entitydb.EntityPair) models.EntityPair {
 		Symbol:        row.Symbol,
 		CreatedAt:     row.CreatedAt.Time,
 		UpdatedAt:     row.UpdatedAt.Time,
+	}
+}
+
+func mapIndicator(row entitydb.EconomicIndicator) models.Indicator {
+	return models.Indicator{
+		ID:        row.ID,
+		Name:      row.Name,
+		EntityID:  row.EntityID,
+		Type:      row.Type,
+		CreatedAt: row.CreatedAt.Time,
+		UpdatedAt: row.UpdatedAt.Time,
+	}
+}
+
+func mapKnowledgeTerm(row entitydb.KnowledgeTerm) models.KnowledgeTerm {
+	return models.KnowledgeTerm{
+		ID:          row.ID,
+		Name:        row.Name,
+		Type:        row.Type,
+		EntityID:    fromNullableUUID(row.EntityID),
+		IndicatorID: fromNullableUUID(row.IndicatorID),
+		CreatedAt:   row.CreatedAt.Time,
+		UpdatedAt:   row.UpdatedAt.Time,
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/Rahmannugar/macro-terminal/server/internal/adminconfig"
 	"github.com/Rahmannugar/macro-terminal/server/internal/adminjobs"
 	adminjobsrepositories "github.com/Rahmannugar/macro-terminal/server/internal/adminjobs/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/ai"
@@ -16,6 +17,7 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/config"
 	enrichmentrepositories "github.com/Rahmannugar/macro-terminal/server/internal/enrichment/repositories"
 	entityrepositories "github.com/Rahmannugar/macro-terminal/server/internal/entities/repositories"
+	entityservices "github.com/Rahmannugar/macro-terminal/server/internal/entities/services"
 	"github.com/Rahmannugar/macro-terminal/server/internal/explanation"
 	"github.com/Rahmannugar/macro-terminal/server/internal/health"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
@@ -23,6 +25,8 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/telemetry"
 	"github.com/Rahmannugar/macro-terminal/server/internal/openapi"
 	"github.com/Rahmannugar/macro-terminal/server/internal/search"
+	sourcerepositories "github.com/Rahmannugar/macro-terminal/server/internal/sources/repositories"
+	sourceservices "github.com/Rahmannugar/macro-terminal/server/internal/sources/services"
 	"github.com/Rahmannugar/macro-terminal/server/internal/users"
 	userrepositories "github.com/Rahmannugar/macro-terminal/server/internal/users/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/vector"
@@ -78,6 +82,12 @@ func newRouter(
 		}
 	}
 	resourceStore := cache.NewJSONStore(redisClient)
+	adminconfig.RegisterAdminConfigRoutes(
+		adminGroup,
+		entityservices.NewEntityService(entityrepositories.NewEntityRepository(database)),
+		sourceservices.NewSourceService(sourcerepositories.NewSourceRepository(database)),
+		calendarrepositories.NewEventRepository(database, resourceStore),
+	)
 	articleRepository := articlerepositories.NewArticleRepository(database, resourceStore)
 	clusterRepository := clusteringrepositories.NewRepository(database, resourceStore)
 	relatedService := clustering.NewService(clusterRepository, searcher, articleRepository)

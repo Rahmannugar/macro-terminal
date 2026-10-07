@@ -1,6 +1,694 @@
 {
     "components": {
         "schemas": {
+            "adminconfig.calendarEventJSON": {
+                "properties": {
+                    "actual": {
+                        "example": 261000,
+                        "type": "number"
+                    },
+                    "consensus": {
+                        "example": 255000,
+                        "type": "number"
+                    },
+                    "createdAt": {
+                        "example": "2026-10-06T09:00:00Z",
+                        "type": "string"
+                    },
+                    "id": {
+                        "example": "7d3b9f1e-5a4c-4e8b-9f2d-1c6a8b0e4f73",
+                        "type": "string"
+                    },
+                    "indicatorId": {
+                        "example": "6b5f8e2d-4c9a-4f1e-b8d7-3a2c6e9f1b40",
+                        "type": "string"
+                    },
+                    "previous": {
+                        "example": 250000,
+                        "type": "number"
+                    },
+                    "releasedAt": {
+                        "example": "2026-10-06T12:30:00Z",
+                        "type": "string"
+                    },
+                    "scheduledAt": {
+                        "example": "2026-10-06T12:30:00Z",
+                        "type": "string"
+                    },
+                    "sourceId": {
+                        "example": "5a1c3e7b-9d2f-4c8a-b6e1-7f4d2a9c3e50",
+                        "type": "string"
+                    },
+                    "updatedAt": {
+                        "example": "2026-10-06T09:00:00Z",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "actual",
+                    "consensus",
+                    "createdAt",
+                    "id",
+                    "indicatorId",
+                    "previous",
+                    "releasedAt",
+                    "scheduledAt",
+                    "sourceId",
+                    "updatedAt"
+                ],
+                "type": "object"
+            },
+            "adminconfig.calendarEventListResponse": {
+                "properties": {
+                    "calendarEvents": {
+                        "items": {
+                            "$ref": "#/components/schemas/adminconfig.calendarEventJSON"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "nextCursor": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "calendarEvents",
+                    "nextCursor"
+                ],
+                "type": "object"
+            },
+            "adminconfig.calendarEventResponse": {
+                "properties": {
+                    "calendarEvent": {
+                        "$ref": "#/components/schemas/adminconfig.calendarEventJSON"
+                    }
+                },
+                "required": [
+                    "calendarEvent"
+                ],
+                "type": "object"
+            },
+            "adminconfig.createCalendarEventRequest": {
+                "properties": {
+                    "actual": {
+                        "example": 261000,
+                        "type": "number"
+                    },
+                    "consensus": {
+                        "example": 255000,
+                        "type": "number"
+                    },
+                    "entityCodes": {
+                        "example": [
+                            "US"
+                        ],
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "indicatorId": {
+                        "example": "6b5f8e2d-4c9a-4f1e-b8d7-3a2c6e9f1b40",
+                        "type": "string"
+                    },
+                    "previous": {
+                        "example": 250000,
+                        "type": "number"
+                    },
+                    "releasedAt": {
+                        "example": "2026-10-06T12:30:00Z",
+                        "type": "string"
+                    },
+                    "scheduledAt": {
+                        "example": "2026-10-06T12:30:00Z",
+                        "type": "string"
+                    },
+                    "sourceId": {
+                        "example": "5a1c3e7b-9d2f-4c8a-b6e1-7f4d2a9c3e50",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "actual",
+                    "consensus",
+                    "entityCodes",
+                    "indicatorId",
+                    "previous",
+                    "releasedAt",
+                    "scheduledAt",
+                    "sourceId"
+                ],
+                "type": "object"
+            },
+            "adminconfig.createEntityPairRequest": {
+                "properties": {
+                    "baseCode": {
+                        "example": "EUR",
+                        "type": "string"
+                    },
+                    "quoteCode": {
+                        "example": "USD",
+                        "type": "string"
+                    },
+                    "symbol": {
+                        "example": "EURUSD",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "baseCode",
+                    "quoteCode",
+                    "symbol"
+                ],
+                "type": "object"
+            },
+            "adminconfig.createEntityRequest": {
+                "properties": {
+                    "code": {
+                        "example": "EUR",
+                        "type": "string"
+                    },
+                    "name": {
+                        "example": "Euro",
+                        "type": "string"
+                    },
+                    "type": {
+                        "example": "currency",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "code",
+                    "name",
+                    "type"
+                ],
+                "type": "object"
+            },
+            "adminconfig.createIndicatorRequest": {
+                "properties": {
+                    "entityCode": {
+                        "example": "US",
+                        "type": "string"
+                    },
+                    "name": {
+                        "example": "Nonfarm Payrolls",
+                        "type": "string"
+                    },
+                    "type": {
+                        "example": "labor",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "entityCode",
+                    "name",
+                    "type"
+                ],
+                "type": "object"
+            },
+            "adminconfig.createKnowledgeTermRequest": {
+                "properties": {
+                    "entityCode": {
+                        "example": "US",
+                        "type": "string"
+                    },
+                    "indicatorId": {
+                        "example": "6b5f8e2d-4c9a-4f1e-b8d7-3a2c6e9f1b40",
+                        "type": "string"
+                    },
+                    "name": {
+                        "example": "nonfarm payrolls",
+                        "type": "string"
+                    },
+                    "type": {
+                        "example": "indicator_alias",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "entityCode",
+                    "indicatorId",
+                    "name",
+                    "type"
+                ],
+                "type": "object"
+            },
+            "adminconfig.createSourceConfigurationRequest": {
+                "properties": {
+                    "config": {
+                        "type": "object"
+                    },
+                    "sourceId": {
+                        "example": "5a1c3e7b-9d2f-4c8a-b6e1-7f4d2a9c3e50",
+                        "type": "string"
+                    },
+                    "type": {
+                        "example": "api",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "config",
+                    "sourceId",
+                    "type"
+                ],
+                "type": "object"
+            },
+            "adminconfig.createSourceRequest": {
+                "properties": {
+                    "name": {
+                        "example": "BLS",
+                        "type": "string"
+                    },
+                    "type": {
+                        "example": "api",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "name",
+                    "type"
+                ],
+                "type": "object"
+            },
+            "adminconfig.entityJSON": {
+                "properties": {
+                    "code": {
+                        "example": "EUR",
+                        "type": "string"
+                    },
+                    "createdAt": {
+                        "example": "2026-10-06T09:00:00Z",
+                        "type": "string"
+                    },
+                    "id": {
+                        "example": "9d1e4a63-8f6d-4b9c-1f4e-7a553f8b2a60",
+                        "type": "string"
+                    },
+                    "name": {
+                        "example": "Euro",
+                        "type": "string"
+                    },
+                    "type": {
+                        "example": "currency",
+                        "type": "string"
+                    },
+                    "updatedAt": {
+                        "example": "2026-10-06T09:00:00Z",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "code",
+                    "createdAt",
+                    "id",
+                    "name",
+                    "type",
+                    "updatedAt"
+                ],
+                "type": "object"
+            },
+            "adminconfig.entityListResponse": {
+                "properties": {
+                    "entities": {
+                        "items": {
+                            "$ref": "#/components/schemas/adminconfig.entityJSON"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "nextCursor": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "entities",
+                    "nextCursor"
+                ],
+                "type": "object"
+            },
+            "adminconfig.entityPairJSON": {
+                "properties": {
+                    "baseEntityId": {
+                        "example": "9d1e4a63-8f6d-4b9c-1f4e-7a553f8b2a60",
+                        "type": "string"
+                    },
+                    "createdAt": {
+                        "example": "2026-10-06T09:00:00Z",
+                        "type": "string"
+                    },
+                    "id": {
+                        "example": "c1e0f4d2-6a1b-4f3e-9d7c-2b8a5e6f4c10",
+                        "type": "string"
+                    },
+                    "quoteEntityId": {
+                        "example": "3f2a9c81-5b7d-4e2a-8c6f-1d9e4b7a2f30",
+                        "type": "string"
+                    },
+                    "symbol": {
+                        "example": "EURUSD",
+                        "type": "string"
+                    },
+                    "updatedAt": {
+                        "example": "2026-10-06T09:00:00Z",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "baseEntityId",
+                    "createdAt",
+                    "id",
+                    "quoteEntityId",
+                    "symbol",
+                    "updatedAt"
+                ],
+                "type": "object"
+            },
+            "adminconfig.entityPairListResponse": {
+                "properties": {
+                    "entityPairs": {
+                        "items": {
+                            "$ref": "#/components/schemas/adminconfig.entityPairJSON"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "nextCursor": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "entityPairs",
+                    "nextCursor"
+                ],
+                "type": "object"
+            },
+            "adminconfig.entityPairResponse": {
+                "properties": {
+                    "entityPair": {
+                        "$ref": "#/components/schemas/adminconfig.entityPairJSON"
+                    }
+                },
+                "required": [
+                    "entityPair"
+                ],
+                "type": "object"
+            },
+            "adminconfig.entityResponse": {
+                "properties": {
+                    "entity": {
+                        "$ref": "#/components/schemas/adminconfig.entityJSON"
+                    }
+                },
+                "required": [
+                    "entity"
+                ],
+                "type": "object"
+            },
+            "adminconfig.indicatorJSON": {
+                "properties": {
+                    "createdAt": {
+                        "example": "2026-10-06T09:00:00Z",
+                        "type": "string"
+                    },
+                    "entityId": {
+                        "example": "9d1e4a63-8f6d-4b9c-1f4e-7a553f8b2a60",
+                        "type": "string"
+                    },
+                    "id": {
+                        "example": "6b5f8e2d-4c9a-4f1e-b8d7-3a2c6e9f1b40",
+                        "type": "string"
+                    },
+                    "name": {
+                        "example": "Nonfarm Payrolls",
+                        "type": "string"
+                    },
+                    "type": {
+                        "example": "labor",
+                        "type": "string"
+                    },
+                    "updatedAt": {
+                        "example": "2026-10-06T09:00:00Z",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "createdAt",
+                    "entityId",
+                    "id",
+                    "name",
+                    "type",
+                    "updatedAt"
+                ],
+                "type": "object"
+            },
+            "adminconfig.indicatorListResponse": {
+                "properties": {
+                    "indicators": {
+                        "items": {
+                            "$ref": "#/components/schemas/adminconfig.indicatorJSON"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "nextCursor": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "indicators",
+                    "nextCursor"
+                ],
+                "type": "object"
+            },
+            "adminconfig.indicatorResponse": {
+                "properties": {
+                    "indicator": {
+                        "$ref": "#/components/schemas/adminconfig.indicatorJSON"
+                    }
+                },
+                "required": [
+                    "indicator"
+                ],
+                "type": "object"
+            },
+            "adminconfig.knowledgeTermJSON": {
+                "properties": {
+                    "createdAt": {
+                        "example": "2026-10-06T09:00:00Z",
+                        "type": "string"
+                    },
+                    "entityId": {
+                        "example": "9d1e4a63-8f6d-4b9c-1f4e-7a553f8b2a60",
+                        "type": "string"
+                    },
+                    "id": {
+                        "example": "8c4a2f6e-1d3b-4e7a-9c5f-6b8d0e2a4f71",
+                        "type": "string"
+                    },
+                    "indicatorId": {
+                        "example": "6b5f8e2d-4c9a-4f1e-b8d7-3a2c6e9f1b40",
+                        "type": "string"
+                    },
+                    "name": {
+                        "example": "nonfarm payrolls",
+                        "type": "string"
+                    },
+                    "type": {
+                        "example": "indicator_alias",
+                        "type": "string"
+                    },
+                    "updatedAt": {
+                        "example": "2026-10-06T09:00:00Z",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "createdAt",
+                    "entityId",
+                    "id",
+                    "indicatorId",
+                    "name",
+                    "type",
+                    "updatedAt"
+                ],
+                "type": "object"
+            },
+            "adminconfig.knowledgeTermListResponse": {
+                "properties": {
+                    "knowledgeTerms": {
+                        "items": {
+                            "$ref": "#/components/schemas/adminconfig.knowledgeTermJSON"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "nextCursor": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "knowledgeTerms",
+                    "nextCursor"
+                ],
+                "type": "object"
+            },
+            "adminconfig.knowledgeTermResponse": {
+                "properties": {
+                    "knowledgeTerm": {
+                        "$ref": "#/components/schemas/adminconfig.knowledgeTermJSON"
+                    }
+                },
+                "required": [
+                    "knowledgeTerm"
+                ],
+                "type": "object"
+            },
+            "adminconfig.sourceConfigurationJSON": {
+                "properties": {
+                    "config": {
+                        "type": "object"
+                    },
+                    "createdAt": {
+                        "example": "2026-10-06T09:00:00Z",
+                        "type": "string"
+                    },
+                    "id": {
+                        "example": "2e8f4a6c-7b3d-4e9a-8c1f-5d0b6a4e9f22",
+                        "type": "string"
+                    },
+                    "lastRunAt": {
+                        "example": "2026-10-06T09:00:00Z",
+                        "type": "string"
+                    },
+                    "sourceId": {
+                        "example": "5a1c3e7b-9d2f-4c8a-b6e1-7f4d2a9c3e50",
+                        "type": "string"
+                    },
+                    "type": {
+                        "example": "api",
+                        "type": "string"
+                    },
+                    "updatedAt": {
+                        "example": "2026-10-06T09:00:00Z",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "config",
+                    "createdAt",
+                    "id",
+                    "lastRunAt",
+                    "sourceId",
+                    "type",
+                    "updatedAt"
+                ],
+                "type": "object"
+            },
+            "adminconfig.sourceConfigurationListResponse": {
+                "properties": {
+                    "nextCursor": {
+                        "type": "string"
+                    },
+                    "sourceConfigurations": {
+                        "items": {
+                            "$ref": "#/components/schemas/adminconfig.sourceConfigurationJSON"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "required": [
+                    "nextCursor",
+                    "sourceConfigurations"
+                ],
+                "type": "object"
+            },
+            "adminconfig.sourceConfigurationResponse": {
+                "properties": {
+                    "sourceConfiguration": {
+                        "$ref": "#/components/schemas/adminconfig.sourceConfigurationJSON"
+                    }
+                },
+                "required": [
+                    "sourceConfiguration"
+                ],
+                "type": "object"
+            },
+            "adminconfig.sourceJSON": {
+                "properties": {
+                    "createdAt": {
+                        "example": "2026-10-06T09:00:00Z",
+                        "type": "string"
+                    },
+                    "id": {
+                        "example": "5a1c3e7b-9d2f-4c8a-b6e1-7f4d2a9c3e50",
+                        "type": "string"
+                    },
+                    "name": {
+                        "example": "BLS",
+                        "type": "string"
+                    },
+                    "type": {
+                        "example": "api",
+                        "type": "string"
+                    },
+                    "updatedAt": {
+                        "example": "2026-10-06T09:00:00Z",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "createdAt",
+                    "id",
+                    "name",
+                    "type",
+                    "updatedAt"
+                ],
+                "type": "object"
+            },
+            "adminconfig.sourceListResponse": {
+                "properties": {
+                    "nextCursor": {
+                        "type": "string"
+                    },
+                    "sources": {
+                        "items": {
+                            "$ref": "#/components/schemas/adminconfig.sourceJSON"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "required": [
+                    "nextCursor",
+                    "sources"
+                ],
+                "type": "object"
+            },
+            "adminconfig.sourceResponse": {
+                "properties": {
+                    "source": {
+                        "$ref": "#/components/schemas/adminconfig.sourceJSON"
+                    }
+                },
+                "required": [
+                    "source"
+                ],
+                "type": "object"
+            },
+            "adminconfig.updateSourceConfigurationRequest": {
+                "properties": {
+                    "config": {
+                        "type": "object"
+                    }
+                },
+                "required": [
+                    "config"
+                ],
+                "type": "object"
+            },
             "adminjobs.jobJSON": {
                 "properties": {
                     "attempts": {
@@ -615,6 +1303,500 @@
                 ]
             }
         },
+        "/api/v1/admin/calendar-events": {
+            "get": {
+                "description": "Returns stored events newest first. Pass the returned nextCursor to fetch the next page.",
+                "parameters": [
+                    {
+                        "description": "Page size between 1 and 100. Defaults to 25.",
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Opaque cursor returned as nextCursor by the previous page.",
+                        "in": "query",
+                        "name": "cursor",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/adminconfig.calendarEventListResponse"
+                                }
+                            }
+                        },
+                        "description": "The events and the cursor for the next page, if any."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The limit or cursor is invalid."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "List calendar events.",
+                "tags": [
+                    "admin"
+                ]
+            },
+            "post": {
+                "description": "Stores an event under an existing source and indicator, optionally linked to entities. Values are optional; the scheduled time is required. The same source, indicator, and scheduled time may appear only once.",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/adminconfig.createCalendarEventRequest",
+                                "summary": "body",
+                                "description": "The event to store."
+                            }
+                        }
+                    },
+                    "description": "The event to store.",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/adminconfig.calendarEventResponse"
+                                }
+                            }
+                        },
+                        "description": "The stored event."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "A field is missing or a reference is unknown."
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The source, indicator, or an entity code does not exist."
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "An event with that source, indicator, and scheduled time already exists."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Create a calendar event.",
+                "tags": [
+                    "admin"
+                ]
+            }
+        },
+        "/api/v1/admin/entities": {
+            "get": {
+                "description": "Returns reference entities newest first. Pass the returned nextCursor to fetch the next page.",
+                "parameters": [
+                    {
+                        "description": "Page size between 1 and 100. Defaults to 25.",
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Opaque cursor returned as nextCursor by the previous page.",
+                        "in": "query",
+                        "name": "cursor",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/adminconfig.entityListResponse"
+                                }
+                            }
+                        },
+                        "description": "The entities and the cursor for the next page, if any."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The limit or cursor is invalid."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "List entities.",
+                "tags": [
+                    "admin"
+                ]
+            },
+            "post": {
+                "description": "Stores a reference entity. The code must not already exist.",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/adminconfig.createEntityRequest",
+                                "summary": "body",
+                                "description": "The entity to store."
+                            }
+                        }
+                    },
+                    "description": "The entity to store.",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/adminconfig.entityResponse"
+                                }
+                            }
+                        },
+                        "description": "The stored entity."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "A field is missing or the body is not valid JSON."
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "An entity with that code already exists."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Create an entity.",
+                "tags": [
+                    "admin"
+                ]
+            }
+        },
+        "/api/v1/admin/entity-pairs": {
+            "get": {
+                "description": "Returns tradable pairs newest first. Pass the returned nextCursor to fetch the next page.",
+                "parameters": [
+                    {
+                        "description": "Page size between 1 and 100. Defaults to 25.",
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Opaque cursor returned as nextCursor by the previous page.",
+                        "in": "query",
+                        "name": "cursor",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/adminconfig.entityPairListResponse"
+                                }
+                            }
+                        },
+                        "description": "The pairs and the cursor for the next page, if any."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The limit or cursor is invalid."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "List entity pairs.",
+                "tags": [
+                    "admin"
+                ]
+            },
+            "post": {
+                "description": "Stores a pair of existing entities under an explicit product symbol. Both codes must exist and differ.",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/adminconfig.createEntityPairRequest",
+                                "summary": "body",
+                                "description": "The pair to store."
+                            }
+                        }
+                    },
+                    "description": "The pair to store.",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/adminconfig.entityPairResponse"
+                                }
+                            }
+                        },
+                        "description": "The stored pair."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "A field is missing or a code is unknown."
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "An entity pair with that symbol already exists."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Create an entity pair.",
+                "tags": [
+                    "admin"
+                ]
+            }
+        },
+        "/api/v1/admin/indicators": {
+            "get": {
+                "description": "Returns indicators newest first. Pass the returned nextCursor to fetch the next page.",
+                "parameters": [
+                    {
+                        "description": "Page size between 1 and 100. Defaults to 25.",
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Opaque cursor returned as nextCursor by the previous page.",
+                        "in": "query",
+                        "name": "cursor",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/adminconfig.indicatorListResponse"
+                                }
+                            }
+                        },
+                        "description": "The indicators and the cursor for the next page, if any."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The limit or cursor is invalid."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "List economic indicators.",
+                "tags": [
+                    "admin"
+                ]
+            },
+            "post": {
+                "description": "Stores an indicator under an existing entity. The name must be unique within that entity.",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/adminconfig.createIndicatorRequest",
+                                "summary": "body",
+                                "description": "The indicator to store."
+                            }
+                        }
+                    },
+                    "description": "The indicator to store.",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/adminconfig.indicatorResponse"
+                                }
+                            }
+                        },
+                        "description": "The stored indicator."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "A field is missing or the entity code is unknown."
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "That entity already has an indicator with this name."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Create an economic indicator.",
+                "tags": [
+                    "admin"
+                ]
+            }
+        },
         "/api/v1/admin/jobs/failed": {
             "get": {
                 "description": "Returns durable work that exhausted its retries, newest first, optionally filtered by job type. These rows are the dead-letter queue: replay a job to return it to normal processing. Pass the returned nextCursor to fetch the next page.",
@@ -749,6 +1931,454 @@
                     }
                 },
                 "summary": "Replay a failed job.",
+                "tags": [
+                    "admin"
+                ]
+            }
+        },
+        "/api/v1/admin/knowledge-terms": {
+            "get": {
+                "description": "Returns classification phrases newest first. Pass the returned nextCursor to fetch the next page.",
+                "parameters": [
+                    {
+                        "description": "Page size between 1 and 100. Defaults to 25.",
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Opaque cursor returned as nextCursor by the previous page.",
+                        "in": "query",
+                        "name": "cursor",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/adminconfig.knowledgeTermListResponse"
+                                }
+                            }
+                        },
+                        "description": "The terms and the cursor for the next page, if any."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The limit or cursor is invalid."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "List knowledge terms.",
+                "tags": [
+                    "admin"
+                ]
+            },
+            "post": {
+                "description": "Stores a classification phrase linked to an entity, an indicator, or both. An indicator link carries the indicator's entity automatically.",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/adminconfig.createKnowledgeTermRequest",
+                                "summary": "body",
+                                "description": "The term to store."
+                            }
+                        }
+                    },
+                    "description": "The term to store.",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/adminconfig.knowledgeTermResponse"
+                                }
+                            }
+                        },
+                        "description": "The stored term."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "A field is missing, no link was given, or a reference is unknown."
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "A term with that name and type already exists."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Create a knowledge term.",
+                "tags": [
+                    "admin"
+                ]
+            }
+        },
+        "/api/v1/admin/source-configurations": {
+            "get": {
+                "description": "Returns configuration payloads newest first. Pass the returned nextCursor to fetch the next page.",
+                "parameters": [
+                    {
+                        "description": "Page size between 1 and 100. Defaults to 25.",
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Opaque cursor returned as nextCursor by the previous page.",
+                        "in": "query",
+                        "name": "cursor",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/adminconfig.sourceConfigurationListResponse"
+                                }
+                            }
+                        },
+                        "description": "The configurations and the cursor for the next page, if any."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The limit or cursor is invalid."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "List source configurations.",
+                "tags": [
+                    "admin"
+                ]
+            },
+            "post": {
+                "description": "Stores a configuration payload for an existing source. The payload must be a JSON object with a url the server is allowed to fetch, may not carry secret values, and the url may not repeat within one source and type.",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/adminconfig.createSourceConfigurationRequest",
+                                "summary": "body",
+                                "description": "The configuration to store."
+                            }
+                        }
+                    },
+                    "description": "The configuration to store.",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/adminconfig.sourceConfigurationResponse"
+                                }
+                            }
+                        },
+                        "description": "The stored configuration."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The payload is invalid or its url points at a refused address."
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "No source has that id."
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "That source already has a configuration for this url."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Create a source configuration.",
+                "tags": [
+                    "admin"
+                ]
+            }
+        },
+        "/api/v1/admin/source-configurations/{id}": {
+            "patch": {
+                "description": "Replaces the stored payload of an existing configuration. Its source and type stay fixed, the new payload must pass the same validation as a create, and its url must be one the server may fetch.",
+                "parameters": [
+                    {
+                        "description": "Source configuration id (UUID).",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/adminconfig.updateSourceConfigurationRequest",
+                                "summary": "body",
+                                "description": "The payload to store."
+                            }
+                        }
+                    },
+                    "description": "The payload to store.",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/adminconfig.sourceConfigurationResponse"
+                                }
+                            }
+                        },
+                        "description": "The updated configuration."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The id is not a UUID, or the payload is invalid or refused."
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "No configuration has that id."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Replace a source configuration payload.",
+                "tags": [
+                    "admin"
+                ]
+            }
+        },
+        "/api/v1/admin/sources": {
+            "get": {
+                "description": "Returns logical sources newest first. Pass the returned nextCursor to fetch the next page.",
+                "parameters": [
+                    {
+                        "description": "Page size between 1 and 100. Defaults to 25.",
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Opaque cursor returned as nextCursor by the previous page.",
+                        "in": "query",
+                        "name": "cursor",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/adminconfig.sourceListResponse"
+                                }
+                            }
+                        },
+                        "description": "The sources and the cursor for the next page, if any."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The limit or cursor is invalid."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "List sources.",
+                "tags": [
+                    "admin"
+                ]
+            },
+            "post": {
+                "description": "Stores a logical source. The name must not already exist.",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/adminconfig.createSourceRequest",
+                                "summary": "body",
+                                "description": "The source to store."
+                            }
+                        }
+                    },
+                    "description": "The source to store.",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/adminconfig.sourceResponse"
+                                }
+                            }
+                        },
+                        "description": "The stored source."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "A field is missing or the body is not valid JSON."
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "A source with that name already exists."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Create a source.",
                 "tags": [
                     "admin"
                 ]

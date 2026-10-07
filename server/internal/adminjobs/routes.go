@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/adminjobs/models"
+	"github.com/Rahmannugar/macro-terminal/server/internal/common/paging"
 	"github.com/Rahmannugar/macro-terminal/server/internal/openapi"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -21,7 +22,7 @@ const (
 )
 
 type FailedJobs interface {
-	FailedJobs(ctx context.Context, jobType *string, cursor *models.ListCursor, limit int32) ([]models.Job, *models.ListCursor, error)
+	FailedJobs(ctx context.Context, jobType *string, cursor *paging.Cursor, limit int32) ([]models.Job, *paging.Cursor, error)
 	JobByID(ctx context.Context, id uuid.UUID) (models.Job, error)
 	ReplayJob(ctx context.Context, id uuid.UUID) (models.Job, error)
 }
@@ -67,7 +68,7 @@ func listFailedJobs(jobs FailedJobs) gin.HandlerFunc {
 			writeFailure(ctx, http.StatusBadRequest, "invalid_limit", "Limit must be a number between 1 and 100.")
 			return
 		}
-		cursor, err := models.DecodeCursor(ctx.Query("cursor"))
+		cursor, err := paging.DecodeCursor(ctx.Query("cursor"))
 		if err != nil {
 			writeFailure(ctx, http.StatusBadRequest, "invalid_cursor", "Use the next cursor returned by the previous page.")
 			return
@@ -150,14 +151,14 @@ func newJobJSON(job models.Job) jobJSON {
 	}
 }
 
-func newJobListResponse(list []models.Job, next *models.ListCursor) jobListResponse {
+func newJobListResponse(list []models.Job, next *paging.Cursor) jobListResponse {
 	jobs := make([]jobJSON, 0, len(list))
 	for _, job := range list {
 		jobs = append(jobs, newJobJSON(job))
 	}
 	response := jobListResponse{Jobs: jobs}
 	if next != nil {
-		encoded := models.EncodeCursor(*next)
+		encoded := paging.EncodeCursor(*next)
 		response.NextCursor = &encoded
 	}
 	return response
