@@ -25,6 +25,8 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cors"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/telemetry"
+	"github.com/Rahmannugar/macro-terminal/server/internal/market"
+	marketrepositories "github.com/Rahmannugar/macro-terminal/server/internal/market/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/openapi"
 	"github.com/Rahmannugar/macro-terminal/server/internal/search"
 	sourcerepositories "github.com/Rahmannugar/macro-terminal/server/internal/sources/repositories"
@@ -105,6 +107,7 @@ func newRouter(
 	assets.RegisterWatchListRoutes(userGroup, userAssetService)
 	articles.RegisterFeedRoutes(userGroup, articles.NewFeedService(articleRepository, articleRepository, userAssetService))
 	calendar.RegisterRoutes(router, calendarrepositories.NewEventRepository(database, resourceStore))
+	market.RegisterRoutes(router, marketrepositories.NewCandleRepository(database))
 
 	explanation.RegisterRoutes(router, explanation.NewService(
 		articleRepository,

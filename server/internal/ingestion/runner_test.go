@@ -2,6 +2,7 @@ package ingestion
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	calendarmodels "github.com/Rahmannugar/macro-terminal/server/internal/calendar/models"
 	entitymodels "github.com/Rahmannugar/macro-terminal/server/internal/entities/models"
 	"github.com/Rahmannugar/macro-terminal/server/internal/mapping"
+	marketmodels "github.com/Rahmannugar/macro-terminal/server/internal/market/models"
 	"github.com/Rahmannugar/macro-terminal/server/internal/sources/models"
 	"github.com/google/uuid"
 )
@@ -54,6 +56,37 @@ func (source *fakeConfigurationSource) MarkSourceConfigurationsRun(
 type fakeFetchResult struct {
 	result Result
 	err    error
+}
+
+type fakeCandleStore struct {
+	mu      sync.Mutex
+	batches [][]marketmodels.PersistCandle
+	err     error
+}
+
+func (store *fakeCandleStore) UpsertCandles(
+	_ context.Context,
+	candles []marketmodels.PersistCandle,
+) (int64, error) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	if store.err != nil {
+		return 0, store.err
+	}
+	store.batches = append(store.batches, append([]marketmodels.PersistCandle(nil), candles...))
+	return int64(len(candles)), nil
+}
+
+type fakePairSource struct {
+	pairs []entitymodels.EntityPair
+	err   error
+}
+
+func (source *fakePairSource) ListEntityPairs(context.Context) ([]entitymodels.EntityPair, error) {
+	if source.err != nil {
+		return nil, source.err
+	}
+	return source.pairs, nil
 }
 
 type fakeSourceFetcher struct {
@@ -170,7 +203,8 @@ func newTestRunner(
 ) (*Runner, *time.Time) {
 	now := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	runner := NewRunner(
-		source, fetcher, loader, &fakeArticleStore{}, &fakeEventStore{}, discardLogger(), DefaultCadences(),
+		source, fetcher, loader, &fakeArticleStore{}, &fakeEventStore{},
+		&fakeCandleStore{}, &fakePairSource{}, discardLogger(), DefaultCadences(),
 	)
 	runner.now = func() time.Time { return now }
 	return runner, &now
@@ -277,6 +311,9 @@ func TestRunnerCadenceForCentralBankSource(t *testing.T) {
 	}
 	if got := cadences.For("FinanceCalendar", "calendar"); got != 30*time.Minute {
 		t.Fatalf("calendar cadence = %v, want 30m", got)
+	}
+	if got := cadences.For("OANDA", "candles"); got != time.Minute {
+		t.Fatalf("candles cadence = %v, want 1m", got)
 	}
 	if got := cadences.For("Mystery", "unknown"); got != cadences.Default {
 		t.Fatalf("unknown type cadence = %v, want default", got)
@@ -665,5 +702,64 @@ func TestRunnerCalendarWithoutDictionaryStoresNothing(t *testing.T) {
 	batches := testEventStore(runner).stored()
 	if len(batches) != 1 || len(batches[0]) != 0 {
 		t.Fatalf("event batches = %v, want one empty batch (no vocabulary means no guessing)", batches)
+	}
+}
+
+func candleConfiguration(pairSymbol, timeframe string) models.SourceConfigurationWithSource {
+	configuration := configuration(uuid.New(), "OANDA", "candles", "api")
+	configuration.SourceID = uuid.New()
+	configuration.Config = json.RawMessage(
+		`{"url":"https://example.com/candles","candle":{"provider":"oanda","pair_symbol":"` +
+			pairSymbol + `","timeframe":"` + timeframe + `"}}`,
+	)
+	return configuration
+}
+
+func TestRunnerPersistsCandlesForDueCandleSource(t *testing.T) {
+	configuration := candleConfiguration("EUR/USD", "1min")
+	pairID := uuid.New()
+	source := &fakeConfigurationSource{
+		configurations: []models.SourceConfigurationWithSource{configuration},
+	}
+	fetcher := &fakeSourceFetcher{byID: map[uuid.UUID]fakeFetchResult{
+		configuration.ID: {result: Result{
+			Body:     []byte(`{"candles":[{"time":"2026-10-08T12:00:00.000000000Z","mid":{"o":"1.08512","h":"1.08530","l":"1.08501","c":"1.08520"}}]}`),
+			Attempts: 1,
+		}},
+	}}
+	runner, _ := newTestRunner(source, fetcher, &fakeDictionaryLoader{})
+	runner.pairs = &fakePairSource{pairs: []entitymodels.EntityPair{{ID: pairID, Symbol: "EUR/USD"}}}
+
+	runner.runDue(context.Background())
+
+	stored := runner.candles.(*fakeCandleStore)
+	if len(stored.batches) != 1 || len(stored.batches[0]) != 1 {
+		t.Fatalf("stored batches = %d, want one window of one candle", len(stored.batches))
+	}
+	candle := stored.batches[0][0]
+	if candle.EntityPairID != pairID {
+		t.Errorf("pair = %s, want %s", candle.EntityPairID, pairID)
+	}
+	if candle.SourceID != configuration.SourceID {
+		t.Errorf("source = %s, want %s", candle.SourceID, configuration.SourceID)
+	}
+	if candle.Timeframe != "1min" || candle.Open != 1.08512 || candle.Close != 1.0852 {
+		t.Errorf("candle = %+v, want the parsed 1min bar", candle)
+	}
+}
+
+func TestRunnerSkipsCandlesWithoutPairIndex(t *testing.T) {
+	configuration := candleConfiguration("EUR/USD", "1min")
+	source := &fakeConfigurationSource{
+		configurations: []models.SourceConfigurationWithSource{configuration},
+	}
+	fetcher := &fakeSourceFetcher{byID: map[uuid.UUID]fakeFetchResult{}}
+	runner, _ := newTestRunner(source, fetcher, &fakeDictionaryLoader{})
+	runner.pairs = &fakePairSource{err: errors.New("database down")}
+
+	runner.runDue(context.Background())
+
+	if fetcher.fetchCount() != 0 {
+		t.Fatalf("fetched = %d, want 0 (no pair index means no candle request)", fetcher.fetchCount())
 	}
 }

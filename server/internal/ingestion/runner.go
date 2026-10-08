@@ -2,13 +2,17 @@ package ingestion
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"time"
 
 	articlemodels "github.com/Rahmannugar/macro-terminal/server/internal/articles/models"
 	calendarmodels "github.com/Rahmannugar/macro-terminal/server/internal/calendar/models"
+	"github.com/Rahmannugar/macro-terminal/server/internal/common/ids"
+	entitymodels "github.com/Rahmannugar/macro-terminal/server/internal/entities/models"
 	"github.com/Rahmannugar/macro-terminal/server/internal/mapping"
+	marketmodels "github.com/Rahmannugar/macro-terminal/server/internal/market/models"
 	"github.com/Rahmannugar/macro-terminal/server/internal/normalization"
 	"github.com/Rahmannugar/macro-terminal/server/internal/sources/models"
 	"github.com/google/uuid"
@@ -60,6 +64,21 @@ type EventStore interface {
 	) (calendarmodels.PersistStats, error)
 }
 
+// CandleStore persists one fetch window of price bars; the market
+// repository implements it.
+type CandleStore interface {
+	UpsertCandles(
+		context.Context,
+		[]marketmodels.PersistCandle,
+	) (int64, error)
+}
+
+// PairSource lists entity pairs so candle fetches resolve their symbol
+// once per pass; the entity repository implements it.
+type PairSource interface {
+	ListEntityPairs(context.Context) ([]entitymodels.EntityPair, error)
+}
+
 // Runner is the schedule loop. Dispatch times live in PostgreSQL, so a
 // restart resumes the cadence instead of refetching everything. A source
 // that fails never stops the others.
@@ -69,6 +88,8 @@ type Runner struct {
 	mapper         DictionaryLoader
 	articles       ArticleStore
 	events         EventStore
+	candles        CandleStore
+	pairs          PairSource
 	logger         *slog.Logger
 	cadences       Cadences
 	tick           time.Duration
@@ -84,6 +105,8 @@ func NewRunner(
 	mapper DictionaryLoader,
 	articles ArticleStore,
 	events EventStore,
+	candles CandleStore,
+	pairs PairSource,
 	logger *slog.Logger,
 	cadences Cadences,
 ) *Runner {
@@ -93,6 +116,8 @@ func NewRunner(
 		mapper:         mapper,
 		articles:       articles,
 		events:         events,
+		candles:        candles,
+		pairs:          pairs,
 		logger:         logger,
 		cadences:       cadences,
 		tick:           runnerTick,
@@ -194,12 +219,39 @@ func (runner *Runner) runDue(ctx context.Context) {
 		)
 	}
 
+	// The pair index is loaded once per pass when any candle source is
+	// due, so concurrent candle fetches resolve symbols without queries.
+	var pairIDs map[string]uuid.UUID
+	pairsDue := false
+	for _, configuration := range due {
+		if configuration.SourceType == "candles" {
+			pairsDue = true
+			break
+		}
+	}
+	if pairsDue {
+		pairs, err := runner.pairs.ListEntityPairs(ctx)
+		switch {
+		case err == nil:
+			pairIDs = make(map[string]uuid.UUID, len(pairs))
+			for _, pair := range pairs {
+				pairIDs[pair.Symbol] = pair.ID
+			}
+		case ctx.Err() == nil:
+			runner.logger.ErrorContext(ctx, "Entity pair index unavailable",
+				"event", "ingestion.pairs.load.failed",
+				"operation", "ingestion.run",
+				"error", err,
+			)
+		}
+	}
+
 	var group errgroup.Group
 	group.SetLimit(runner.concurrency)
 	for _, configuration := range due {
 		configuration := configuration
 		group.Go(func() error {
-			runner.fetchOne(ctx, configuration, dictionary)
+			runner.fetchOne(ctx, configuration, dictionary, pairIDs)
 			return nil
 		})
 	}
@@ -210,8 +262,18 @@ func (runner *Runner) fetchOne(
 	ctx context.Context,
 	configuration models.SourceConfigurationWithSource,
 	dictionary *mapping.Dictionary,
+	pairIDs map[string]uuid.UUID,
 ) {
 	started := runner.now()
+	if configuration.SourceType == "candles" && pairIDs == nil {
+		runner.logger.ErrorContext(ctx, "Candle fetch skipped: pair index unavailable",
+			"event", "ingestion.candles.persist.failed",
+			"operation", "ingestion.fetch",
+			"source", configuration.SourceName,
+			"reason", "pair_index_unavailable",
+		)
+		return
+	}
 	result, err := runner.fetcher.Fetch(ctx, configuration)
 	if err != nil {
 		switch {
@@ -245,6 +307,10 @@ func (runner *Runner) fetchOne(
 				"error", err,
 			)
 		}
+		return
+	}
+	if configuration.SourceType == "candles" {
+		runner.fetchCandles(ctx, configuration, pairIDs, result, started)
 		return
 	}
 	if configuration.SourceType == "calendar" {
@@ -286,6 +352,118 @@ func (runner *Runner) fetchOne(
 		"invalid", stats.Invalid,
 	)
 	runner.storeCandidates(ctx, configuration, dictionary, candidates)
+}
+
+// fetchCandles resolves the configured pair, parses the provider's bar
+// window, and upserts it. Bars are keyed by provider time, so a
+// re-delivered window rewrites the same rows instead of duplicating them.
+func (runner *Runner) fetchCandles(
+	ctx context.Context,
+	configuration models.SourceConfigurationWithSource,
+	pairIDs map[string]uuid.UUID,
+	result Result,
+	started time.Time,
+) {
+	var configurationJSON struct {
+		Candle *struct {
+			PairSymbol string `json:"pair_symbol"`
+			Timeframe  string `json:"timeframe"`
+			Provider   string `json:"provider"`
+		} `json:"candle"`
+	}
+	if err := json.Unmarshal(configuration.Config, &configurationJSON); err != nil {
+		runner.logger.ErrorContext(ctx, "Candle configuration invalid",
+			"event", "ingestion.candles.persist.failed",
+			"operation", "ingestion.persist.candles",
+			"source", configuration.SourceName,
+			"reason", "configuration_invalid",
+			"error", err,
+		)
+		return
+	}
+	metadata := configurationJSON.Candle
+	if metadata == nil || metadata.PairSymbol == "" || metadata.Timeframe == "" || metadata.Provider == "" {
+		runner.logger.ErrorContext(ctx, "Candle configuration invalid",
+			"event", "ingestion.candles.persist.failed",
+			"operation", "ingestion.persist.candles",
+			"source", configuration.SourceName,
+			"reason", "configuration_invalid",
+		)
+		return
+	}
+	pairID, ok := pairIDs[metadata.PairSymbol]
+	if !ok {
+		runner.logger.ErrorContext(ctx, "Candle pair unknown",
+			"event", "ingestion.candles.persist.failed",
+			"operation", "ingestion.persist.candles",
+			"source", configuration.SourceName,
+			"reason", "pair_unknown",
+			"pair_symbol", metadata.PairSymbol,
+		)
+		return
+	}
+	batch, err := normalization.Candles(metadata.Provider, result.Body)
+	if err != nil {
+		runner.logger.ErrorContext(ctx, "Candle payload unparsable",
+			"event", "ingestion.candles.persist.failed",
+			"operation", "ingestion.persist.candles",
+			"source", configuration.SourceName,
+			"reason", "parse_failed",
+			"pair_symbol", metadata.PairSymbol,
+			"error", err,
+		)
+		return
+	}
+	entries := make([]marketmodels.PersistCandle, 0, len(batch.Candles))
+	for _, candle := range batch.Candles {
+		id, err := ids.New()
+		if err != nil {
+			runner.logger.ErrorContext(ctx, "Candle id generation failed",
+				"event", "ingestion.candles.persist.failed",
+				"operation", "ingestion.persist.candles",
+				"source", configuration.SourceName,
+				"reason", "id_failed",
+				"error", err,
+			)
+			return
+		}
+		entries = append(entries, marketmodels.PersistCandle{
+			ID:           id,
+			SourceID:     configuration.SourceID,
+			EntityPairID: pairID,
+			Timeframe:    metadata.Timeframe,
+			Timestamp:    candle.Timestamp,
+			Open:         candle.Open,
+			High:         candle.High,
+			Low:          candle.Low,
+			Close:        candle.Close,
+		})
+	}
+	upserted, err := runner.candles.UpsertCandles(ctx, entries)
+	if err != nil {
+		runner.logger.ErrorContext(ctx, "Candle store failed",
+			"event", "ingestion.candles.persist.failed",
+			"operation", "ingestion.persist.candles",
+			"source", configuration.SourceName,
+			"reason", "store_failed",
+			"pair_symbol", metadata.PairSymbol,
+			"error", err,
+		)
+		return
+	}
+	runner.logger.InfoContext(ctx, "Candles persisted",
+		"event", "ingestion.candles.persisted",
+		"operation", "ingestion.persist.candles",
+		"source", configuration.SourceName,
+		"pair_symbol", metadata.PairSymbol,
+		"timeframe", metadata.Timeframe,
+		"provider", metadata.Provider,
+		"candles", upserted,
+		"malformed", batch.Malformed,
+		"attempts", result.Attempts,
+		"status_code", result.StatusCode,
+		"duration_ms", runner.now().Sub(started).Milliseconds(),
+	)
 }
 
 // fetchCalendar parses a calendar payload, classifies each indicator row,

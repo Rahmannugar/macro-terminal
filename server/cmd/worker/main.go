@@ -30,6 +30,7 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/telemetry"
 	"github.com/Rahmannugar/macro-terminal/server/internal/ingestion"
 	"github.com/Rahmannugar/macro-terminal/server/internal/mapping"
+	marketrepositories "github.com/Rahmannugar/macro-terminal/server/internal/market/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/notification"
 	notificationrepositories "github.com/Rahmannugar/macro-terminal/server/internal/notification/repositories"
 	sourcesrepositories "github.com/Rahmannugar/macro-terminal/server/internal/sources/repositories"
@@ -124,6 +125,8 @@ func run() (runError error) {
 		mapping.NewLoader(entityRepository),
 		articlerepositories.NewArticleRepository(databasePool, resourceStore),
 		calendarepositories.NewEventRepository(databasePool, resourceStore),
+		marketrepositories.NewCandleRepository(databasePool),
+		entityRepository,
 		logger,
 		ingestion.DefaultCadences(),
 	)

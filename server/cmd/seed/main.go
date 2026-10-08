@@ -56,11 +56,12 @@ func run(adminUsername string, adminEmail string, adminPassword string) error {
 	}
 	defer pool.Close()
 
-	sourceService := services.NewSourceService(repositories.NewSourceRepository(pool))
+	sourceRepository := repositories.NewSourceRepository(pool)
+	sourceService := services.NewSourceService(sourceRepository)
 	entityService := entityservices.NewEntityService(entityrepositories.NewEntityRepository(pool))
 
 	var sourcesUpserted, configurationsEnsured int
-	for _, seed := range seedUniverse {
+	for _, seed := range append(seedUniverse, seedCandleSources...) {
 		source, err := sourceService.UpsertSource(ctx, seed.name, seed.sourceType)
 		if err != nil {
 			return fmt.Errorf("seed source %q: %w", seed.name, err)
@@ -68,7 +69,11 @@ func run(adminUsername string, adminEmail string, adminPassword string) error {
 		sourcesUpserted++
 
 		for _, configuration := range seed.configurations {
-			if _, err := sourceService.EnsureSourceConfiguration(
+			if seed.sourceType == "candles" {
+				if err := ensureCandleConfiguration(ctx, sourceRepository, source.ID, configuration); err != nil {
+					return fmt.Errorf("seed configuration for %q: %w", seed.name, err)
+				}
+			} else if _, err := sourceService.EnsureSourceConfiguration(
 				ctx,
 				source.ID,
 				configuration.kind,

@@ -53,6 +53,8 @@ func (cadences Cadences) For(sourceName, sourceType string) time.Duration {
 		return cadences.Calendar
 	case "official":
 		return cadences.Official
+	case "candles":
+		return cadences.Candles
 	default:
 		return cadences.Default
 	}

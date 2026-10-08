@@ -541,3 +541,38 @@ func TestFetcherBLSRetryResendsIdenticalBody(t *testing.T) {
 		t.Fatalf("retry bodies = %q then %q, want identical non-empty payloads", bodies[0], bodies[1])
 	}
 }
+
+func TestFetcherBearerEnvSendsAuthorizationHeader(t *testing.T) {
+	t.Setenv("TEST_FETCHER_BEARER", "s3cret")
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer s3cret" {
+			t.Errorf("Authorization = %q, want %q", got, "Bearer s3cret")
+		}
+		if r.URL.Query().Has("bearer_env") || r.URL.Query().Has("candle") {
+			t.Errorf("meta keys leaked into the query: %s", r.URL.RawQuery)
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}
+	fetcher, server, _, _ := newTestFetcher(t, handler)
+
+	configuration := testConfiguration("api", `{"url":"`+server.URL+`/api","bearer_env":"TEST_FETCHER_BEARER","candle":{"provider":"oanda","pair_symbol":"EUR/USD","timeframe":"1min"}}`)
+	if _, err := fetcher.Fetch(context.Background(), configuration); err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+}
+
+func TestFetcherBearerEnvMissingSecretSkipsBeforeRequest(t *testing.T) {
+	t.Setenv("TEST_FETCHER_BEARER", "")
+	fetcher, server, requests, _ := newTestFetcher(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	})
+
+	configuration := testConfiguration("api", `{"url":"`+server.URL+`/api","bearer_env":"TEST_FETCHER_BEARER"}`)
+	_, err := fetcher.Fetch(context.Background(), configuration)
+	if !isSecretMissing(err) {
+		t.Fatalf("error = %v, want ErrSecretMissing", err)
+	}
+	if requests.Load() != 0 {
+		t.Fatalf("requests = %d, want 0", requests.Load())
+	}
+}

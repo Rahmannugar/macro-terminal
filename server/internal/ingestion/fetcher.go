@@ -292,6 +292,14 @@ func (fetcher *Fetcher) buildRequest(
 	}
 
 	request.Header.Set("User-Agent", userAgent)
+	if envName, ok := document["bearer_env"].(string); ok && strings.TrimSpace(envName) != "" {
+		envName = strings.TrimSpace(envName)
+		secret := os.Getenv(envName)
+		if secret == "" {
+			return nil, fmt.Errorf("%w: %s", ErrSecretMissing, envName)
+		}
+		request.Header.Set("Authorization", "Bearer "+secret)
+	}
 	// SDMX statistics gateways answer 500 when Accept includes
 	// application/json, so a configuration can override this header.
 	accept := acceptFor(configuration.Type)
@@ -388,7 +396,8 @@ func configurationQuery(document map[string]any) (url.Values, error) {
 	query := url.Values{}
 	for key, raw := range document {
 		switch {
-		case key == "url" || key == "min_interval_s" || key == "accept":
+		case key == "url" || key == "min_interval_s" || key == "accept" ||
+			key == "candle" || key == "bearer_env":
 			continue
 		case strings.HasSuffix(key, "_env"):
 			base := strings.TrimSuffix(key, "_env")
