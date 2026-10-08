@@ -39,3 +39,21 @@ LIMIT sqlc.arg('page_size');
 INSERT INTO calendar_events (id, source_id, indicator_id, scheduled_at, released_at, previous, consensus, actual)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
+
+-- name: ListUpcomingCalendarEventsPage :many
+SELECT ce.id, ce.source_id, ce.indicator_id, ce.scheduled_at, ce.released_at,
+       ce.previous, ce.consensus, ce.actual, ce.created_at, ce.updated_at,
+       ei.name AS indicator_name, s.name AS source_name
+FROM calendar_events AS ce
+JOIN economic_indicators AS ei ON ei.id = ce.indicator_id
+JOIN sources AS s ON s.id = ce.source_id
+WHERE ce.scheduled_at >= sqlc.arg('not_before')
+  AND (
+    sqlc.narg('cursor_scheduled_at')::timestamptz IS NULL
+    OR (ce.scheduled_at, ce.id) > (
+        sqlc.narg('cursor_scheduled_at')::timestamptz,
+        sqlc.narg('cursor_id')::uuid
+    )
+  )
+ORDER BY ce.scheduled_at ASC, ce.id ASC
+LIMIT sqlc.arg('page_size');

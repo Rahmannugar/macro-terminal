@@ -13,6 +13,8 @@ const navigation: NavSection[] = [
     items: [
       { label: "Home", to: "/", end: true },
       { label: "Search", to: "/search" },
+      { label: "Watch list", to: "/watchlist" },
+      { label: "Calendar", to: "/calendar" },
     ],
   },
   {

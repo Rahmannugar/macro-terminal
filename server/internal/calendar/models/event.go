@@ -70,3 +70,20 @@ type EventRecord struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 }
+
+// UpcomingEvent is a scheduled event joined with the names a calendar
+// screen renders directly.
+type UpcomingEvent struct {
+	ID            uuid.UUID
+	SourceID      uuid.UUID
+	IndicatorID   uuid.UUID
+	ScheduledAt   time.Time
+	ReleasedAt    *time.Time
+	Previous      *float64
+	Consensus     *float64
+	Actual        *float64
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	IndicatorName string
+	SourceName    string
+}

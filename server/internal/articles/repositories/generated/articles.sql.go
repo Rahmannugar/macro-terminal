@@ -96,6 +96,104 @@ func (q *Queries) GetRecentArticleIDsByEntities(ctx context.Context, arg GetRece
 	return items, nil
 }
 
+const getRecentArticleIDsByEntitiesPage = `-- name: GetRecentArticleIDsByEntitiesPage :many
+SELECT DISTINCT a.id, COALESCE(a.published_at, a.created_at) AS sort_at
+FROM articles AS a
+JOIN article_entities AS link ON link.article_id = a.id
+WHERE link.entity_id = ANY($1::uuid[])
+  AND (
+    $2::timestamptz IS NULL
+    OR (COALESCE(a.published_at, a.created_at), a.id) < (
+        $2::timestamptz,
+        $3::uuid
+    )
+  )
+ORDER BY COALESCE(a.published_at, a.created_at) DESC, a.id DESC
+LIMIT $4
+`
+
+type GetRecentArticleIDsByEntitiesPageParams struct {
+	Ids      []uuid.UUID
+	CursorAt pgtype.Timestamptz
+	CursorID pgtype.UUID
+	PageSize int32
+}
+
+type GetRecentArticleIDsByEntitiesPageRow struct {
+	ID     uuid.UUID
+	SortAt pgtype.Timestamptz
+}
+
+func (q *Queries) GetRecentArticleIDsByEntitiesPage(ctx context.Context, arg GetRecentArticleIDsByEntitiesPageParams) ([]GetRecentArticleIDsByEntitiesPageRow, error) {
+	rows, err := q.db.Query(ctx, getRecentArticleIDsByEntitiesPage,
+		arg.Ids,
+		arg.CursorAt,
+		arg.CursorID,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetRecentArticleIDsByEntitiesPageRow
+	for rows.Next() {
+		var i GetRecentArticleIDsByEntitiesPageRow
+		if err := rows.Scan(&i.ID, &i.SortAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getRecentArticleIDsPage = `-- name: GetRecentArticleIDsPage :many
+SELECT id, COALESCE(published_at, created_at) AS sort_at
+FROM articles
+WHERE (
+    $1::timestamptz IS NULL
+    OR (COALESCE(published_at, created_at), id) < (
+        $1::timestamptz,
+        $2::uuid
+    )
+)
+ORDER BY COALESCE(published_at, created_at) DESC, id DESC
+LIMIT $3
+`
+
+type GetRecentArticleIDsPageParams struct {
+	CursorAt pgtype.Timestamptz
+	CursorID pgtype.UUID
+	PageSize int32
+}
+
+type GetRecentArticleIDsPageRow struct {
+	ID     uuid.UUID
+	SortAt pgtype.Timestamptz
+}
+
+func (q *Queries) GetRecentArticleIDsPage(ctx context.Context, arg GetRecentArticleIDsPageParams) ([]GetRecentArticleIDsPageRow, error) {
+	rows, err := q.db.Query(ctx, getRecentArticleIDsPage, arg.CursorAt, arg.CursorID, arg.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetRecentArticleIDsPageRow
+	for rows.Next() {
+		var i GetRecentArticleIDsPageRow
+		if err := rows.Scan(&i.ID, &i.SortAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const resolveUnmappedArticle = `-- name: ResolveUnmappedArticle :execrows
 DELETE FROM unmapped_articles
 WHERE article_id = $1

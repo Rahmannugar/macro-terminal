@@ -393,6 +393,38 @@ func (q *Queries) ListEntitiesPage(ctx context.Context, arg ListEntitiesPagePara
 	return items, nil
 }
 
+const listEntityIDsByUser = `-- name: ListEntityIDsByUser :many
+SELECT DISTINCT ep.base_entity_id, ep.quote_entity_id
+FROM user_assets ua
+JOIN entity_pairs ep ON ep.id = ua.entity_pair_id
+WHERE ua.user_id = $1
+`
+
+type ListEntityIDsByUserRow struct {
+	BaseEntityID  uuid.UUID
+	QuoteEntityID uuid.UUID
+}
+
+func (q *Queries) ListEntityIDsByUser(ctx context.Context, userID uuid.UUID) ([]ListEntityIDsByUserRow, error) {
+	rows, err := q.db.Query(ctx, listEntityIDsByUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListEntityIDsByUserRow
+	for rows.Next() {
+		var i ListEntityIDsByUserRow
+		if err := rows.Scan(&i.BaseEntityID, &i.QuoteEntityID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listEntityKnowledgeTerms = `-- name: ListEntityKnowledgeTerms :many
 SELECT id, name, type, entity_id, indicator_id, created_at, updated_at
 FROM knowledge_terms
@@ -471,6 +503,61 @@ ORDER BY ep.symbol
 
 func (q *Queries) ListEntityPairsByUser(ctx context.Context, userID uuid.UUID) ([]EntityPair, error) {
 	rows, err := q.db.Query(ctx, listEntityPairsByUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []EntityPair
+	for rows.Next() {
+		var i EntityPair
+		if err := rows.Scan(
+			&i.ID,
+			&i.BaseEntityID,
+			&i.QuoteEntityID,
+			&i.Symbol,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEntityPairsByUserPage = `-- name: ListEntityPairsByUserPage :many
+SELECT ep.id, ep.base_entity_id, ep.quote_entity_id, ep.symbol, ep.created_at, ep.updated_at
+FROM user_assets ua
+JOIN entity_pairs ep ON ep.id = ua.entity_pair_id
+WHERE ua.user_id = $1
+  AND (
+    $2::timestamptz IS NULL
+    OR (ep.created_at, ep.id) < (
+        $2::timestamptz,
+        $3::uuid
+    )
+)
+ORDER BY ep.created_at DESC, ep.id DESC
+LIMIT $4
+`
+
+type ListEntityPairsByUserPageParams struct {
+	UserID          uuid.UUID
+	CursorCreatedAt pgtype.Timestamptz
+	CursorID        pgtype.UUID
+	PageSize        int32
+}
+
+func (q *Queries) ListEntityPairsByUserPage(ctx context.Context, arg ListEntityPairsByUserPageParams) ([]EntityPair, error) {
+	rows, err := q.db.Query(ctx, listEntityPairsByUserPage,
+		arg.UserID,
+		arg.CursorCreatedAt,
+		arg.CursorID,
+		arg.PageSize,
+	)
 	if err != nil {
 		return nil, err
 	}

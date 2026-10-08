@@ -536,3 +536,48 @@ func mapKnowledgeTerm(row entitydb.KnowledgeTerm) models.KnowledgeTerm {
 		UpdatedAt:   row.UpdatedAt.Time,
 	}
 }
+
+func (repository *EntityRepository) EntityPairsByUserPage(
+	ctx context.Context,
+	userID uuid.UUID,
+	cursor *paging.Cursor,
+	limit int32,
+) ([]models.EntityPair, *paging.Cursor, error) {
+	params := entitydb.ListEntityPairsByUserPageParams{UserID: userID, PageSize: limit + 1}
+	if cursor != nil {
+		params.CursorCreatedAt = pgtype.Timestamptz{Time: cursor.At, Valid: true}
+		params.CursorID = pgtype.UUID{Bytes: cursor.ID, Valid: true}
+	}
+	rows, err := repository.queries.ListEntityPairsByUserPage(ctx, params)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list entity pairs by user page: %w", err)
+	}
+	pairs := make([]models.EntityPair, 0, min(len(rows), int(limit)))
+	for index, row := range rows {
+		if int32(index) == limit {
+			last := pairs[len(pairs)-1]
+			return pairs, &paging.Cursor{At: last.CreatedAt, ID: last.ID}, nil
+		}
+		pairs = append(pairs, mapEntityPair(row))
+	}
+	return pairs, nil, nil
+}
+
+func (repository *EntityRepository) EntityIDsByUser(ctx context.Context, userID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := repository.queries.ListEntityIDsByUser(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("list entity IDs by user: %w", err)
+	}
+	ids := make([]uuid.UUID, 0, len(rows)*2)
+	seen := make(map[uuid.UUID]struct{}, len(rows)*2)
+	for _, row := range rows {
+		for _, id := range []uuid.UUID{row.BaseEntityID, row.QuoteEntityID} {
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
+}

@@ -337,3 +337,62 @@ func timestampValue(value *time.Time) pgtype.Timestamptz {
 func timestampValueUnchecked(value time.Time) pgtype.Timestamptz {
 	return pgtype.Timestamptz{Time: value, Valid: true}
 }
+
+func (repository *EventRepository) UpcomingEventsPage(
+	ctx context.Context,
+	notBefore time.Time,
+	cursor *paging.Cursor,
+	limit int32,
+) ([]models.UpcomingEvent, *paging.Cursor, error) {
+	params := calendardb.ListUpcomingCalendarEventsPageParams{
+		NotBefore: pgtype.Timestamptz{Time: notBefore, Valid: true},
+		PageSize:  limit + 1,
+	}
+	if cursor != nil {
+		params.CursorScheduledAt = pgtype.Timestamptz{Time: cursor.At, Valid: true}
+		params.CursorID = pgtype.UUID{Bytes: cursor.ID, Valid: true}
+	}
+	rows, err := repository.queries.ListUpcomingCalendarEventsPage(ctx, params)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list upcoming calendar events page: %w", err)
+	}
+	events := make([]models.UpcomingEvent, 0, min(len(rows), int(limit)))
+	for index, row := range rows {
+		if int32(index) == limit {
+			last := events[len(events)-1]
+			return events, &paging.Cursor{At: last.ScheduledAt, ID: last.ID}, nil
+		}
+		scheduledAt := timeValue(row.ScheduledAt)
+		if scheduledAt == nil {
+			return nil, nil, fmt.Errorf("calendar event %s has no scheduled time", row.ID)
+		}
+		releasedAt := timeValue(row.ReleasedAt)
+		previous, err := numericFloat(row.Previous)
+		if err != nil {
+			return nil, nil, err
+		}
+		consensus, err := numericFloat(row.Consensus)
+		if err != nil {
+			return nil, nil, err
+		}
+		actual, err := numericFloat(row.Actual)
+		if err != nil {
+			return nil, nil, err
+		}
+		events = append(events, models.UpcomingEvent{
+			ID:            row.ID,
+			SourceID:      row.SourceID,
+			IndicatorID:   row.IndicatorID,
+			ScheduledAt:   *scheduledAt,
+			ReleasedAt:    releasedAt,
+			Previous:      previous,
+			Consensus:     consensus,
+			Actual:        actual,
+			CreatedAt:     row.CreatedAt.Time,
+			UpdatedAt:     row.UpdatedAt.Time,
+			IndicatorName: row.IndicatorName,
+			SourceName:    row.SourceName,
+		})
+	}
+	return events, nil, nil
+}

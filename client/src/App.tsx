@@ -12,11 +12,13 @@ import { SourceConfigurationsScreen } from "./routes/admin/source-configurations
 import { SourcesScreen } from "./routes/admin/sources";
 import { UsersScreen } from "./routes/admin/users";
 import { ArticleRoute } from "./routes/article";
+import { CalendarRoute } from "./routes/calendar";
 import { HomeRoute } from "./routes/home";
 import { SearchRoute } from "./routes/search";
 import { SignInRoute } from "./routes/sign-in";
 import { SignUpRoute } from "./routes/sign-up";
 import { VerifyEmailRoute } from "./routes/verify-email";
+import { WatchListRoute } from "./routes/watchlist";
 
 function RootLayout() {
   return (
@@ -46,6 +48,8 @@ export default function App() {
           <Route element={<RootLayout />}>
             <Route path="/" element={<HomeRoute />} />
             <Route path="/search" element={<SearchRoute />} />
+            <Route path="/watchlist" element={<WatchListRoute />} />
+            <Route path="/calendar" element={<CalendarRoute />} />
             <Route path="/articles/:id" element={<ArticleRoute />} />
             <Route path="/admin" element={<AdminGuard />}>
               <Route index element={<Navigate to="/admin/users" replace />} />

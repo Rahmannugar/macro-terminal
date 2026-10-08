@@ -147,6 +147,85 @@ func (q *Queries) ListCalendarEventsPage(ctx context.Context, arg ListCalendarEv
 	return items, nil
 }
 
+const listUpcomingCalendarEventsPage = `-- name: ListUpcomingCalendarEventsPage :many
+SELECT ce.id, ce.source_id, ce.indicator_id, ce.scheduled_at, ce.released_at,
+       ce.previous, ce.consensus, ce.actual, ce.created_at, ce.updated_at,
+       ei.name AS indicator_name, s.name AS source_name
+FROM calendar_events AS ce
+JOIN economic_indicators AS ei ON ei.id = ce.indicator_id
+JOIN sources AS s ON s.id = ce.source_id
+WHERE ce.scheduled_at >= $1
+  AND (
+    $2::timestamptz IS NULL
+    OR (ce.scheduled_at, ce.id) > (
+        $2::timestamptz,
+        $3::uuid
+    )
+  )
+ORDER BY ce.scheduled_at ASC, ce.id ASC
+LIMIT $4
+`
+
+type ListUpcomingCalendarEventsPageParams struct {
+	NotBefore         pgtype.Timestamptz
+	CursorScheduledAt pgtype.Timestamptz
+	CursorID          pgtype.UUID
+	PageSize          int32
+}
+
+type ListUpcomingCalendarEventsPageRow struct {
+	ID            uuid.UUID
+	SourceID      uuid.UUID
+	IndicatorID   uuid.UUID
+	ScheduledAt   pgtype.Timestamptz
+	ReleasedAt    pgtype.Timestamptz
+	Previous      pgtype.Numeric
+	Consensus     pgtype.Numeric
+	Actual        pgtype.Numeric
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	IndicatorName string
+	SourceName    string
+}
+
+func (q *Queries) ListUpcomingCalendarEventsPage(ctx context.Context, arg ListUpcomingCalendarEventsPageParams) ([]ListUpcomingCalendarEventsPageRow, error) {
+	rows, err := q.db.Query(ctx, listUpcomingCalendarEventsPage,
+		arg.NotBefore,
+		arg.CursorScheduledAt,
+		arg.CursorID,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUpcomingCalendarEventsPageRow
+	for rows.Next() {
+		var i ListUpcomingCalendarEventsPageRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SourceID,
+			&i.IndicatorID,
+			&i.ScheduledAt,
+			&i.ReleasedAt,
+			&i.Previous,
+			&i.Consensus,
+			&i.Actual,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.IndicatorName,
+			&i.SourceName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertCalendarEvent = `-- name: UpsertCalendarEvent :one
 INSERT INTO calendar_events (id, source_id, indicator_id, scheduled_at, released_at, previous, consensus, actual)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)

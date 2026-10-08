@@ -51,3 +51,9 @@ type StoredArticle struct {
 	URL         string     `json:"url"`
 	PublishedAt *time.Time `json:"publishedAt"`
 }
+
+// RecentArticleRef is one feed row's identity and sort key before hydration.
+type RecentArticleRef struct {
+	ID     uuid.UUID
+	SortAt time.Time
+}

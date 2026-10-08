@@ -10,7 +10,9 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/ai"
 	"github.com/Rahmannugar/macro-terminal/server/internal/articles"
 	articlerepositories "github.com/Rahmannugar/macro-terminal/server/internal/articles/repositories"
+	"github.com/Rahmannugar/macro-terminal/server/internal/assets"
 	"github.com/Rahmannugar/macro-terminal/server/internal/authentication"
+	"github.com/Rahmannugar/macro-terminal/server/internal/calendar"
 	calendarrepositories "github.com/Rahmannugar/macro-terminal/server/internal/calendar/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/clustering"
 	clusteringrepositories "github.com/Rahmannugar/macro-terminal/server/internal/clustering/repositories"
@@ -94,6 +96,16 @@ func newRouter(
 	search.RegisterRoutes(router, search.NewService(searcher, articleRepository))
 	clustering.RegisterRoutes(router, relatedService)
 	articles.RegisterRoutes(router, articleRepository)
+
+	entityRepository := entityrepositories.NewEntityRepository(database)
+	assets.RegisterCatalogRoutes(router, entityRepository)
+	userAssetService := entityservices.NewUserAssetService(entityRepository)
+	userGroup := router.Group("/api/v1")
+	userGroup.Use(authentication.RequireUser(authComponents.service))
+	assets.RegisterWatchListRoutes(userGroup, userAssetService)
+	articles.RegisterFeedRoutes(userGroup, articles.NewFeedService(articleRepository, articleRepository, userAssetService))
+	calendar.RegisterRoutes(router, calendarrepositories.NewEventRepository(database, resourceStore))
+
 	explanation.RegisterRoutes(router, explanation.NewService(
 		articleRepository,
 		enrichmentrepositories.NewOutboxRepository(database, resourceStore),

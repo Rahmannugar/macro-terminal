@@ -39,3 +39,31 @@ JOIN article_entities AS link ON link.article_id = a.id
 WHERE link.entity_id = ANY(sqlc.arg(ids)::uuid[])
 ORDER BY a.published_at DESC NULLS LAST, a.id
 LIMIT $1;
+
+-- name: GetRecentArticleIDsPage :many
+SELECT id, COALESCE(published_at, created_at) AS sort_at
+FROM articles
+WHERE (
+    sqlc.narg('cursor_at')::timestamptz IS NULL
+    OR (COALESCE(published_at, created_at), id) < (
+        sqlc.narg('cursor_at')::timestamptz,
+        sqlc.narg('cursor_id')::uuid
+    )
+)
+ORDER BY COALESCE(published_at, created_at) DESC, id DESC
+LIMIT sqlc.arg('page_size');
+
+-- name: GetRecentArticleIDsByEntitiesPage :many
+SELECT DISTINCT a.id, COALESCE(a.published_at, a.created_at) AS sort_at
+FROM articles AS a
+JOIN article_entities AS link ON link.article_id = a.id
+WHERE link.entity_id = ANY(sqlc.arg(ids)::uuid[])
+  AND (
+    sqlc.narg('cursor_at')::timestamptz IS NULL
+    OR (COALESCE(a.published_at, a.created_at), a.id) < (
+        sqlc.narg('cursor_at')::timestamptz,
+        sqlc.narg('cursor_id')::uuid
+    )
+  )
+ORDER BY COALESCE(a.published_at, a.created_at) DESC, a.id DESC
+LIMIT sqlc.arg('page_size');

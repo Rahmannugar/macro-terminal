@@ -80,6 +80,29 @@ export function useRelatedArticles(id: string): UseQueryResult<ArticleSummary[],
   });
 }
 
+function explanationText(payload: unknown): string {
+  const explanation = expectRecord(expectRecord(payload).explanation);
+  if (typeof explanation.text !== "string") {
+    throw new APIError(
+      502,
+      "invalid_response",
+      "Macro Terminal received an unexpected explanation.",
+    );
+  }
+  return explanation.text;
+}
+
+export type CalendarEvent = {
+  id: string;
+  scheduledAt: string;
+  releasedAt: string | null;
+  previous: number | null;
+  consensus: number | null;
+  actual: number | null;
+  indicator: { id: string; name: string };
+  source: { id: string; name: string };
+};
+
 export function useExplainArticle() {
   return useMutation({
     mutationFn: async (id: string) => {
@@ -88,15 +111,20 @@ export function useExplainArticle() {
         { method: "POST" },
         explanationTimeoutMs,
       );
-      const explanation = expectRecord(expectRecord(payload).explanation);
-      if (typeof explanation.text !== "string") {
-        throw new APIError(
-          502,
-          "invalid_response",
-          "Macro Terminal received an unexpected explanation.",
-        );
-      }
-      return explanation.text;
+      return explanationText(payload);
+    },
+  });
+}
+
+export function useExplainEvent() {
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const payload = await apiRequest(
+        `/api/v1/calendar-events/${id}/explain`,
+        { method: "POST" },
+        explanationTimeoutMs,
+      );
+      return explanationText(payload);
     },
   });
 }

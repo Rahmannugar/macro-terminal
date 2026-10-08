@@ -206,3 +206,24 @@ LIMIT sqlc.arg('page_size');
 INSERT INTO knowledge_terms (id, name, type, entity_id, indicator_id)
 VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
+
+-- name: ListEntityPairsByUserPage :many
+SELECT ep.*
+FROM user_assets ua
+JOIN entity_pairs ep ON ep.id = ua.entity_pair_id
+WHERE ua.user_id = $1
+  AND (
+    sqlc.narg('cursor_created_at')::timestamptz IS NULL
+    OR (ep.created_at, ep.id) < (
+        sqlc.narg('cursor_created_at')::timestamptz,
+        sqlc.narg('cursor_id')::uuid
+    )
+)
+ORDER BY ep.created_at DESC, ep.id DESC
+LIMIT sqlc.arg('page_size');
+
+-- name: ListEntityIDsByUser :many
+SELECT DISTINCT ep.base_entity_id, ep.quote_entity_id
+FROM user_assets ua
+JOIN entity_pairs ep ON ep.id = ua.entity_pair_id
+WHERE ua.user_id = $1;

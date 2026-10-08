@@ -184,6 +184,19 @@ func (repository *fakeEntityRepository) EntityPairsByUser(context.Context, uuid.
 	return nil, nil
 }
 
+func (repository *fakeEntityRepository) EntityPairsByUserPage(
+	context.Context,
+	uuid.UUID,
+	*paging.Cursor,
+	int32,
+) ([]models.EntityPair, *paging.Cursor, error) {
+	return nil, nil, nil
+}
+
+func (repository *fakeEntityRepository) EntityIDsByUser(context.Context, uuid.UUID) ([]uuid.UUID, error) {
+	return nil, nil
+}
+
 func (repository *fakeEntityRepository) UserIDsByEntityPair(context.Context, uuid.UUID) ([]uuid.UUID, error) {
 	return nil, nil
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/articles/models"
 	articledb "github.com/Rahmannugar/macro-terminal/server/internal/articles/repositories/generated"
+	"github.com/Rahmannugar/macro-terminal/server/internal/common/paging"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -229,4 +230,61 @@ func timePointer(value *time.Time) pgtype.Timestamptz {
 		return pgtype.Timestamptz{}
 	}
 	return pgtype.Timestamptz{Time: *value, Valid: true}
+}
+
+func (repository *ArticleRepository) RecentArticleIDsPage(
+	ctx context.Context,
+	entityIDs []uuid.UUID,
+	cursor *paging.Cursor,
+	limit int32,
+) ([]models.RecentArticleRef, *paging.Cursor, error) {
+	type sortRow struct {
+		ID     uuid.UUID
+		SortAt pgtype.Timestamptz
+	}
+
+	var rows []sortRow
+	if len(entityIDs) == 0 {
+		params := articledb.GetRecentArticleIDsPageParams{PageSize: limit + 1}
+		if cursor != nil {
+			params.CursorAt = pgtype.Timestamptz{Time: cursor.At, Valid: true}
+			params.CursorID = pgtype.UUID{Bytes: cursor.ID, Valid: true}
+		}
+		generated, err := repository.queries.GetRecentArticleIDsPage(ctx, params)
+		if err != nil {
+			return nil, nil, fmt.Errorf("get recent article ids page: %w", err)
+		}
+		rows = make([]sortRow, 0, len(generated))
+		for _, row := range generated {
+			rows = append(rows, sortRow{ID: row.ID, SortAt: row.SortAt})
+		}
+	} else {
+		params := articledb.GetRecentArticleIDsByEntitiesPageParams{Ids: entityIDs, PageSize: limit + 1}
+		if cursor != nil {
+			params.CursorAt = pgtype.Timestamptz{Time: cursor.At, Valid: true}
+			params.CursorID = pgtype.UUID{Bytes: cursor.ID, Valid: true}
+		}
+		generated, err := repository.queries.GetRecentArticleIDsByEntitiesPage(ctx, params)
+		if err != nil {
+			return nil, nil, fmt.Errorf("get recent article ids by entities page: %w", err)
+		}
+		rows = make([]sortRow, 0, len(generated))
+		for _, row := range generated {
+			rows = append(rows, sortRow{ID: row.ID, SortAt: row.SortAt})
+		}
+	}
+
+	refs := make([]models.RecentArticleRef, 0, len(rows))
+	for _, row := range rows {
+		if !row.SortAt.Valid {
+			continue
+		}
+		refs = append(refs, models.RecentArticleRef{ID: row.ID, SortAt: row.SortAt.Time})
+	}
+	if int32(len(refs)) > limit {
+		refs = refs[:limit]
+		last := refs[len(refs)-1]
+		return refs, &paging.Cursor{At: last.SortAt, ID: last.ID}, nil
+	}
+	return refs, nil, nil
 }
