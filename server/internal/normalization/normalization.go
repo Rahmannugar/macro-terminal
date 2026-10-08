@@ -24,6 +24,7 @@ type FeedItem struct {
 	URL       string
 	Content   string
 	Summary   string
+	ImageURL  string
 	Published time.Time
 }
 
@@ -44,6 +45,7 @@ type Candidate struct {
 	Title       string
 	Content     string    // feed-provided text: the full content when the feed ships it, otherwise the summary
 	URL         string    // canonical: no tracking parameters, no fragment
+	ImageURL    string    // absolute http(s) publisher image link; empty when the feed carried none
 	PublishedAt time.Time // zero when the provider supplied no date
 }
 
@@ -112,17 +114,48 @@ func newCandidate(in Input, item FeedItem) (Candidate, bool) {
 		Title:       title,
 		Content:     content,
 		URL:         canonical,
+		ImageURL:    imageURL(item.ImageURL, in.BaseURL),
 		PublishedAt: item.Published,
 	}, true
+}
+
+// maxImageURLLength rejects absurd links outright.
+const maxImageURLLength = 2048
+
+// imageURL keeps only absolute http(s) links; relative ones resolve against
+// the request URL. Query strings stay intact — signed CDN URLs depend on them.
+func imageURL(raw, base string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || len(raw) > maxImageURLLength {
+		return ""
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	if parsed.Host == "" {
+		parsed, err = resolveBase(parsed, base)
+		if err != nil {
+			return ""
+		}
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return ""
+	}
+	parsed.Scheme = strings.ToLower(parsed.Scheme)
+	parsed.Host = strings.ToLower(parsed.Host)
+	parsed.Fragment = ""
+	return parsed.String()
 }
 
 // gdeltArticles parses GDELT's ArtList JSON.
 func gdeltArticles(body []byte) ([]FeedItem, error) {
 	var payload struct {
 		Articles []struct {
-			Title    string `json:"title"`
-			URL      string `json:"url"`
-			SeenDate string `json:"seendate"`
+			Title     string `json:"title"`
+			URL       string `json:"url"`
+			SeenDate  string `json:"seendate"`
+			SocialImg string `json:"socialimage"`
 		} `json:"articles"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
@@ -136,6 +169,7 @@ func gdeltArticles(body []byte) ([]FeedItem, error) {
 		items = append(items, FeedItem{
 			Title:     article.Title,
 			URL:       article.URL,
+			ImageURL:  article.SocialImg,
 			Published: parseSeenDate(article.SeenDate),
 		})
 	}

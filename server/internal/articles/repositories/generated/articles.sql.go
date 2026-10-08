@@ -13,7 +13,7 @@ import (
 )
 
 const getArticlesByIDs = `-- name: GetArticlesByIDs :many
-SELECT a.id, a.source_id, s.name AS source_name, a.title, a.content, a.url, a.published_at
+SELECT a.id, a.source_id, s.name AS source_name, a.title, a.content, a.url, a.image_url, a.published_at
 FROM articles AS a
 JOIN sources AS s ON s.id = a.source_id
 WHERE a.id = ANY($1::uuid[])
@@ -26,6 +26,7 @@ type GetArticlesByIDsRow struct {
 	Title       string
 	Content     *string
 	Url         string
+	ImageUrl    *string
 	PublishedAt pgtype.Timestamptz
 }
 
@@ -45,6 +46,7 @@ func (q *Queries) GetArticlesByIDs(ctx context.Context, ids []uuid.UUID) ([]GetA
 			&i.Title,
 			&i.Content,
 			&i.Url,
+			&i.ImageUrl,
 			&i.PublishedAt,
 		); err != nil {
 			return nil, err
@@ -209,17 +211,18 @@ func (q *Queries) ResolveUnmappedArticle(ctx context.Context, articleID uuid.UUI
 }
 
 const upsertArticle = `-- name: UpsertArticle :one
-INSERT INTO articles (id, source_id, title, content, url, published_at)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO articles (id, source_id, title, content, url, published_at, image_url)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 ON CONFLICT (source_id, url) DO UPDATE
 SET title = EXCLUDED.title,
     content = CASE
                   WHEN EXCLUDED.content IS NULL OR btrim(EXCLUDED.content) = '' THEN articles.content
                   ELSE EXCLUDED.content
         END,
+    image_url = COALESCE(EXCLUDED.image_url, articles.image_url),
     published_at = COALESCE(EXCLUDED.published_at, articles.published_at),
     updated_at = now()
-RETURNING id, source_id, title, content, url, published_at, created_at, updated_at
+RETURNING id, source_id, title, content, url, published_at, created_at, updated_at, image_url
 `
 
 type UpsertArticleParams struct {
@@ -229,6 +232,7 @@ type UpsertArticleParams struct {
 	Content     *string
 	Url         string
 	PublishedAt pgtype.Timestamptz
+	ImageUrl    *string
 }
 
 func (q *Queries) UpsertArticle(ctx context.Context, arg UpsertArticleParams) (Article, error) {
@@ -239,6 +243,7 @@ func (q *Queries) UpsertArticle(ctx context.Context, arg UpsertArticleParams) (A
 		arg.Content,
 		arg.Url,
 		arg.PublishedAt,
+		arg.ImageUrl,
 	)
 	var i Article
 	err := row.Scan(
@@ -250,6 +255,7 @@ func (q *Queries) UpsertArticle(ctx context.Context, arg UpsertArticleParams) (A
 		&i.PublishedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ImageUrl,
 	)
 	return i, err
 }

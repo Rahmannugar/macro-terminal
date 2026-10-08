@@ -40,6 +40,7 @@ type Item struct {
 	URL       string
 	Content   string
 	Summary   string
+	ImageURL  string
 	Published time.Time
 }
 

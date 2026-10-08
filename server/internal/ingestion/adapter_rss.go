@@ -3,6 +3,7 @@ package ingestion
 import (
 	"bytes"
 	"fmt"
+	"strings"
 
 	"github.com/mmcdole/gofeed"
 )
@@ -31,6 +32,17 @@ func (rssAdapter) Parse(body []byte) (Result, error) {
 		// Some feeds have no GUID; the link serves as the ID instead.
 		if item.GUID == "" {
 			item.GUID = entry.Link
+		}
+		switch {
+		case entry.Image != nil && entry.Image.URL != "":
+			item.ImageURL = entry.Image.URL
+		default:
+			for _, enclosure := range entry.Enclosures {
+				if enclosure != nil && strings.HasPrefix(enclosure.Type, "image/") {
+					item.ImageURL = enclosure.URL
+					break
+				}
+			}
 		}
 		switch {
 		case entry.PublishedParsed != nil:

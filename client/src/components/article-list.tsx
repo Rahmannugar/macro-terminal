@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 import { formatTimestamp, plainSnippet } from "../lib/format";
 import type { ArticleSummary } from "../lib/terminal";
+import { ArticleImage } from "./article-image";
 import { Button } from "./ui/button";
 
 type ArticleListProps = {
@@ -63,18 +64,25 @@ export function ArticleList({
             <Link
               to={`/articles/${article.id}`}
               state={linkState}
-              className="block rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-secondary/60"
+              className="flex gap-4 rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/40 hover:bg-secondary/60"
             >
-              <p className="text-sm font-semibold leading-6">{article.title}</p>
-              <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                {article.source.name ? <span>{article.source.name}</span> : null}
-                <span>{formatTimestamp(article.publishedAt)}</span>
-              </p>
-              {plainSnippet(article.content) ? (
-                <p className="mt-2 line-clamp-2 text-sm leading-6 text-muted-foreground">
-                  {plainSnippet(article.content)}
+              <ArticleImage
+                src={article.imageUrl}
+                alt=""
+                className="h-16 w-24 shrink-0 rounded-lg object-cover"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold leading-6">{article.title}</p>
+                <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                  {article.source.name ? <span>{article.source.name}</span> : null}
+                  <span>{formatTimestamp(article.publishedAt)}</span>
                 </p>
-              ) : null}
+                {plainSnippet(article.content) ? (
+                  <p className="mt-2 line-clamp-2 text-sm leading-6 text-muted-foreground">
+                    {plainSnippet(article.content)}
+                  </p>
+                ) : null}
+              </div>
             </Link>
           </li>
         ))}

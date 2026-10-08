@@ -1,4 +1,5 @@
 import { Link, useLocation, useParams } from "react-router";
+import { ArticleImage } from "../components/article-image";
 import { ArticleList } from "../components/article-list";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -84,6 +85,17 @@ export function ArticleRoute() {
         {data.source.name ? <Badge>{data.source.name}</Badge> : null}
         <span>{formatTimestamp(data.publishedAt)}</span>
       </div>
+
+      {data.imageUrl ? (
+        <div className="mt-6 max-w-[680px] overflow-hidden rounded-xl border border-border">
+          <ArticleImage
+            key={data.id}
+            src={data.imageUrl}
+            alt=""
+            className="aspect-video w-full object-cover"
+          />
+        </div>
+      ) : null}
 
       <div className="mt-6 max-w-[680px]">
         {paragraphs.length > 0 ? (

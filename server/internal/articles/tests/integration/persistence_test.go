@@ -371,3 +371,59 @@ func TestArticleCacheKeepsWorkingWhenRedisIsUnreachable(t *testing.T) {
 		t.Fatalf("second persist during outage: %v", err)
 	}
 }
+
+func TestPersistArticlesKeepsStoredImageWhenDeliveryHasNone(t *testing.T) {
+	pool := testdb.OpenMigratedDatabase(t)
+
+	sourceRepository := sourcerepositories.NewSourceRepository(pool)
+	source, err := sourceRepository.UpsertSource(t.Context(), sourcemodels.Source{
+		ID:   testID(t),
+		Name: "Article Image Preservation Source",
+		Type: "news",
+	})
+	if err != nil {
+		t.Fatalf("create source: %v", err)
+	}
+
+	articleRepository := articlerepositories.NewArticleRepository(pool, nil)
+	entry := articlemodels.PersistEntry{
+		SourceID: source.ID,
+		Title:    "Rate decision published",
+		Content:  "Body.",
+		URL:      "https://example.com/rate-decision",
+		ImageURL: "https://cdn.example.com/photos/rate.jpg",
+	}
+	if _, err := articleRepository.PersistArticles(t.Context(), []articlemodels.PersistEntry{entry}); err != nil {
+		t.Fatalf("persist article: %v", err)
+	}
+	assertImage(t, pool, source.ID, entry.URL, &entry.ImageURL)
+
+	// A re-delivery without an image must not erase the stored link.
+	emptyDelivery := entry
+	emptyDelivery.ImageURL = ""
+	if _, err := articleRepository.PersistArticles(t.Context(), []articlemodels.PersistEntry{emptyDelivery}); err != nil {
+		t.Fatalf("persist imageless delivery: %v", err)
+	}
+	assertImage(t, pool, source.ID, entry.URL, &entry.ImageURL)
+
+	// A delivery with a new image still wins.
+	entry.ImageURL = "https://cdn.example.com/photos/rate-updated.jpg"
+	if _, err := articleRepository.PersistArticles(t.Context(), []articlemodels.PersistEntry{entry}); err != nil {
+		t.Fatalf("persist updated delivery: %v", err)
+	}
+	assertImage(t, pool, source.ID, entry.URL, &entry.ImageURL)
+}
+
+func assertImage(t *testing.T, pool *pgxpool.Pool, sourceID uuid.UUID, url string, want *string) {
+	t.Helper()
+	var got *string
+	if err := pool.QueryRow(t.Context(),
+		`SELECT image_url FROM articles WHERE source_id = $1 AND url = $2`,
+		sourceID, url,
+	).Scan(&got); err != nil {
+		t.Fatalf("read stored image: %v", err)
+	}
+	if got == nil || want == nil || *got != *want {
+		t.Fatalf("stored image = %v, want %v", got, want)
+	}
+}

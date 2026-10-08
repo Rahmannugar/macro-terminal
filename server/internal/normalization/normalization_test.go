@@ -2,6 +2,7 @@ package normalization
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -107,7 +108,7 @@ func TestArticlesDropsInvalidEntries(t *testing.T) {
 }
 
 func TestArticlesParsesGDELTArtList(t *testing.T) {
-	body := []byte(`{"articles":[{"title":"Fed holds rates","url":"https://www.reuters.com/markets/story?id=1","seendate":"20261001T121500Z"}]}`)
+	body := []byte(`{"articles":[{"title":"Fed holds rates","url":"https://www.reuters.com/markets/story?id=1","seendate":"20261001T121500Z","socialimage":"https://cdn.reuters.com/photos/policy.jpg"}]}`)
 
 	candidates, stats := Articles(Input{
 		SourceType: "news",
@@ -121,6 +122,9 @@ func TestArticlesParsesGDELTArtList(t *testing.T) {
 	want := time.Date(2026, 10, 1, 12, 15, 0, 0, time.UTC)
 	if !candidates[0].PublishedAt.Equal(want) {
 		t.Errorf("PublishedAt = %v, want %v", candidates[0].PublishedAt, want)
+	}
+	if candidates[0].ImageURL != "https://cdn.reuters.com/photos/policy.jpg" {
+		t.Errorf("ImageURL = %q, want the social image", candidates[0].ImageURL)
 	}
 	if stats.Candidates != 1 {
 		t.Errorf("stats = %+v, want one candidate", stats)
@@ -197,5 +201,39 @@ func BenchmarkArticlesLargeFeed(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		Articles(Input{Items: items, BaseURL: "https://example.com/news"})
+	}
+}
+
+func TestArticlesNormalizesImageURL(t *testing.T) {
+	candidates, _ := Articles(Input{
+		SourceType: "news",
+		ConfigType: "rss",
+		BaseURL:    "https://example.com/releases",
+		Items: []FeedItem{
+			{Title: "Absolute", URL: "https://example.com/a", ImageURL: "HTTPS://CDN.Example.com/photo.png?width=800#crop"},
+			{Title: "Relative", URL: "https://example.com/b", ImageURL: "/photos/b.jpg"},
+			{Title: "Script", URL: "https://example.com/c", ImageURL: "javascript:alert(1)"},
+			{Title: "Missing", URL: "https://example.com/d"},
+			{Title: "Too long", URL: "https://example.com/e", ImageURL: "https://cdn.example.com/" + strings.Repeat("a", 2100)},
+		},
+	})
+
+	got := map[string]string{}
+	for _, candidate := range candidates {
+		got[candidate.Title] = candidate.ImageURL
+	}
+	if len(candidates) != 5 {
+		t.Fatalf("candidates = %d, want 5 (a rejected image drops the image, not the article)", len(candidates))
+	}
+	if got["Absolute"] != "https://cdn.example.com/photo.png?width=800" {
+		t.Errorf("Absolute ImageURL = %q, want scheme and host lowercased, query kept, fragment dropped", got["Absolute"])
+	}
+	if got["Relative"] != "https://example.com/photos/b.jpg" {
+		t.Errorf("Relative ImageURL = %q, want resolved against the request URL", got["Relative"])
+	}
+	for _, title := range []string{"Script", "Missing", "Too long"} {
+		if got[title] != "" {
+			t.Errorf("%s ImageURL = %q, want empty", title, got[title])
+		}
 	}
 }

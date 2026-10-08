@@ -18,4 +18,5 @@ type Article struct {
 	PublishedAt pgtype.Timestamptz
 	CreatedAt   pgtype.Timestamptz
 	UpdatedAt   pgtype.Timestamptz
+	ImageUrl    *string
 }

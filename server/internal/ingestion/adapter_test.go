@@ -117,3 +117,49 @@ func TestAdapterFor(t *testing.T) {
 		t.Fatalf("AdapterFor(ftp) error = %v, want %v", err, ErrUnsupportedAdapter)
 	}
 }
+
+func TestRSSAdapterParsesItemImages(t *testing.T) {
+	body := `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Images</title>
+    <link>https://example.com</link>
+    <description>Images</description>
+    <item>
+      <title>Content image</title>
+      <link>https://example.com/one</link>
+      <guid>urn:image-1</guid>
+      <description><![CDATA[<p>Story.</p><img src="https://cdn.example.com/photos/one.jpg"/>]]></description>
+    </item>
+    <item>
+      <title>Enclosure image</title>
+      <link>https://example.com/two</link>
+      <guid>urn:image-2</guid>
+      <enclosure url="https://cdn.example.com/photos/two.jpg" type="image/jpeg" length="12345"/>
+    </item>
+    <item>
+      <title>No image</title>
+      <link>https://example.com/three</link>
+      <guid>urn:image-3</guid>
+    </item>
+  </channel>
+</rss>`
+
+	result, err := (rssAdapter{}).Parse([]byte(body))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	want := map[string]string{
+		"urn:image-1": "https://cdn.example.com/photos/one.jpg",
+		"urn:image-2": "https://cdn.example.com/photos/two.jpg",
+		"urn:image-3": "",
+	}
+	if len(result.Items) != len(want) {
+		t.Fatalf("items = %d, want %d", len(result.Items), len(want))
+	}
+	for _, item := range result.Items {
+		if item.ImageURL != want[item.GUID] {
+			t.Errorf("item %s ImageURL = %q, want %q", item.GUID, item.ImageURL, want[item.GUID])
+		}
+	}
+}

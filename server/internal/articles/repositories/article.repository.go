@@ -55,6 +55,7 @@ func (repository *ArticleRepository) PersistArticles(
 			Title:       entry.Title,
 			Content:     contentPointer(entry.Content),
 			Url:         entry.URL,
+			ImageUrl:    imagePointer(entry.ImageURL),
 			PublishedAt: timePointer(entry.PublishedAt),
 		})
 		if err != nil {
@@ -199,6 +200,7 @@ func storedArticleFromRow(row articledb.GetArticlesByIDsRow) models.StoredArticl
 		Title:       row.Title,
 		Content:     content,
 		URL:         row.Url,
+		ImageURL:    row.ImageUrl,
 		PublishedAt: publishedAt,
 	}
 }
@@ -223,6 +225,13 @@ func contentPointer(content string) *string {
 		return nil
 	}
 	return &content
+}
+
+func imagePointer(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
 }
 
 func timePointer(value *time.Time) pgtype.Timestamptz {

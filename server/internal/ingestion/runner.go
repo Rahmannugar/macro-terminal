@@ -258,6 +258,7 @@ func (runner *Runner) fetchOne(
 			URL:       item.URL,
 			Content:   item.Content,
 			Summary:   item.Summary,
+			ImageURL:  item.ImageURL,
 			Published: item.Published,
 		})
 	}
@@ -421,6 +422,7 @@ func (runner *Runner) storeCandidates(
 			Title:    candidate.Title,
 			Content:  candidate.Content,
 			URL:      candidate.URL,
+			ImageURL: candidate.ImageURL,
 		}
 		if !candidate.PublishedAt.IsZero() {
 			published := candidate.PublishedAt

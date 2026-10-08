@@ -8,6 +8,7 @@ export type ArticleSummary = {
   title: string;
   content: string;
   url: string;
+  imageUrl: string | null;
   publishedAt: string | null;
   source: { id: string; name: string };
 };
@@ -38,6 +39,8 @@ function parseArticle(value: unknown): ArticleSummary {
     title: record.title,
     content: typeof record.content === "string" ? record.content : "",
     url: typeof record.url === "string" ? record.url : "",
+    imageUrl:
+      typeof record.imageUrl === "string" && record.imageUrl !== "" ? record.imageUrl : null,
     publishedAt: typeof record.publishedAt === "string" ? record.publishedAt : null,
     source: {
       id: typeof source.id === "string" ? source.id : "",

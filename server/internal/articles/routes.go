@@ -30,6 +30,7 @@ type articleJSON struct {
 	Title       string     `json:"title" example:"Fed holds rates steady"`
 	Content     string     `json:"content" example:"The Federal Reserve left its benchmark rate unchanged."`
 	URL         string     `json:"url" example:"https://www.reuters.com/markets/us/"`
+	ImageURL    *string    `json:"imageUrl" example:"https://cdn.reuters.com/photos/board-meeting.jpg"`
 	PublishedAt *time.Time `json:"publishedAt"`
 	Source      sourceJSON `json:"source"`
 }
@@ -74,6 +75,7 @@ func newArticleJSON(article models.StoredArticle) articleJSON {
 		Title:       article.Title,
 		Content:     article.Content,
 		URL:         article.URL,
+		ImageURL:    article.ImageURL,
 		PublishedAt: article.PublishedAt,
 		Source: sourceJSON{
 			ID:   article.SourceID,

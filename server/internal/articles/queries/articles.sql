@@ -1,12 +1,13 @@
 -- name: UpsertArticle :one
-INSERT INTO articles (id, source_id, title, content, url, published_at)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO articles (id, source_id, title, content, url, published_at, image_url)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 ON CONFLICT (source_id, url) DO UPDATE
 SET title = EXCLUDED.title,
     content = CASE
                   WHEN EXCLUDED.content IS NULL OR btrim(EXCLUDED.content) = '' THEN articles.content
                   ELSE EXCLUDED.content
         END,
+    image_url = COALESCE(EXCLUDED.image_url, articles.image_url),
     published_at = COALESCE(EXCLUDED.published_at, articles.published_at),
     updated_at = now()
 RETURNING *;
@@ -27,7 +28,7 @@ WHERE article_id = $1
   AND status = 'pending';
 
 -- name: GetArticlesByIDs :many
-SELECT a.id, a.source_id, s.name AS source_name, a.title, a.content, a.url, a.published_at
+SELECT a.id, a.source_id, s.name AS source_name, a.title, a.content, a.url, a.image_url, a.published_at
 FROM articles AS a
 JOIN sources AS s ON s.id = a.source_id
 WHERE a.id = ANY(sqlc.arg(ids)::uuid[]);

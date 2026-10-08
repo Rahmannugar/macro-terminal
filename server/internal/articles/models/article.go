@@ -14,6 +14,7 @@ type Article struct {
 	Title       string
 	Content     string
 	URL         string
+	ImageURL    *string
 	PublishedAt *time.Time
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
@@ -29,6 +30,7 @@ type PersistEntry struct {
 	Title         string
 	Content       string
 	URL           string
+	ImageURL      string
 	PublishedAt   *time.Time
 	EntityIDs     []uuid.UUID
 	QueueUnmapped bool
@@ -49,6 +51,7 @@ type StoredArticle struct {
 	Title       string     `json:"title"`
 	Content     string     `json:"content"`
 	URL         string     `json:"url"`
+	ImageURL    *string    `json:"imageUrl"`
 	PublishedAt *time.Time `json:"publishedAt"`
 }
 
