@@ -807,6 +807,25 @@
                 ],
                 "type": "object"
             },
+            "articles.feedResponse": {
+                "properties": {
+                    "articles": {
+                        "items": {
+                            "$ref": "#/components/schemas/articles.articleJSON"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "nextCursor": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "articles",
+                    "nextCursor"
+                ],
+                "type": "object"
+            },
             "articles.sourceJSON": {
                 "properties": {
                     "id": {
@@ -821,6 +840,74 @@
                 "required": [
                     "id",
                     "name"
+                ],
+                "type": "object"
+            },
+            "assets.entityPairJSON": {
+                "properties": {
+                    "baseEntityId": {
+                        "example": "9d1e4a63-8f6d-4b9c-1f4e-7a553f8b2a60",
+                        "type": "string"
+                    },
+                    "createdAt": {
+                        "example": "2026-10-06T09:00:00Z",
+                        "type": "string"
+                    },
+                    "id": {
+                        "example": "c1e0f4d2-6a1b-4f3e-9d7c-2b8a5e6f4c10",
+                        "type": "string"
+                    },
+                    "quoteEntityId": {
+                        "example": "3f2a9c81-5b7d-4e2a-8c6f-1d9e4b7a2f30",
+                        "type": "string"
+                    },
+                    "symbol": {
+                        "example": "EURUSD",
+                        "type": "string"
+                    },
+                    "updatedAt": {
+                        "example": "2026-10-06T09:00:00Z",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "baseEntityId",
+                    "createdAt",
+                    "id",
+                    "quoteEntityId",
+                    "symbol",
+                    "updatedAt"
+                ],
+                "type": "object"
+            },
+            "assets.entityPairListResponse": {
+                "properties": {
+                    "entityPairs": {
+                        "items": {
+                            "$ref": "#/components/schemas/assets.entityPairJSON"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "nextCursor": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "entityPairs",
+                    "nextCursor"
+                ],
+                "type": "object"
+            },
+            "assets.followRequest": {
+                "properties": {
+                    "entityPairId": {
+                        "example": "c1e0f4d2-6a1b-4f3e-9d7c-2b8a5e6f4c10",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "entityPairId"
                 ],
                 "type": "object"
             },
@@ -897,6 +984,104 @@
                 },
                 "required": [
                     "username"
+                ],
+                "type": "object"
+            },
+            "calendar.indicatorJSON": {
+                "properties": {
+                    "id": {
+                        "example": "6b5f8e2d-4c9a-4f1e-b8d7-3a2c6e9f1b40",
+                        "type": "string"
+                    },
+                    "name": {
+                        "example": "CPI",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id",
+                    "name"
+                ],
+                "type": "object"
+            },
+            "calendar.sourceJSON": {
+                "properties": {
+                    "id": {
+                        "example": "3f8b2a60-9d1e-4a63-8f6d-2b9c1f4e7a55",
+                        "type": "string"
+                    },
+                    "name": {
+                        "example": "FinanceCalendar",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id",
+                    "name"
+                ],
+                "type": "object"
+            },
+            "calendar.upcomingEventJSON": {
+                "properties": {
+                    "actual": {
+                        "example": 261000,
+                        "type": "number"
+                    },
+                    "consensus": {
+                        "example": 255000,
+                        "type": "number"
+                    },
+                    "id": {
+                        "example": "7d3b9f1e-5a4c-4e8b-9f2d-1c6a8b0e4f73",
+                        "type": "string"
+                    },
+                    "indicator": {
+                        "$ref": "#/components/schemas/calendar.indicatorJSON"
+                    },
+                    "previous": {
+                        "example": 250000,
+                        "type": "number"
+                    },
+                    "releasedAt": {
+                        "example": "2026-10-06T12:30:00Z",
+                        "type": "string"
+                    },
+                    "scheduledAt": {
+                        "example": "2026-10-06T12:30:00Z",
+                        "type": "string"
+                    },
+                    "source": {
+                        "$ref": "#/components/schemas/calendar.sourceJSON"
+                    }
+                },
+                "required": [
+                    "actual",
+                    "consensus",
+                    "id",
+                    "indicator",
+                    "previous",
+                    "releasedAt",
+                    "scheduledAt",
+                    "source"
+                ],
+                "type": "object"
+            },
+            "calendar.upcomingEventListResponse": {
+                "properties": {
+                    "calendarEvents": {
+                        "items": {
+                            "$ref": "#/components/schemas/calendar.upcomingEventJSON"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "nextCursor": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "calendarEvents",
+                    "nextCursor"
                 ],
                 "type": "object"
             },
@@ -2655,6 +2840,85 @@
                 ]
             }
         },
+        "/api/v1/articles": {
+            "get": {
+                "description": "Returns the newest articles mapped to the account's followed asset pairs, newest first, falling back to the whole terminal when nothing is followed. Pass the returned nextCursor to fetch the next page.",
+                "parameters": [
+                    {
+                        "description": "Page size between 1 and 100. Defaults to 25.",
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Opaque cursor returned as nextCursor by the previous page.",
+                        "in": "query",
+                        "name": "cursor",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/articles.feedResponse"
+                                }
+                            }
+                        },
+                        "description": "The articles and the cursor for the next page, if any."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The limit or cursor is invalid."
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "No valid session exists."
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The account is suspended."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "List the feed.",
+                "tags": [
+                    "articles"
+                ]
+            }
+        },
         "/api/v1/articles/{id}": {
             "get": {
                 "description": "Returns a single article by id.",
@@ -2879,6 +3143,266 @@
                 ]
             }
         },
+        "/api/v1/assets": {
+            "get": {
+                "description": "Returns the asset pairs the signed-in account follows, newest follows first. Pass the returned nextCursor to fetch the next page.",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/assets.entityPairListResponse"
+                                }
+                            }
+                        },
+                        "description": "The followed pairs and the cursor for the next page, if any."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The limit or cursor is invalid."
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "No valid session exists."
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The account is suspended."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "List the watch list.",
+                "tags": [
+                    "assets"
+                ]
+            },
+            "post": {
+                "description": "Adds the pair to the signed-in account's watch list. Following the same pair twice keeps a single entry.",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/assets.followRequest",
+                                "summary": "body",
+                                "description": "The pair to follow."
+                            }
+                        }
+                    },
+                    "description": "The pair to follow.",
+                    "required": true
+                },
+                "responses": {
+                    "204": {
+                        "description": "The pair is followed."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request body is missing the pair id."
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "No valid session exists."
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The account is suspended."
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The pair does not exist."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Follow an asset pair.",
+                "tags": [
+                    "assets"
+                ]
+            }
+        },
+        "/api/v1/assets/{entityPairId}": {
+            "delete": {
+                "description": "Removes the pair from the signed-in account's watch list. Removing a pair that is not followed succeeds.",
+                "parameters": [
+                    {
+                        "description": "The pair id (UUID).",
+                        "in": "path",
+                        "name": "entityPairId",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "The pair is not followed."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The pair id is not a UUID."
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "No valid session exists."
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The account is suspended."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Unfollow an asset pair.",
+                "tags": [
+                    "assets"
+                ]
+            }
+        },
+        "/api/v1/calendar-events": {
+            "get": {
+                "description": "Returns scheduled events from now forward, soonest first. Pass the returned nextCursor to fetch the next page.",
+                "parameters": [
+                    {
+                        "description": "Page size between 1 and 100. Defaults to 25.",
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Opaque cursor returned as nextCursor by the previous page.",
+                        "in": "query",
+                        "name": "cursor",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/calendar.upcomingEventListResponse"
+                                }
+                            }
+                        },
+                        "description": "The events and the cursor for the next page, if any."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The limit or cursor is invalid."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "List upcoming calendar events.",
+                "tags": [
+                    "calendar"
+                ]
+            }
+        },
         "/api/v1/calendar-events/{id}/explain": {
             "post": {
                 "description": "Generates a one-shot contextual explanation of the calendar event from its indicator, values, linked entities, affected asset pairs, and recent related coverage. The generated answer is cached briefly and regenerated after it expires.",
@@ -2948,6 +3472,65 @@
                 "summary": "Explain one calendar event with AI.",
                 "tags": [
                     "calendar"
+                ]
+            }
+        },
+        "/api/v1/entity-pairs": {
+            "get": {
+                "description": "Returns every tradable pair newest first. Pass the returned nextCursor to fetch the next page.",
+                "parameters": [
+                    {
+                        "description": "Page size between 1 and 100. Defaults to 25.",
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Opaque cursor returned as nextCursor by the previous page.",
+                        "in": "query",
+                        "name": "cursor",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/assets.entityPairListResponse"
+                                }
+                            }
+                        },
+                        "description": "The pairs and the cursor for the next page, if any."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The limit or cursor is invalid."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "List available asset pairs.",
+                "tags": [
+                    "assets"
                 ]
             }
         },
