@@ -1197,6 +1197,72 @@
                 ],
                 "type": "object"
             },
+            "market.candleJSON": {
+                "properties": {
+                    "close": {
+                        "example": 1.0852,
+                        "type": "number"
+                    },
+                    "entityPairId": {
+                        "example": "01993f5c-6b1e-7a4f-9c61-3f0f2f4d8a71",
+                        "type": "string"
+                    },
+                    "high": {
+                        "example": 1.0853,
+                        "type": "number"
+                    },
+                    "id": {
+                        "example": "01993f5c-6b1e-7a4f-9c61-3f0f2f4d8a70",
+                        "type": "string"
+                    },
+                    "low": {
+                        "example": 1.08501,
+                        "type": "number"
+                    },
+                    "open": {
+                        "example": 1.08512,
+                        "type": "number"
+                    },
+                    "timeframe": {
+                        "example": "1min",
+                        "type": "string"
+                    },
+                    "timestamp": {
+                        "example": "2026-10-08T12:00:00Z",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "close",
+                    "entityPairId",
+                    "high",
+                    "id",
+                    "low",
+                    "open",
+                    "timeframe",
+                    "timestamp"
+                ],
+                "type": "object"
+            },
+            "market.candleListResponse": {
+                "properties": {
+                    "candles": {
+                        "items": {
+                            "$ref": "#/components/schemas/market.candleJSON"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "nextCursor": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "candles",
+                    "nextCursor"
+                ],
+                "type": "object"
+            },
             "openapi.Error": {
                 "properties": {
                     "error": {
@@ -3487,6 +3553,83 @@
                 "summary": "Explain one calendar event with AI.",
                 "tags": [
                     "calendar"
+                ]
+            }
+        },
+        "/api/v1/candles": {
+            "get": {
+                "description": "Returns candles for one entity pair and timeframe, newest first. Pass the returned nextCursor to fetch the next page.",
+                "parameters": [
+                    {
+                        "description": "Entity pair id.",
+                        "in": "query",
+                        "name": "entityPairId",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "1min or 1day.",
+                        "in": "query",
+                        "name": "timeframe",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Page size between 1 and 100. Defaults to 25.",
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Opaque cursor returned as nextCursor by the previous page.",
+                        "in": "query",
+                        "name": "cursor",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/market.candleListResponse"
+                                }
+                            }
+                        },
+                        "description": "The candles and the cursor for the next page, if any."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "A parameter is invalid."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "List market candles.",
+                "tags": [
+                    "market"
                 ]
             }
         },
