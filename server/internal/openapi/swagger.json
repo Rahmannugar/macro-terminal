@@ -771,6 +771,10 @@
                         "example": "9d1e4a63-8f6d-4b9c-1f4e-7a553f8b2a60",
                         "type": "string"
                     },
+                    "imageUrl": {
+                        "example": "https://cdn.reuters.com/photos/board-meeting.jpg",
+                        "type": "string"
+                    },
                     "publishedAt": {
                         "type": "string"
                     },
@@ -789,6 +793,7 @@
                 "required": [
                     "content",
                     "id",
+                    "imageUrl",
                     "publishedAt",
                     "source",
                     "title",
@@ -1095,6 +1100,10 @@
                         "example": "9d1e4a63-8f6d-4b9c-1f4e-7a553f8b2a60",
                         "type": "string"
                     },
+                    "imageUrl": {
+                        "example": "https://cdn.reuters.com/photos/board-meeting.jpg",
+                        "type": "string"
+                    },
                     "publishedAt": {
                         "type": "string"
                     },
@@ -1113,6 +1122,7 @@
                 "required": [
                     "content",
                     "id",
+                    "imageUrl",
                     "publishedAt",
                     "source",
                     "title",
@@ -1225,6 +1235,10 @@
                         "example": "9d1e4a63-8f6d-4b9c-1f4e-7a553f8b2a60",
                         "type": "string"
                     },
+                    "imageUrl": {
+                        "example": "https://cdn.reuters.com/photos/board-meeting.jpg",
+                        "type": "string"
+                    },
                     "publishedAt": {
                         "type": "string"
                     },
@@ -1243,6 +1257,7 @@
                 "required": [
                     "content",
                     "id",
+                    "imageUrl",
                     "publishedAt",
                     "source",
                     "title",
