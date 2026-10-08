@@ -15,6 +15,7 @@ const navigation: NavSection[] = [
       { label: "Search", to: "/search" },
       { label: "Watch list", to: "/watchlist" },
       { label: "Calendar", to: "/calendar" },
+      { label: "Market", to: "/market" },
     ],
   },
   {

@@ -18,11 +18,13 @@ import (
 )
 
 const (
-	environmentPrefix       = "MACRO_TERMINAL_"
-	defaultHTTPPort         = 8080
-	defaultPostgresPort     = 5432
-	defaultAIModel          = "gemini-3.1-flash-lite"
-	defaultExplanationModel = "gemini-3.5-flash-lite"
+	environmentPrefix         = "MACRO_TERMINAL_"
+	defaultHTTPPort           = 8080
+	defaultPostgresPort       = 5432
+	defaultAIModel            = "gemini-3.1-flash-lite"
+	defaultExplanationModel   = "gemini-3.5-flash-lite"
+	defaultBackfillDailyDays  = 1825
+	defaultBackfillMinuteDays = 30
 )
 
 type Environment string
@@ -41,6 +43,7 @@ type Config struct {
 	AI          AI
 	Ahnlich     Ahnlich
 	Resend      Resend
+	Backfill    Backfill
 }
 
 type HTTP struct {
@@ -84,6 +87,11 @@ type AI struct {
 
 type Ahnlich struct {
 	AIAddr string
+}
+
+type Backfill struct {
+	DailyDays  int
+	MinuteDays int
 }
 
 func Load() (Config, error) {
@@ -185,6 +193,22 @@ func Load() (Config, error) {
 		cfg.AI.ExplanationModel = model
 	}
 	cfg.Ahnlich.AIAddr = strings.TrimSpace(k.String("ahnlich.ai_addr"))
+	cfg.Backfill.DailyDays = defaultBackfillDailyDays
+	if days := strings.TrimSpace(k.String("backfill.daily_days")); days != "" {
+		value, err := strconv.Atoi(days)
+		if err != nil {
+			return Config{}, fmt.Errorf("MACRO_TERMINAL_BACKFILL_DAILY_DAYS must be an integer: %w", err)
+		}
+		cfg.Backfill.DailyDays = value
+	}
+	cfg.Backfill.MinuteDays = defaultBackfillMinuteDays
+	if days := strings.TrimSpace(k.String("backfill.minute_days")); days != "" {
+		value, err := strconv.Atoi(days)
+		if err != nil {
+			return Config{}, fmt.Errorf("MACRO_TERMINAL_BACKFILL_MINUTE_DAYS must be an integer: %w", err)
+		}
+		cfg.Backfill.MinuteDays = value
+	}
 
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -248,6 +272,12 @@ func (cfg Config) Validate() error {
 	}
 	if _, err := mail.ParseAddress(cfg.Resend.NoReplyFrom); err != nil {
 		return fmt.Errorf("MACRO_TERMINAL_RESEND_NOREPLY_FROM must be a valid email sender: %w", err)
+	}
+	if cfg.Backfill.DailyDays < 1 || cfg.Backfill.DailyDays > 3650 {
+		return fmt.Errorf("MACRO_TERMINAL_BACKFILL_DAILY_DAYS must be between 1 and 3650")
+	}
+	if cfg.Backfill.MinuteDays < 1 || cfg.Backfill.MinuteDays > 365 {
+		return fmt.Errorf("MACRO_TERMINAL_BACKFILL_MINUTE_DAYS must be between 1 and 365")
 	}
 	return nil
 }

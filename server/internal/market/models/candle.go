@@ -28,3 +28,8 @@ type StoredCandle struct {
 	Low          float64
 	Close        float64
 }
+
+type TimeWindow struct {
+	From time.Time
+	To   time.Time
+}

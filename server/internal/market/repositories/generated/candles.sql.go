@@ -12,6 +12,136 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const backfillChecks = `-- name: BackfillChecks :many
+SELECT checked_from, checked_to
+FROM market_backfill_checks
+WHERE entity_pair_id = $1
+  AND timeframe = $2
+  AND checked_to > $3
+  AND checked_from < $4
+ORDER BY checked_from
+`
+
+type BackfillChecksParams struct {
+	EntityPairID uuid.UUID
+	Timeframe    string
+	RangeStart   pgtype.Timestamptz
+	RangeEnd     pgtype.Timestamptz
+}
+
+type BackfillChecksRow struct {
+	CheckedFrom pgtype.Timestamptz
+	CheckedTo   pgtype.Timestamptz
+}
+
+func (q *Queries) BackfillChecks(ctx context.Context, arg BackfillChecksParams) ([]BackfillChecksRow, error) {
+	rows, err := q.db.Query(ctx, backfillChecks,
+		arg.EntityPairID,
+		arg.Timeframe,
+		arg.RangeStart,
+		arg.RangeEnd,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BackfillChecksRow
+	for rows.Next() {
+		var i BackfillChecksRow
+		if err := rows.Scan(&i.CheckedFrom, &i.CheckedTo); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const candleGaps = `-- name: CandleGaps :many
+WITH series AS (
+  SELECT timestamp
+  FROM market_candles
+  WHERE entity_pair_id = $1
+    AND timeframe = $2
+    AND timestamp >= $3
+    AND timestamp < $4
+),
+gaps AS (
+  SELECT
+    $3::timestamptz AS gap_start,
+    min(timestamp) AS gap_end
+  FROM series
+  HAVING min(timestamp) > $3
+      + $5::double precision * interval '1 second'
+  UNION ALL
+  SELECT
+    max(timestamp) AS gap_start,
+    $4::timestamptz AS gap_end
+  FROM series
+  HAVING $4
+      > max(timestamp) + $5::double precision * interval '1 second'
+  UNION ALL
+  SELECT lag_ts AS gap_start, ts AS gap_end
+  FROM (
+    SELECT
+      timestamp AS ts,
+      lag(timestamp) OVER (ORDER BY timestamp) AS lag_ts
+    FROM series
+  ) windows
+  WHERE lag_ts IS NOT NULL
+    AND ts > lag_ts + $5::double precision * interval '1 second'
+  UNION ALL
+  SELECT
+    $3::timestamptz AS gap_start,
+    $4::timestamptz AS gap_end
+  WHERE NOT EXISTS (SELECT 1 FROM series)
+)
+SELECT gap_start::timestamptz AS gap_start, gap_end::timestamptz AS gap_end
+FROM gaps
+ORDER BY (gap_end - gap_start) DESC
+`
+
+type CandleGapsParams struct {
+	EntityPairID  uuid.UUID
+	Timeframe     string
+	RangeStart    pgtype.Timestamptz
+	RangeEnd      pgtype.Timestamptz
+	MinGapSeconds float64
+}
+
+type CandleGapsRow struct {
+	GapStart pgtype.Timestamptz
+	GapEnd   pgtype.Timestamptz
+}
+
+func (q *Queries) CandleGaps(ctx context.Context, arg CandleGapsParams) ([]CandleGapsRow, error) {
+	rows, err := q.db.Query(ctx, candleGaps,
+		arg.EntityPairID,
+		arg.Timeframe,
+		arg.RangeStart,
+		arg.RangeEnd,
+		arg.MinGapSeconds,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CandleGapsRow
+	for rows.Next() {
+		var i CandleGapsRow
+		if err := rows.Scan(&i.GapStart, &i.GapEnd); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCandlesPage = `-- name: ListCandlesPage :many
 SELECT id, entity_pair_id, timeframe, timestamp, open, high, low, close
 FROM market_candles
@@ -80,6 +210,30 @@ func (q *Queries) ListCandlesPage(ctx context.Context, arg ListCandlesPageParams
 		return nil, err
 	}
 	return items, nil
+}
+
+const recordBackfillCheck = `-- name: RecordBackfillCheck :exec
+INSERT INTO market_backfill_checks (id, entity_pair_id, timeframe, checked_from, checked_to)
+VALUES ($1, $2, $3, $4, $5)
+`
+
+type RecordBackfillCheckParams struct {
+	ID           uuid.UUID
+	EntityPairID uuid.UUID
+	Timeframe    string
+	CheckedFrom  pgtype.Timestamptz
+	CheckedTo    pgtype.Timestamptz
+}
+
+func (q *Queries) RecordBackfillCheck(ctx context.Context, arg RecordBackfillCheckParams) error {
+	_, err := q.db.Exec(ctx, recordBackfillCheck,
+		arg.ID,
+		arg.EntityPairID,
+		arg.Timeframe,
+		arg.CheckedFrom,
+		arg.CheckedTo,
+	)
+	return err
 }
 
 const upsertCandle = `-- name: UpsertCandle :exec

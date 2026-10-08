@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/common/paging"
 	marketmodels "github.com/Rahmannugar/macro-terminal/server/internal/market/models"
@@ -122,7 +123,7 @@ func (repository *CandleRepository) CandlesPage(
 			ID:           row.ID,
 			EntityPairID: row.EntityPairID,
 			Timeframe:    row.Timeframe,
-			Timestamp:    row.Timestamp.Time,
+			Timestamp:    row.Timestamp.Time.UTC(),
 			Open:         open,
 			High:         high,
 			Low:          low,
@@ -130,6 +131,77 @@ func (repository *CandleRepository) CandlesPage(
 		})
 	}
 	return candles, nil, nil
+}
+
+func (repository *CandleRepository) CandleGaps(
+	ctx context.Context,
+	entityPairID uuid.UUID,
+	timeframe string,
+	rangeStart, rangeEnd time.Time,
+	minGap time.Duration,
+) ([]marketmodels.TimeWindow, error) {
+	rows, err := repository.queries.CandleGaps(ctx, marketdb.CandleGapsParams{
+		EntityPairID:  entityPairID,
+		Timeframe:     timeframe,
+		RangeStart:    pgtype.Timestamptz{Time: rangeStart, Valid: true},
+		RangeEnd:      pgtype.Timestamptz{Time: rangeEnd, Valid: true},
+		MinGapSeconds: minGap.Seconds(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list candle gaps: %w", err)
+	}
+	gaps := make([]marketmodels.TimeWindow, 0, len(rows))
+	for _, row := range rows {
+		if !row.GapStart.Valid || !row.GapEnd.Valid {
+			return nil, fmt.Errorf("list candle gaps: null bound")
+		}
+		gaps = append(gaps, marketmodels.TimeWindow{From: row.GapStart.Time, To: row.GapEnd.Time})
+	}
+	return gaps, nil
+}
+
+func (repository *CandleRepository) BackfillChecks(
+	ctx context.Context,
+	entityPairID uuid.UUID,
+	timeframe string,
+	rangeStart, rangeEnd time.Time,
+) ([]marketmodels.TimeWindow, error) {
+	rows, err := repository.queries.BackfillChecks(ctx, marketdb.BackfillChecksParams{
+		EntityPairID: entityPairID,
+		Timeframe:    timeframe,
+		RangeStart:   pgtype.Timestamptz{Time: rangeStart, Valid: true},
+		RangeEnd:     pgtype.Timestamptz{Time: rangeEnd, Valid: true},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list backfill checks: %w", err)
+	}
+	checks := make([]marketmodels.TimeWindow, 0, len(rows))
+	for _, row := range rows {
+		if !row.CheckedFrom.Valid || !row.CheckedTo.Valid {
+			return nil, fmt.Errorf("list backfill checks: null bound")
+		}
+		checks = append(checks, marketmodels.TimeWindow{From: row.CheckedFrom.Time, To: row.CheckedTo.Time})
+	}
+	return checks, nil
+}
+
+func (repository *CandleRepository) RecordBackfillCheck(
+	ctx context.Context,
+	entityPairID uuid.UUID,
+	timeframe string,
+	window marketmodels.TimeWindow,
+) error {
+	err := repository.queries.RecordBackfillCheck(ctx, marketdb.RecordBackfillCheckParams{
+		ID:           uuid.New(),
+		EntityPairID: entityPairID,
+		Timeframe:    timeframe,
+		CheckedFrom:  pgtype.Timestamptz{Time: window.From, Valid: true},
+		CheckedTo:    pgtype.Timestamptz{Time: window.To, Valid: true},
+	})
+	if err != nil {
+		return fmt.Errorf("record backfill check: %w", err)
+	}
+	return nil
 }
 
 func numericEncode(value float64) (pgtype.Numeric, error) {

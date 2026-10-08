@@ -114,6 +114,7 @@ func run() (runError error) {
 
 	sourceRepository := sourcesrepositories.NewSourceRepository(databasePool)
 	entityRepository := entityrepositories.NewEntityRepository(databasePool)
+	candleRepository := marketrepositories.NewCandleRepository(databasePool)
 	sourceFetcher := ingestion.NewFetcher(
 		telemetry.NewHTTPClient(providerFetchTimeout),
 		ingestion.NewDefaultBreaker(),
@@ -125,7 +126,7 @@ func run() (runError error) {
 		mapping.NewLoader(entityRepository),
 		articlerepositories.NewArticleRepository(databasePool, resourceStore),
 		calendarepositories.NewEventRepository(databasePool, resourceStore),
-		marketrepositories.NewCandleRepository(databasePool),
+		candleRepository,
 		entityRepository,
 		logger,
 		ingestion.DefaultCadences(),
@@ -193,8 +194,17 @@ func run() (runError error) {
 		emailSender,
 		logger,
 	)
+	backfillJob := ingestion.NewBackfillJob(
+		sourceRepository,
+		entityRepository,
+		candleRepository,
+		sourceFetcher,
+		cfg.Backfill.DailyDays,
+		cfg.Backfill.MinuteDays,
+		logger,
+	)
 
-	results := make(chan workerResult, 9)
+	results := make(chan workerResult, 10)
 	go func() {
 		results <- workerResult{name: "ingestion-runner", err: ingestionRunner.Run(workerContext)}
 	}()
@@ -241,13 +251,16 @@ func run() (runError error) {
 	go func() {
 		results <- workerResult{name: "email-delivery-job", err: emailJob.Run(workerContext)}
 	}()
-	logger.Info("worker started", "jobs", 9)
+	go func() {
+		results <- workerResult{name: "backfill-job", err: backfillJob.Run(workerContext)}
+	}()
+	logger.Info("worker started", "jobs", 10)
 
 	<-workerContext.Done()
 	stopWorkers()
 	shutdownTimer := time.NewTimer(shutdownTimeout)
 	defer shutdownTimer.Stop()
-	for completed := 0; completed < 9; completed++ {
+	for completed := 0; completed < 10; completed++ {
 		select {
 		case result := <-results:
 			if result.err != nil && !errors.Is(result.err, context.Canceled) {

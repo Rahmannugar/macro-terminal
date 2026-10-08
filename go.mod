@@ -4,6 +4,9 @@ go 1.26.5
 
 require (
 	github.com/PuerkitoBio/goquery v1.13.0
+	github.com/Rahmannugar/authlier v0.5.0
+	github.com/alicebob/miniredis/v2 v2.39.0
+	github.com/deven96/ahnlich/sdk/ahnlich-client-go v0.0.0-20260930223022-7fe2d60da77c
 	github.com/exaring/otelpgx v0.12.0
 	github.com/gin-gonic/gin v1.12.0
 	github.com/google/uuid v1.6.0
@@ -31,6 +34,7 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.46.0
 	go.opentelemetry.io/otel/trace v1.46.0
 	golang.org/x/sync v0.22.0
+	google.golang.org/grpc v1.83.1
 )
 
 require (
@@ -43,8 +47,6 @@ require (
 	github.com/Masterminds/semver/v3 v3.5.0 // indirect
 	github.com/Masterminds/sprig/v3 v3.3.0 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/Rahmannugar/authlier v0.5.0 // indirect
-	github.com/alicebob/miniredis/v2 v2.39.0 // indirect
 	github.com/andybalholm/cascadia v1.3.4 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/beevik/etree v1.5.0 // indirect
@@ -67,7 +69,6 @@ require (
 	github.com/crewjam/saml v0.5.1 // indirect
 	github.com/cubicdaiya/gonp v1.0.4 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/deven96/ahnlich/sdk/ahnlich-client-go v0.0.0-20260930223022-7fe2d60da77c // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/go-connections v0.7.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
@@ -199,7 +200,6 @@ require (
 	golang.org/x/tools v0.48.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260819154853-08b0e4226688 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260819154853-08b0e4226688 // indirect
-	google.golang.org/grpc v1.83.1 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

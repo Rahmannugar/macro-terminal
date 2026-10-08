@@ -14,6 +14,7 @@ import { UsersScreen } from "./routes/admin/users";
 import { ArticleRoute } from "./routes/article";
 import { CalendarRoute } from "./routes/calendar";
 import { HomeRoute } from "./routes/home";
+import { MarketRoute } from "./routes/market";
 import { SearchRoute } from "./routes/search";
 import { SignInRoute } from "./routes/sign-in";
 import { SignUpRoute } from "./routes/sign-up";
@@ -50,6 +51,7 @@ export default function App() {
             <Route path="/search" element={<SearchRoute />} />
             <Route path="/watchlist" element={<WatchListRoute />} />
             <Route path="/calendar" element={<CalendarRoute />} />
+            <Route path="/market" element={<MarketRoute />} />
             <Route path="/articles/:id" element={<ArticleRoute />} />
             <Route path="/admin" element={<AdminGuard />}>
               <Route index element={<Navigate to="/admin/users" replace />} />
