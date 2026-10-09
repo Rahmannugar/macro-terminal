@@ -26,10 +26,18 @@ const (
 	// backfillPacingSeconds is the minimum spacing between backfill
 	// requests to one host, layered on top of the fetcher's spacing.
 	backfillPacingSeconds = 1
-	// oandaMaxBars is the most candles one OANDA request may return.
-	oandaMaxBars = 5000
 	// binanceMaxBars is the most klines one Binance request may return.
 	binanceMaxBars = 1000
+	// biquoteMinuteBars is how many 1-minute slots one biquote window
+	// covers. Minute history is a short rolling buffer, so wide windows
+	// cross it in a few passes without ever risking the response ceiling.
+	biquoteMinuteBars = 4320
+	// biquoteDailyBars is how many daily slots one biquote window covers.
+	// A response tops out at 500 bars, so windows must stay below it.
+	biquoteDailyBars = 400
+	// biquoteLimit is the limit query on windowed biquote requests: the
+	// response ceiling, kept above every window so no boundary bar is cut.
+	biquoteLimit = 500
 )
 
 // BackfillCandleStore is the candle storage and gap bookkeeping the
@@ -221,11 +229,16 @@ func (job *BackfillJob) backfillConfiguration(
 	default:
 		return
 	}
-	maxBars := oandaMaxBars
-	if metadata.Provider == "binance" {
+	var maxBars int
+	switch metadata.Provider {
+	case "biquote":
+		maxBars = biquoteDailyBars
+		if metadata.Timeframe == "1min" {
+			maxBars = biquoteMinuteBars
+		}
+	case "binance":
 		maxBars = binanceMaxBars
-	}
-	if metadata.Provider != "oanda" && metadata.Provider != "binance" {
+	default:
 		return
 	}
 
@@ -440,10 +453,10 @@ func (job *BackfillJob) backfillWindow(
 }
 
 // windowedConfiguration rewrites one candle configuration into a provider
-// request for a fixed time window: OANDA takes from/to in RFC 3339, Binance
-// takes startTime/endTime in milliseconds. The original configuration ID is
-// kept so the breaker and host spacing state stay shared with the live
-// runner.
+// request for a fixed time window: biquote takes from/to in RFC 3339 plus
+// a limit, Binance takes startTime/endTime in milliseconds. The original
+// configuration ID is kept so the breaker and host spacing state stay
+// shared with the live runner.
 func windowedConfiguration(
 	configuration models.SourceConfigurationWithSource,
 	provider string,
@@ -460,8 +473,8 @@ func windowedConfiguration(
 	}
 	query := target.Query()
 	switch provider {
-	case "oanda":
-		query.Del("count")
+	case "biquote":
+		query.Set("limit", strconv.Itoa(biquoteLimit))
 		query.Set("from", from.UTC().Format(time.RFC3339))
 		query.Set("to", to.UTC().Format(time.RFC3339))
 	case "binance":

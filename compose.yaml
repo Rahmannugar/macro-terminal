@@ -116,6 +116,7 @@ services:
       MACRO_TERMINAL_AUTH_BASE_URL: http://localhost:8081
       MACRO_TERMINAL_AHNLICH_AI_ADDR: ahnlich-ai:1370
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
     ports:
       - "8081:8081"
     volumes:
@@ -150,6 +151,7 @@ services:
       MACRO_TERMINAL_AHNLICH_AI_ADDR: ahnlich-ai:1370
       MACRO_TERMINAL_AUTH_BASE_URL: http://localhost:8081
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
     volumes:
       - .:/workspace
       - go-modules:/go/pkg/mod

@@ -14,55 +14,55 @@ import (
 )
 
 const (
-	oandaPracticeBase = "https://api-fxpractice.oanda.com"
+	biquoteBase       = "https://biquote.io/api"
 	binanceVisionBase = "https://data-api.binance.vision"
 )
 
 type candlePair struct {
-	symbol     string
-	instrument string
-	binance    string
+	symbol  string
+	biquote string
+	binance string
 }
 
 type candleTimeframe struct {
 	label        string
-	oandaGran    string
-	oandaCount   string
+	biquoteInt   string
+	biquoteLimit string
 	binanceInt   string
 	binanceLimit string
 }
 
 var candleTimeframes = []candleTimeframe{
-	{label: "1min", oandaGran: "M1", oandaCount: "6", binanceInt: "1m", binanceLimit: "6"},
-	{label: "1day", oandaGran: "D", oandaCount: "3", binanceInt: "1d", binanceLimit: "3"},
+	{label: "1min", biquoteInt: "1m", biquoteLimit: "6", binanceInt: "1m", binanceLimit: "6"},
+	{label: "1day", biquoteInt: "1d", biquoteLimit: "3", binanceInt: "1d", binanceLimit: "3"},
 }
 
 var candlePairs = []candlePair{
-	{symbol: "EUR/USD", instrument: "EUR_USD"},
-	{symbol: "GBP/USD", instrument: "GBP_USD"},
-	{symbol: "USD/JPY", instrument: "USD_JPY"},
-	{symbol: "USD/CHF", instrument: "USD_CHF"},
-	{symbol: "USD/CAD", instrument: "USD_CAD"},
-	{symbol: "AUD/USD", instrument: "AUD_USD"},
-	{symbol: "NZD/USD", instrument: "NZD_USD"},
-	{symbol: "EUR/GBP", instrument: "EUR_GBP"},
-	{symbol: "EUR/JPY", instrument: "EUR_JPY"},
-	{symbol: "EUR/CHF", instrument: "EUR_CHF"},
-	{symbol: "GBP/JPY", instrument: "GBP_JPY"},
-	{symbol: "AUD/JPY", instrument: "AUD_JPY"},
-	{symbol: "AUD/NZD", instrument: "AUD_NZD"},
-	{symbol: "CAD/JPY", instrument: "CAD_JPY"},
-	{symbol: "NZD/JPY", instrument: "NZD_JPY"},
-	{symbol: "XAU", instrument: "XAU_USD"},
-	{symbol: "XAG", instrument: "XAG_USD"},
-	{symbol: "OIL", instrument: "WTICO_USD"},
-	{symbol: "COPPER", instrument: "XCU_USD"},
-	{symbol: "DAX", instrument: "DE30_EUR"},
-	{symbol: "ES", instrument: "SPX500_USD"},
-	{symbol: "NQ", instrument: "NAS100_USD"},
-	{symbol: "FTSE", instrument: "UK100_GBP"},
-	{symbol: "N225", instrument: "JP225_USD"},
-	{symbol: "STOXX50", instrument: "EU50_EUR"},
+	{symbol: "EUR/USD", biquote: "EURUSD"},
+	{symbol: "GBP/USD", biquote: "GBPUSD"},
+	{symbol: "USD/JPY", biquote: "USDJPY"},
+	{symbol: "USD/CHF", biquote: "USDCHF"},
+	{symbol: "USD/CAD", biquote: "USDCAD"},
+	{symbol: "AUD/USD", biquote: "AUDUSD"},
+	{symbol: "NZD/USD", biquote: "NZDUSD"},
+	{symbol: "EUR/GBP", biquote: "EURGBP"},
+	{symbol: "EUR/JPY", biquote: "EURJPY"},
+	{symbol: "EUR/CHF", biquote: "EURCHF"},
+	{symbol: "GBP/JPY", biquote: "GBPJPY"},
+	{symbol: "AUD/JPY", biquote: "AUDJPY"},
+	{symbol: "AUD/NZD", biquote: "AUDNZD"},
+	{symbol: "CAD/JPY", biquote: "CADJPY"},
+	{symbol: "NZD/JPY", biquote: "NZDJPY"},
+	{symbol: "XAU", biquote: "XAUUSD"},
+	{symbol: "XAG", biquote: "XAGUSD"},
+	{symbol: "OIL", biquote: "USOIL"},
+	{symbol: "COPPER", biquote: "XCUUSD"},
+	{symbol: "DAX", biquote: "DE30"},
+	{symbol: "ES", biquote: "US500"},
+	{symbol: "NQ", biquote: "USTEC"},
+	{symbol: "FTSE", biquote: "UK100"},
+	{symbol: "N225", biquote: "JP225"},
+	{symbol: "STOXX50", biquote: "STOXX50"},
 	{symbol: "BTC", binance: "BTCUSDT"},
 	{symbol: "ETH", binance: "ETHUSDT"},
 	{symbol: "BNB", binance: "BNBUSDT"},
@@ -72,18 +72,18 @@ var candlePairs = []candlePair{
 var seedCandleSources = buildCandleSources()
 
 func buildCandleSources() []seedSource {
-	var oandaConfigs, binanceConfigs []seedConfiguration
+	var biquoteConfigs, binanceConfigs []seedConfiguration
 	for _, pair := range candlePairs {
 		for _, timeframe := range candleTimeframes {
-			if pair.instrument != "" {
+			if pair.biquote != "" {
 				target := fmt.Sprintf(
-					"%s/v3/instruments/%s/candles?granularity=%s&count=%s&price=M",
-					oandaPracticeBase, pair.instrument, timeframe.oandaGran, timeframe.oandaCount,
+					"%s/%s/ohlc?interval=%s&limit=%s",
+					biquoteBase, pair.biquote, timeframe.biquoteInt, timeframe.biquoteLimit,
 				)
-				oandaConfigs = append(oandaConfigs, seedConfiguration{
+				biquoteConfigs = append(biquoteConfigs, seedConfiguration{
 					kind: "api",
 					config: fmt.Sprintf(
-						`{"url":%q,"bearer_env":"MACRO_TERMINAL_OANDA_TOKEN","candle":{"provider":"oanda","pair_symbol":%q,"timeframe":%q}}`,
+						`{"url":%q,"candle":{"provider":"biquote","pair_symbol":%q,"timeframe":%q}}`,
 						target, pair.symbol, timeframe.label,
 					),
 				})
@@ -104,7 +104,7 @@ func buildCandleSources() []seedSource {
 		}
 	}
 	return []seedSource{
-		{name: "OANDA", sourceType: "candles", configurations: oandaConfigs},
+		{name: "Biquote Candles", sourceType: "candles", configurations: biquoteConfigs},
 		{name: "Binance", sourceType: "candles", configurations: binanceConfigs},
 	}
 }

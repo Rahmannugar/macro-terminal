@@ -5,25 +5,25 @@ import (
 	"time"
 )
 
-func TestCandlesParsesOANDABody(t *testing.T) {
+func TestCandlesParsesBiquoteBody(t *testing.T) {
 	body := []byte(`{
-		"instrument": "EUR_USD",
-		"granularity": "M1",
-		"candles": [
-			{"time":"2026-10-08T12:00:00.000000000Z","complete":true,"mid":{"o":"1.08512","h":"1.08530","l":"1.08501","c":"1.08520"}},
-			{"time":"2026-10-08T12:01:00.000000000Z","complete":false,"mid":{"o":"1.08520","h":"1.08545","l":"1.08510","c":"1.08540"}},
-			{"time":"2026-10-08T12:02:00.000000000Z","complete":true,"mid":{"o":"1.08540","h":"1.08500","l":"1.08550","c":"1.08545"}},
-			{"time":"not-a-time","complete":true,"mid":{"o":"1.08540","h":"1.08550","l":"1.08530","c":"1.08545"}},
-			{"time":"2026-10-08T12:04:00.000000000Z","complete":true}
+		"symbol": "EURUSD",
+		"interval": "1m",
+		"bars": [
+			{"openTime":"2026-10-08T12:00:00Z","open":1.08512,"high":1.08530,"low":1.08501,"close":1.08520,"volume":0,"tickVolume":412,"isOpen":false},
+			{"openTime":"2026-10-08T12:01:00Z","open":1.08520,"high":1.08545,"low":1.08510,"close":1.08540,"volume":0,"tickVolume":388,"isOpen":true},
+			{"openTime":"2026-10-08T12:02:00Z","open":1.08540,"high":1.08500,"low":1.08550,"close":1.08545},
+			{"openTime":"not-a-time","open":1.08540,"high":1.08550,"low":1.08530,"close":1.08545},
+			{"openTime":"2026-10-08T12:04:00Z"}
 		]
 	}`)
 
-	batch, err := Candles("oanda", body)
+	batch, err := Candles("biquote", body)
 	if err != nil {
 		t.Fatalf("Candles: %v", err)
 	}
 	if len(batch.Candles) != 2 {
-		t.Fatalf("candles = %d, want 2 (incomplete bars count, broken rows drop)", len(batch.Candles))
+		t.Fatalf("candles = %d, want 2 (forming bars count, broken rows drop)", len(batch.Candles))
 	}
 	if batch.Malformed != 3 {
 		t.Fatalf("malformed = %d, want 3", batch.Malformed)
@@ -34,7 +34,7 @@ func TestCandlesParsesOANDABody(t *testing.T) {
 		t.Errorf("timestamp = %s, want %s", first.Timestamp, want)
 	}
 	if first.Open != 1.08512 || first.High != 1.0853 || first.Low != 1.08501 || first.Close != 1.0852 {
-		t.Errorf("first candle = %+v, want the parsed mid prices", first)
+		t.Errorf("first candle = %+v, want the parsed prices", first)
 	}
 }
 
@@ -74,8 +74,8 @@ func TestCandlesRejectsUnknownProvider(t *testing.T) {
 }
 
 func TestCandlesRejectsUnusableBodies(t *testing.T) {
-	if _, err := Candles("oanda", []byte(`not json`)); err == nil {
-		t.Error("oanda: error = nil, want decode failure")
+	if _, err := Candles("biquote", []byte(`not json`)); err == nil {
+		t.Error("biquote: error = nil, want decode failure")
 	}
 	if _, err := Candles("binance", []byte(`{}`)); err == nil {
 		t.Error("binance: error = nil, want decode failure")

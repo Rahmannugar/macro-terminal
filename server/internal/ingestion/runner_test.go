@@ -312,7 +312,7 @@ func TestRunnerCadenceForCentralBankSource(t *testing.T) {
 	if got := cadences.For("FinanceCalendar", "calendar"); got != 30*time.Minute {
 		t.Fatalf("calendar cadence = %v, want 30m", got)
 	}
-	if got := cadences.For("OANDA", "candles"); got != time.Minute {
+	if got := cadences.For("Biquote Candles", "candles"); got != time.Minute {
 		t.Fatalf("candles cadence = %v, want 1m", got)
 	}
 	if got := cadences.For("Mystery", "unknown"); got != cadences.Default {
@@ -706,10 +706,10 @@ func TestRunnerCalendarWithoutDictionaryStoresNothing(t *testing.T) {
 }
 
 func candleConfiguration(pairSymbol, timeframe string) models.SourceConfigurationWithSource {
-	configuration := configuration(uuid.New(), "OANDA", "candles", "api")
+	configuration := configuration(uuid.New(), "Biquote Candles", "candles", "api")
 	configuration.SourceID = uuid.New()
 	configuration.Config = json.RawMessage(
-		`{"url":"https://example.com/candles","candle":{"provider":"oanda","pair_symbol":"` +
+		`{"url":"https://example.com/candles","candle":{"provider":"biquote","pair_symbol":"` +
 			pairSymbol + `","timeframe":"` + timeframe + `"}}`,
 	)
 	return configuration
@@ -723,7 +723,7 @@ func TestRunnerPersistsCandlesForDueCandleSource(t *testing.T) {
 	}
 	fetcher := &fakeSourceFetcher{byID: map[uuid.UUID]fakeFetchResult{
 		configuration.ID: {result: Result{
-			Body:     []byte(`{"candles":[{"time":"2026-10-08T12:00:00.000000000Z","mid":{"o":"1.08512","h":"1.08530","l":"1.08501","c":"1.08520"}}]}`),
+			Body:     []byte(`{"bars":[{"openTime":"2026-10-08T12:00:00Z","open":1.08512,"high":1.08530,"low":1.08501,"close":1.08520}]}`),
 			Attempts: 1,
 		}},
 	}}

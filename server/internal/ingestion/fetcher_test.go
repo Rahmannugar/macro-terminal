@@ -555,7 +555,7 @@ func TestFetcherBearerEnvSendsAuthorizationHeader(t *testing.T) {
 	}
 	fetcher, server, _, _ := newTestFetcher(t, handler)
 
-	configuration := testConfiguration("api", `{"url":"`+server.URL+`/api","bearer_env":"TEST_FETCHER_BEARER","candle":{"provider":"oanda","pair_symbol":"EUR/USD","timeframe":"1min"}}`)
+	configuration := testConfiguration("api", `{"url":"`+server.URL+`/api","bearer_env":"TEST_FETCHER_BEARER","candle":{"provider":"biquote","pair_symbol":"EUR/USD","timeframe":"1min"}}`)
 	if _, err := fetcher.Fetch(context.Background(), configuration); err != nil {
 		t.Fatalf("Fetch: %v", err)
 	}

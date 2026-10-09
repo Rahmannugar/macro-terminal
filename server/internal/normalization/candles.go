@@ -30,8 +30,8 @@ type CandleBatch struct {
 // dropped and counted instead of failing the whole window.
 func Candles(provider string, body []byte) (CandleBatch, error) {
 	switch provider {
-	case "oanda":
-		return oandaCandles(body)
+	case "biquote":
+		return biquoteCandles(body)
 	case "binance":
 		return binanceCandles(body)
 	default:
@@ -39,30 +39,28 @@ func Candles(provider string, body []byte) (CandleBatch, error) {
 	}
 }
 
-func oandaCandles(body []byte) (CandleBatch, error) {
+func biquoteCandles(body []byte) (CandleBatch, error) {
 	var payload struct {
-		Candles []struct {
-			Time string `json:"time"`
-			Mid  *struct {
-				O string `json:"o"`
-				H string `json:"h"`
-				L string `json:"l"`
-				C string `json:"c"`
-			} `json:"mid"`
-		} `json:"candles"`
+		Bars []struct {
+			OpenTime string      `json:"openTime"`
+			Open     json.Number `json:"open"`
+			High     json.Number `json:"high"`
+			Low      json.Number `json:"low"`
+			Close    json.Number `json:"close"`
+		} `json:"bars"`
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return CandleBatch{}, fmt.Errorf("decode oanda candles: %w", err)
+		return CandleBatch{}, fmt.Errorf("decode biquote candles: %w", err)
 	}
-	batch := CandleBatch{Candles: make([]Candle, 0, len(payload.Candles))}
-	for _, bar := range payload.Candles {
-		timestamp, err := time.Parse(time.RFC3339Nano, bar.Time)
-		if err != nil || bar.Mid == nil {
+	batch := CandleBatch{Candles: make([]Candle, 0, len(payload.Bars))}
+	for _, bar := range payload.Bars {
+		timestamp, err := time.Parse(time.RFC3339Nano, bar.OpenTime)
+		if err != nil {
 			batch.Malformed++
 			continue
 		}
 		candle := Candle{Timestamp: timestamp}
-		if !candle.fill(bar.Mid.O, bar.Mid.H, bar.Mid.L, bar.Mid.C) {
+		if !candle.fill(bar.Open.String(), bar.High.String(), bar.Low.String(), bar.Close.String()) {
 			batch.Malformed++
 			continue
 		}

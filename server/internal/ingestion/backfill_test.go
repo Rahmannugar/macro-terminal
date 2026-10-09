@@ -285,25 +285,24 @@ func TestBackfillIgnoresUnknownTimeframe(t *testing.T) {
 	}
 }
 
-func TestWindowedConfigurationOandaRewritesToFromTo(t *testing.T) {
+func TestWindowedConfigurationBiquoteRewritesToFromTo(t *testing.T) {
 	configuration := models.SourceConfigurationWithSource{
 		SourceConfiguration: models.SourceConfiguration{
 			ID:       uuid.New(),
 			SourceID: uuid.New(),
 			Type:     "api",
 			Config: []byte(`{
-				"url": "https://api-fxpractice.oanda.com/v3/instruments/EUR_USD/candles?granularity=M1&count=6&price=M",
-				"bearer_env": "MACRO_TERMINAL_OANDA_TOKEN",
-				"candle": {"provider": "oanda", "pair_symbol": "EUR/USD", "timeframe": "1min"}
+				"url": "https://biquote.io/api/EURUSD/ohlc?interval=1m&limit=6",
+				"candle": {"provider": "biquote", "pair_symbol": "EUR/USD", "timeframe": "1min"}
 			}`),
 		},
-		SourceName: "OANDA Practice",
+		SourceName: "Biquote Candles",
 		SourceType: "candles",
 	}
 	from := time.Date(2026, 10, 8, 0, 0, 0, 0, time.UTC)
 	to := from.Add(5000 * time.Minute)
 
-	windowed, err := windowedConfiguration(configuration, "oanda", from, to)
+	windowed, err := windowedConfiguration(configuration, "biquote", from, to)
 	if err != nil {
 		t.Fatalf("windowed configuration: %v", err)
 	}
@@ -314,9 +313,6 @@ func TestWindowedConfigurationOandaRewritesToFromTo(t *testing.T) {
 	if err := json.Unmarshal(windowed.Config, &document); err != nil {
 		t.Fatalf("decode windowed configuration: %v", err)
 	}
-	if _, present := document["bearer_env"]; !present {
-		t.Error("bearer_env must survive the rewrite")
-	}
 	if _, present := document["candle"]; !present {
 		t.Error("candle metadata must survive the rewrite")
 	}
@@ -325,8 +321,8 @@ func TestWindowedConfigurationOandaRewritesToFromTo(t *testing.T) {
 		t.Fatalf("parse windowed url: %v", err)
 	}
 	query := target.Query()
-	if _, present := query["count"]; present {
-		t.Error("count must be removed when from/to are set")
+	if got := query.Get("limit"); got != strconv.Itoa(biquoteLimit) {
+		t.Errorf("limit = %s, want %d (the response ceiling)", got, biquoteLimit)
 	}
 	if got := query.Get("from"); got != "2026-10-08T00:00:00Z" {
 		t.Errorf("from = %s, want RFC 3339", got)
@@ -334,8 +330,8 @@ func TestWindowedConfigurationOandaRewritesToFromTo(t *testing.T) {
 	if got := query.Get("to"); got != "2026-10-11T11:20:00Z" {
 		t.Errorf("to = %s, want RFC 3339", got)
 	}
-	if query.Get("granularity") != "M1" || query.Get("price") != "M" {
-		t.Errorf("granularity/price must be kept, got %v", query)
+	if query.Get("interval") != "1m" {
+		t.Errorf("interval must be kept, got %v", query)
 	}
 }
 
