@@ -2,7 +2,7 @@ import { type FormEvent, useState } from "react";
 import { Link, Navigate, useNavigate, useSearchParams } from "react-router";
 import { useAccount, useResetPassword } from "../../hooks/use-account";
 import { authenticationErrorMessage } from "../../lib/auth";
-import { Input } from "../ui/input";
+import { PasswordInput } from "../ui/input";
 import { AuthField, AuthLayout } from "./auth-layout";
 
 export function ResetPasswordScreen() {
@@ -60,18 +60,16 @@ export function ResetPasswordScreen() {
       }
     >
       <AuthField label="New password" htmlFor="reset-password">
-        <Input
+        <PasswordInput
           id="reset-password"
-          type="password"
           autoComplete="new-password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
         />
       </AuthField>
       <AuthField label="Confirm password" htmlFor="reset-password-confirm">
-        <Input
+        <PasswordInput
           id="reset-password-confirm"
-          type="password"
           autoComplete="new-password"
           value={confirmation}
           onChange={(event) => setConfirmation(event.target.value)}

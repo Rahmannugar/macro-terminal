@@ -2,7 +2,7 @@ import { type FormEvent, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router";
 import { useAccount, useSignUp } from "../../hooks/use-account";
 import { authenticationErrorMessage } from "../../lib/auth";
-import { Input } from "../ui/input";
+import { Input, PasswordInput } from "../ui/input";
 import { AuthField, AuthLayout } from "./auth-layout";
 
 export function SignUpScreen() {
@@ -70,9 +70,8 @@ export function SignUpScreen() {
         />
       </AuthField>
       <AuthField label="Password" htmlFor="sign-up-password">
-        <Input
+        <PasswordInput
           id="sign-up-password"
-          type="password"
           autoComplete="new-password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
