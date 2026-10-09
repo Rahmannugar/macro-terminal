@@ -3,8 +3,10 @@ import type { APIError } from "../lib/api";
 import {
   type Account,
   authenticationQueryKey,
+  forgotPassword,
   loadAccount,
   resendVerification,
+  resetPassword,
   signIn,
   signOut,
   signUp,
@@ -47,6 +49,21 @@ export function useVerifyEmail() {
 export function useResendVerification() {
   return useMutation({
     mutationFn: ({ email }: { email: string }) => resendVerification(email),
+  });
+}
+
+export function useForgotPassword() {
+  return useMutation({
+    mutationFn: ({ email }: { email: string }) => forgotPassword(email),
+  });
+}
+
+export function useResetPassword() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ token, newPassword }: { token: string; newPassword: string }) =>
+      resetPassword(token, newPassword),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: authenticationQueryKey }),
   });
 }
 

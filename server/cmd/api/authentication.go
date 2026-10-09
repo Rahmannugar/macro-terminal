@@ -91,6 +91,12 @@ func newAuthenticationComponents(
 			AutoSignInAfterVerification: true,
 			AttemptGuard:                infraauthentication.NewOTPAttemptGuard(limiter),
 		},
+		PasswordReset: authlier.PasswordResetConfig{
+			Enabled:      true,
+			ResetURL:     cfg.Auth.ClientBaseURL + "/reset-password",
+			Sender:       emailQueue,
+			AttemptGuard: infraauthentication.NewPasswordResetAttemptGuard(limiter),
+		},
 		Session: authlier.SessionConfig{
 			Mode:     authlier.SessionModeCookie,
 			Lifetime: sessionLifetime,

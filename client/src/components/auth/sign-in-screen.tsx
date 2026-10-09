@@ -78,6 +78,11 @@ export function SignInScreen() {
           onChange={(event) => setPassword(event.target.value)}
         />
       </AuthField>
+      <div className="text-right">
+        <Link to="/forgot-password" className="text-sm text-primary hover:underline">
+          Forgot password?
+        </Link>
+      </div>
     </AuthLayout>
   );
 }

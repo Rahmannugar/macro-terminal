@@ -12,21 +12,24 @@ import (
 	"time"
 
 	"github.com/Rahmannugar/authlier/emailverification"
+	"github.com/Rahmannugar/authlier/passwordreset"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const (
-	TemplateVerification = "email_verification"
-	payloadKeyVersion    = 1
-	emailOutboxType      = "email_delivery"
+	TemplateVerification  = "email_verification"
+	TemplatePasswordReset = "password_reset"
+	payloadKeyVersion     = 1
+	emailOutboxType       = "email_delivery"
 )
 
 type Payload struct {
 	SubjectID string    `json:"subjectId,omitempty"`
 	Recipient string    `json:"recipient"`
-	Code      string    `json:"code"`
+	Code      string    `json:"code,omitempty"`
+	URL       string    `json:"url,omitempty"`
 	ExpiresAt time.Time `json:"expiresAt"`
 }
 
@@ -141,3 +144,14 @@ func (queue *Queue) Decrypt(deliveryID uuid.UUID, nonce, ciphertext []byte) (Pay
 }
 
 var _ emailverification.Sender = (*Queue)(nil)
+
+func (queue *Queue) SendPasswordReset(
+	ctx context.Context,
+	message passwordreset.Message,
+) error {
+	return queue.Enqueue(ctx, TemplatePasswordReset, Payload{
+		SubjectID: message.UserID, Recipient: message.Email, URL: message.URL, ExpiresAt: message.ExpiresAt,
+	})
+}
+
+var _ passwordreset.Sender = (*Queue)(nil)

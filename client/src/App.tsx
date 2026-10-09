@@ -13,8 +13,10 @@ import { SourcesScreen } from "./routes/admin/sources";
 import { UsersScreen } from "./routes/admin/users";
 import { ArticleRoute } from "./routes/article";
 import { CalendarRoute } from "./routes/calendar";
+import { ForgotPasswordRoute } from "./routes/forgot-password";
 import { HomeRoute } from "./routes/home";
 import { MarketRoute } from "./routes/market";
+import { ResetPasswordRoute } from "./routes/reset-password";
 import { SearchRoute } from "./routes/search";
 import { SignInRoute } from "./routes/sign-in";
 import { SignUpRoute } from "./routes/sign-up";
@@ -46,6 +48,8 @@ export default function App() {
           <Route path="/sign-in" element={<SignInRoute />} />
           <Route path="/sign-up" element={<SignUpRoute />} />
           <Route path="/verify-email" element={<VerifyEmailRoute />} />
+          <Route path="/forgot-password" element={<ForgotPasswordRoute />} />
+          <Route path="/reset-password" element={<ResetPasswordRoute />} />
           <Route element={<RootLayout />}>
             <Route path="/" element={<HomeRoute />} />
             <Route path="/search" element={<SearchRoute />} />

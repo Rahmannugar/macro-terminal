@@ -280,6 +280,8 @@ func render(templateName string, payload Payload, now time.Time) (string, string
 	switch templateName {
 	case TemplateVerification:
 		return "Your Macro Terminal sign-up code", verificationText(payload, now), true
+	case TemplatePasswordReset:
+		return "Reset your Macro Terminal password", passwordResetText(payload, now), true
 	default:
 		return "", "", false
 	}
@@ -293,6 +295,18 @@ func verificationText(payload Payload, now time.Time) string {
 	return fmt.Sprintf(
 		"Your Macro Terminal sign-up code is %s.\n\nIt expires in %d minutes. If you did not request this code, you can ignore this email.",
 		payload.Code,
+		minutes,
+	)
+}
+
+func passwordResetText(payload Payload, now time.Time) string {
+	minutes := int(payload.ExpiresAt.Sub(now).Minutes() + 0.5)
+	if minutes < 1 {
+		minutes = 1
+	}
+	return fmt.Sprintf(
+		"Reset your Macro Terminal password:\n%s\n\nIt expires in %d minutes. If you did not request this reset, you can ignore this email.",
+		payload.URL,
 		minutes,
 	)
 }
