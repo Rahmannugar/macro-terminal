@@ -265,9 +265,9 @@ func eventPrompt(input ExplainEventInput) string {
 		fmt.Fprintf(&builder, " (%s)", input.IndicatorType)
 	}
 	builder.WriteByte('\n')
-	fmt.Fprintf(&builder, "Scheduled: %s\n", input.ScheduledAt.UTC().Format(time.RFC3339))
+	fmt.Fprintf(&builder, "Scheduled (UTC): %s\n", input.ScheduledAt.UTC().Format(time.RFC3339))
 	if input.ReleasedAt != nil {
-		fmt.Fprintf(&builder, "Released: %s\n", input.ReleasedAt.UTC().Format(time.RFC3339))
+		fmt.Fprintf(&builder, "Released (UTC): %s\n", input.ReleasedAt.UTC().Format(time.RFC3339))
 	}
 	fmt.Fprintf(&builder, "Previous: %s\n", numberOrNA(input.Previous))
 	fmt.Fprintf(&builder, "Consensus: %s\n", numberOrNA(input.Consensus))
@@ -284,7 +284,8 @@ func eventPrompt(input ExplainEventInput) string {
 	}
 	builder.WriteString("\nWrite a 2 to 4 paragraph explanation comparing the actual result with consensus and " +
 		"the previous reading, and why markets watch this indicator. Use only the context above; do not invent " +
-		"numbers. Plain text, no markdown headings.")
+		"numbers. Quote times exactly as given, in UTC; never convert them to another time zone. Plain text, " +
+		"no markdown headings.")
 	return builder.String()
 }
 

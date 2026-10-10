@@ -191,6 +191,13 @@ type fakeEvents struct {
 	gotLimit  int32
 	gotCursor *paging.Cursor
 	gotEntry  *calendarmodels.CreateEventEntry
+
+	gotUpdate    *calendarmodels.UpdateEventEntry
+	updateErr    error
+	gotArchiveID *uuid.UUID
+	archiveErr   error
+	gotRestoreID *uuid.UUID
+	restoreErr   error
 }
 
 func (fake *fakeEvents) CreateCalendarEvent(
@@ -209,6 +216,27 @@ func (fake *fakeEvents) ListCalendarEventsPage(
 ) ([]calendarmodels.EventRecord, *paging.Cursor, error) {
 	fake.gotLimit, fake.gotCursor = limit, cursor
 	return fake.records, fake.next, fake.pageErr
+}
+
+func (fake *fakeEvents) UpdateCalendarEvent(
+	_ context.Context,
+	entry calendarmodels.UpdateEventEntry,
+) (calendarmodels.EventRecord, error) {
+	fake.gotUpdate = &entry
+	if fake.updateErr != nil {
+		return calendarmodels.EventRecord{}, fake.updateErr
+	}
+	return fake.record, nil
+}
+
+func (fake *fakeEvents) ArchiveCalendarEvent(_ context.Context, id uuid.UUID) error {
+	fake.gotArchiveID = &id
+	return fake.archiveErr
+}
+
+func (fake *fakeEvents) RestoreCalendarEvent(_ context.Context, id uuid.UUID) error {
+	fake.gotRestoreID = &id
+	return fake.restoreErr
 }
 
 func configRouter(t *testing.T, entities Entities, sources Sources, events Events) *gin.Engine {
@@ -479,5 +507,48 @@ func TestUnexpectedFailureReturns500(t *testing.T) {
 	recorder := perform(router, http.MethodGet, "/api/v1/admin/entities", "")
 	if recorder.Code != http.StatusInternalServerError || decodeError(t, recorder).Error.Code != "internal_error" {
 		t.Errorf("status/code = %d/%q, want 500 internal_error", recorder.Code, decodeError(t, recorder).Error.Code)
+	}
+}
+
+func TestUpdateCalendarEvent(t *testing.T) {
+	id := uuid.New()
+	router := configRouter(t, &fakeEntities{}, &fakeSources{}, &fakeEvents{})
+
+	recorder := perform(router, http.MethodPatch, "/api/v1/admin/calendar-events/nope", `{}`)
+	if recorder.Code != http.StatusBadRequest || decodeError(t, recorder).Error.Code != "invalid_event_id" {
+		t.Errorf("status/code = %d/%q, want 400 invalid_event_id", recorder.Code, decodeError(t, recorder).Error.Code)
+	}
+
+	recorder = perform(router, http.MethodPatch, "/api/v1/admin/calendar-events/"+id.String(), `{"name":"US CPI","scheduledAt":"2026-10-14T12:30:00Z","actual":3.7}`)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s, want 200", recorder.Code, recorder.Body.String())
+	}
+
+	missing := configRouter(t, &fakeEntities{}, &fakeSources{}, &fakeEvents{updateErr: calendarmodels.ErrEventNotFound})
+	recorder = perform(missing, http.MethodPatch, "/api/v1/admin/calendar-events/"+id.String(), `{"scheduledAt":"2026-10-14T12:30:00Z"}`)
+	if recorder.Code != http.StatusNotFound || decodeError(t, recorder).Error.Code != "event_not_found" {
+		t.Errorf("status/code = %d/%q, want 404 event_not_found", recorder.Code, decodeError(t, recorder).Error.Code)
+	}
+}
+
+func TestArchiveAndRestoreCalendarEvent(t *testing.T) {
+	id := uuid.New()
+	fake := &fakeEvents{}
+	router := configRouter(t, &fakeEntities{}, &fakeSources{}, fake)
+
+	recorder := perform(router, http.MethodPost, "/api/v1/admin/calendar-events/"+id.String()+"/archive", "")
+	if recorder.Code != http.StatusNoContent || fake.gotArchiveID == nil || *fake.gotArchiveID != id {
+		t.Errorf("archive → status %d id %v, want 204 for %v", recorder.Code, fake.gotArchiveID, id)
+	}
+
+	recorder = perform(router, http.MethodPost, "/api/v1/admin/calendar-events/"+id.String()+"/restore", "")
+	if recorder.Code != http.StatusNoContent || fake.gotRestoreID == nil || *fake.gotRestoreID != id {
+		t.Errorf("restore → status %d id %v, want 204 for %v", recorder.Code, fake.gotRestoreID, id)
+	}
+
+	missing := configRouter(t, &fakeEntities{}, &fakeSources{}, &fakeEvents{archiveErr: calendarmodels.ErrEventNotFound})
+	recorder = perform(missing, http.MethodPost, "/api/v1/admin/calendar-events/"+id.String()+"/archive", "")
+	if recorder.Code != http.StatusNotFound || decodeError(t, recorder).Error.Code != "event_not_found" {
+		t.Errorf("status/code = %d/%q, want 404 event_not_found", recorder.Code, decodeError(t, recorder).Error.Code)
 	}
 }

@@ -64,7 +64,7 @@ export function SignUpScreen() {
           id="sign-up-email"
           type="email"
           autoComplete="email"
-          placeholder="you@example.com"
+          placeholder="trader@email.com"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
         />

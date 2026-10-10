@@ -7,20 +7,40 @@
                         "example": 261000,
                         "type": "number"
                     },
+                    "archivedAt": {
+                        "example": "2026-10-06T12:30:00Z",
+                        "type": "string"
+                    },
                     "consensus": {
                         "example": 255000,
                         "type": "number"
                     },
+                    "countryCode": {
+                        "example": "US",
+                        "type": "string"
+                    },
                     "createdAt": {
                         "example": "2026-10-06T09:00:00Z",
+                        "type": "string"
+                    },
+                    "currency": {
+                        "example": "USD",
                         "type": "string"
                     },
                     "id": {
                         "example": "7d3b9f1e-5a4c-4e8b-9f2d-1c6a8b0e4f73",
                         "type": "string"
                     },
+                    "importance": {
+                        "example": "high",
+                        "type": "string"
+                    },
                     "indicatorId": {
                         "example": "6b5f8e2d-4c9a-4f1e-b8d7-3a2c6e9f1b40",
+                        "type": "string"
+                    },
+                    "name": {
+                        "example": "US CPI",
                         "type": "string"
                     },
                     "previous": {
@@ -30,6 +50,10 @@
                     "releasedAt": {
                         "example": "2026-10-06T12:30:00Z",
                         "type": "string"
+                    },
+                    "revision": {
+                        "example": 0,
+                        "type": "integer"
                     },
                     "scheduledAt": {
                         "example": "2026-10-06T12:30:00Z",
@@ -46,12 +70,18 @@
                 },
                 "required": [
                     "actual",
+                    "archivedAt",
                     "consensus",
+                    "countryCode",
                     "createdAt",
+                    "currency",
                     "id",
+                    "importance",
                     "indicatorId",
+                    "name",
                     "previous",
                     "releasedAt",
+                    "revision",
                     "scheduledAt",
                     "sourceId",
                     "updatedAt"
@@ -112,6 +142,10 @@
                         "example": "6b5f8e2d-4c9a-4f1e-b8d7-3a2c6e9f1b40",
                         "type": "string"
                     },
+                    "name": {
+                        "example": "US CPI",
+                        "type": "string"
+                    },
                     "previous": {
                         "example": 250000,
                         "type": "number"
@@ -134,6 +168,7 @@
                     "consensus",
                     "entityCodes",
                     "indicatorId",
+                    "name",
                     "previous",
                     "releasedAt",
                     "scheduledAt",
@@ -678,6 +713,43 @@
                 ],
                 "type": "object"
             },
+            "adminconfig.updateCalendarEventRequest": {
+                "properties": {
+                    "actual": {
+                        "example": 261000,
+                        "type": "number"
+                    },
+                    "consensus": {
+                        "example": 255000,
+                        "type": "number"
+                    },
+                    "name": {
+                        "example": "US CPI",
+                        "type": "string"
+                    },
+                    "previous": {
+                        "example": 250000,
+                        "type": "number"
+                    },
+                    "releasedAt": {
+                        "example": "2026-10-06T12:30:00Z",
+                        "type": "string"
+                    },
+                    "scheduledAt": {
+                        "example": "2026-10-06T12:30:00Z",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "actual",
+                    "consensus",
+                    "name",
+                    "previous",
+                    "releasedAt",
+                    "scheduledAt"
+                ],
+                "type": "object"
+            },
             "adminconfig.updateSourceConfigurationRequest": {
                 "properties": {
                     "config": {
@@ -992,6 +1064,95 @@
                 ],
                 "type": "object"
             },
+            "calendar.eventJSON": {
+                "properties": {
+                    "actual": {
+                        "example": 261000,
+                        "type": "number"
+                    },
+                    "consensus": {
+                        "example": 255000,
+                        "type": "number"
+                    },
+                    "countryCode": {
+                        "example": "US",
+                        "type": "string"
+                    },
+                    "currency": {
+                        "example": "USD",
+                        "type": "string"
+                    },
+                    "id": {
+                        "example": "7d3b9f1e-5a4c-4e8b-9f2d-1c6a8b0e4f73",
+                        "type": "string"
+                    },
+                    "importance": {
+                        "example": "high",
+                        "type": "string"
+                    },
+                    "indicator": {
+                        "$ref": "#/components/schemas/calendar.indicatorJSON"
+                    },
+                    "name": {
+                        "example": "US CPI",
+                        "type": "string"
+                    },
+                    "previous": {
+                        "example": 250000,
+                        "type": "number"
+                    },
+                    "releasedAt": {
+                        "example": "2026-10-06T12:30:00Z",
+                        "type": "string"
+                    },
+                    "revision": {
+                        "example": 0,
+                        "type": "integer"
+                    },
+                    "scheduledAt": {
+                        "example": "2026-10-06T12:30:00Z",
+                        "type": "string"
+                    },
+                    "source": {
+                        "$ref": "#/components/schemas/calendar.sourceJSON"
+                    }
+                },
+                "required": [
+                    "actual",
+                    "consensus",
+                    "countryCode",
+                    "currency",
+                    "id",
+                    "importance",
+                    "indicator",
+                    "name",
+                    "previous",
+                    "releasedAt",
+                    "revision",
+                    "scheduledAt",
+                    "source"
+                ],
+                "type": "object"
+            },
+            "calendar.eventListResponse": {
+                "properties": {
+                    "calendarEvents": {
+                        "items": {
+                            "$ref": "#/components/schemas/calendar.eventJSON"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "nextCursor": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "calendarEvents",
+                    "nextCursor"
+                ],
+                "type": "object"
+            },
             "calendar.indicatorJSON": {
                 "properties": {
                     "id": {
@@ -1023,70 +1184,6 @@
                 "required": [
                     "id",
                     "name"
-                ],
-                "type": "object"
-            },
-            "calendar.upcomingEventJSON": {
-                "properties": {
-                    "actual": {
-                        "example": 261000,
-                        "type": "number"
-                    },
-                    "consensus": {
-                        "example": 255000,
-                        "type": "number"
-                    },
-                    "id": {
-                        "example": "7d3b9f1e-5a4c-4e8b-9f2d-1c6a8b0e4f73",
-                        "type": "string"
-                    },
-                    "indicator": {
-                        "$ref": "#/components/schemas/calendar.indicatorJSON"
-                    },
-                    "previous": {
-                        "example": 250000,
-                        "type": "number"
-                    },
-                    "releasedAt": {
-                        "example": "2026-10-06T12:30:00Z",
-                        "type": "string"
-                    },
-                    "scheduledAt": {
-                        "example": "2026-10-06T12:30:00Z",
-                        "type": "string"
-                    },
-                    "source": {
-                        "$ref": "#/components/schemas/calendar.sourceJSON"
-                    }
-                },
-                "required": [
-                    "actual",
-                    "consensus",
-                    "id",
-                    "indicator",
-                    "previous",
-                    "releasedAt",
-                    "scheduledAt",
-                    "source"
-                ],
-                "type": "object"
-            },
-            "calendar.upcomingEventListResponse": {
-                "properties": {
-                    "calendarEvents": {
-                        "items": {
-                            "$ref": "#/components/schemas/calendar.upcomingEventJSON"
-                        },
-                        "type": "array",
-                        "uniqueItems": false
-                    },
-                    "nextCursor": {
-                        "type": "string"
-                    }
-                },
-                "required": [
-                    "calendarEvents",
-                    "nextCursor"
                 ],
                 "type": "object"
             },
@@ -1695,6 +1792,191 @@
                     }
                 },
                 "summary": "Create a calendar event.",
+                "tags": [
+                    "admin"
+                ]
+            }
+        },
+        "/api/v1/admin/calendar-events/{id}": {
+            "patch": {
+                "description": "Overwrites the event's displayed name, schedule, and figures. Provider revisions continue from the stored count.",
+                "parameters": [
+                    {
+                        "description": "The event id.",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/adminconfig.updateCalendarEventRequest",
+                                "summary": "body",
+                                "description": "The fields to store."
+                            }
+                        }
+                    },
+                    "description": "The fields to store.",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/adminconfig.calendarEventResponse"
+                                }
+                            }
+                        },
+                        "description": "The updated event."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The body is invalid or the scheduled time is missing."
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The event does not exist."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Update a calendar event.",
+                "tags": [
+                    "admin"
+                ]
+            }
+        },
+        "/api/v1/admin/calendar-events/{id}/archive": {
+            "post": {
+                "description": "Hides the event from the user calendar. Archived events stay in the admin list and can be restored.",
+                "parameters": [
+                    {
+                        "description": "The event id.",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "The event is archived."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The event id is not a UUID."
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The event does not exist or is already archived."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Archive a calendar event.",
+                "tags": [
+                    "admin"
+                ]
+            }
+        },
+        "/api/v1/admin/calendar-events/{id}/restore": {
+            "post": {
+                "description": "Returns an archived event to the user calendar.",
+                "parameters": [
+                    {
+                        "description": "The event id.",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "The event is restored."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The event id is not a UUID."
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The event does not exist or is not archived."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Restore a calendar event.",
                 "tags": [
                     "admin"
                 ]
@@ -3427,7 +3709,7 @@
         },
         "/api/v1/calendar-events": {
             "get": {
-                "description": "Returns scheduled events from now forward, soonest first. Pass the returned nextCursor to fetch the next page.",
+                "description": "Returns upcoming events from now forward (the default) or released events before now, soonest first within each side. Pass the returned nextCursor to fetch the next page. Filters combine with AND.",
                 "parameters": [
                     {
                         "description": "Page size between 1 and 100. Defaults to 25.",
@@ -3444,6 +3726,38 @@
                         "schema": {
                             "type": "string"
                         }
+                    },
+                    {
+                        "description": "Which side to return: upcoming (default) or released.",
+                        "in": "query",
+                        "name": "scope",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Comma-separated ISO country codes to include, for example US,JP.",
+                        "in": "query",
+                        "name": "country",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Comma-separated importance levels to include: high, medium, low.",
+                        "in": "query",
+                        "name": "importance",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "Return only events linked to pairs on the signed-in user's watch list.",
+                        "in": "query",
+                        "name": "watch",
+                        "schema": {
+                            "type": "boolean"
+                        }
                     }
                 ],
                 "responses": {
@@ -3451,7 +3765,7 @@
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/calendar.upcomingEventListResponse"
+                                    "$ref": "#/components/schemas/calendar.eventListResponse"
                                 }
                             }
                         },
@@ -3465,7 +3779,17 @@
                                 }
                             }
                         },
-                        "description": "The limit or cursor is invalid."
+                        "description": "A query parameter is invalid."
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The watch filter requires a signed-in account."
                     },
                     "500": {
                         "content": {
@@ -3478,7 +3802,7 @@
                         "description": "The request could not be completed."
                     }
                 },
-                "summary": "List upcoming calendar events.",
+                "summary": "List calendar events.",
                 "tags": [
                     "calendar"
                 ]

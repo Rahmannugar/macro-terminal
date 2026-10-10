@@ -189,7 +189,7 @@ func (service *Service) ExplainEvent(ctx context.Context, id uuid.UUID) (explana
 	}
 
 	text, err := service.explainer.ExplainEvent(ctx, ai.ExplainEventInput{
-		Indicator:      event.IndicatorName,
+		Indicator:      event.Name,
 		IndicatorType:  event.IndicatorType,
 		ScheduledAt:    event.ScheduledAt,
 		ReleasedAt:     event.ReleasedAt,

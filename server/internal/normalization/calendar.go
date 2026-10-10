@@ -16,6 +16,9 @@ type CalendarEvent struct {
 	Previous    *float64
 	Consensus   *float64
 	Actual      *float64
+	CountryCode string
+	Currency    string
+	Importance  string
 }
 
 // CalendarStats records what a calendar payload contained: rows seen,
@@ -40,10 +43,12 @@ type calendarNewsRow struct {
 
 // CalendarEvents parses a calendar payload into rows awaiting
 // classification plus non-calendar rows that belong to the news pipeline.
-// Two shapes are recognized: an object carrying an "events" array, and a
-// bare array of rows typed as indicators. A non-calendar row only travels
-// to news when its URL appears exactly once in the batch — a constant
-// source URL would otherwise collapse the batch into one junk candidate.
+// Three shapes are recognized: an object carrying an "events" array, an
+// object carrying a "data" array (US-only agencies, so rows default to
+// the United States), and a bare array of rows typed as indicators. A
+// non-calendar row only travels to news when its URL appears exactly once
+// in the batch — a constant source URL would otherwise collapse the batch
+// into one junk candidate.
 func CalendarEvents(body []byte) ([]CalendarEvent, []FeedItem, CalendarStats) {
 	var stats CalendarStats
 	trimmed := strings.TrimSpace(string(body))
@@ -58,12 +63,20 @@ func CalendarEvents(body []byte) ([]CalendarEvent, []FeedItem, CalendarStats) {
 	case strings.HasPrefix(trimmed, "{"):
 		var envelope struct {
 			Events []map[string]any `json:"events"`
+			Data   []map[string]any `json:"data"`
 		}
-		if err := json.Unmarshal([]byte(trimmed), &envelope); err != nil || envelope.Events == nil {
+		switch {
+		case json.Unmarshal([]byte(trimmed), &envelope) != nil:
+			stats.Malformed++
+			return nil, nil, stats
+		case envelope.Events != nil:
+			rows = envelope.Events
+		case envelope.Data != nil:
+			rows = envelope.Data
+		default:
 			stats.Malformed++
 			return nil, nil, stats
 		}
-		rows = envelope.Events
 	default:
 		stats.Malformed++
 		return nil, nil, stats
@@ -107,9 +120,10 @@ func CalendarEvents(body []byte) ([]CalendarEvent, []FeedItem, CalendarStats) {
 	return events, news, stats
 }
 
-// parseCalendarRow reads the fields both provider shapes share: a name, a
-// schedule, and optional previous/consensus/actual values. A row without
-// a name or a usable time is malformed.
+// parseCalendarRow reads the fields the provider shapes share: a name, a
+// schedule, optional previous/consensus/actual values, and the country,
+// currency, and importance tags the calendar filters rely on. A row
+// without a name or a usable time is malformed.
 func parseCalendarRow(row map[string]any) (CalendarEvent, bool) {
 	event := CalendarEvent{
 		Name:        strings.TrimSpace(textValue(row["name"])),
@@ -117,14 +131,41 @@ func parseCalendarRow(row map[string]any) (CalendarEvent, bool) {
 		Consensus:   numberValue(rowValue(row, "consensus", "forecast")),
 		Actual:      numberValue(rowValue(row, "actual")),
 		ScheduledAt: scheduledValue(row),
+		CountryCode: strings.ToUpper(strings.TrimSpace(textValue(row["countryCode"]))),
+		Currency:    strings.ToUpper(strings.TrimSpace(textValue(row["currency"]))),
+		Importance:  importanceValue(rowValue(row, "importance", "impact")),
 	}
 	if event.Name == "" {
 		event.Name = strings.TrimSpace(textValue(row["title"]))
 	}
+	if event.Name == "" {
+		event.Name = strings.TrimSpace(textValue(row["eventName"]))
+	}
 	if event.Name == "" || event.ScheduledAt.IsZero() {
 		return CalendarEvent{}, false
 	}
+	if event.CountryCode == "" {
+		event.CountryCode = "US"
+	}
+	if event.Currency == "" {
+		event.Currency = "USD"
+	}
 	return event, true
+}
+
+// importanceValue normalizes the level words providers use ("med" versus
+// "medium") so one filter vocabulary covers every calendar source.
+func importanceValue(value any) string {
+	switch strings.ToLower(strings.TrimSpace(textValue(value))) {
+	case "high":
+		return "high"
+	case "medium", "med":
+		return "medium"
+	case "low":
+		return "low"
+	default:
+		return ""
+	}
 }
 
 // rowIsNonCalendar reports rows that are not economic indicators:
@@ -150,7 +191,7 @@ func rowValue(row map[string]any, keys ...string) any {
 }
 
 func scheduledValue(row map[string]any) time.Time {
-	for _, key := range []string{"time_utc", "time"} {
+	for _, key := range []string{"time_utc", "time", "scheduledAt"} {
 		if value, ok := row[key]; ok && value != nil {
 			if parsed, err := time.Parse(time.RFC3339, textValue(value)); err == nil {
 				return parsed

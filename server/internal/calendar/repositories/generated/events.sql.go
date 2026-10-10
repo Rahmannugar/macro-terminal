@@ -12,16 +12,31 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const archiveCalendarEvent = `-- name: ArchiveCalendarEvent :execrows
+UPDATE calendar_events
+SET archived_at = now()
+WHERE id = $1 AND archived_at IS NULL
+`
+
+func (q *Queries) ArchiveCalendarEvent(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, archiveCalendarEvent, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const createCalendarEvent = `-- name: CreateCalendarEvent :one
-INSERT INTO calendar_events (id, source_id, indicator_id, scheduled_at, released_at, previous, consensus, actual)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, source_id, indicator_id, scheduled_at, released_at, previous, consensus, actual, created_at, updated_at
+INSERT INTO calendar_events (id, source_id, indicator_id, name, scheduled_at, released_at, previous, consensus, actual)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, source_id, indicator_id, scheduled_at, released_at, previous, consensus, actual, created_at, updated_at, country_code, currency, importance, revision, name, archived_at
 `
 
 type CreateCalendarEventParams struct {
 	ID          uuid.UUID
 	SourceID    uuid.UUID
 	IndicatorID uuid.UUID
+	Name        *string
 	ScheduledAt pgtype.Timestamptz
 	ReleasedAt  pgtype.Timestamptz
 	Previous    pgtype.Numeric
@@ -34,6 +49,7 @@ func (q *Queries) CreateCalendarEvent(ctx context.Context, arg CreateCalendarEve
 		arg.ID,
 		arg.SourceID,
 		arg.IndicatorID,
+		arg.Name,
 		arg.ScheduledAt,
 		arg.ReleasedAt,
 		arg.Previous,
@@ -52,13 +68,19 @@ func (q *Queries) CreateCalendarEvent(ctx context.Context, arg CreateCalendarEve
 		&i.Actual,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CountryCode,
+		&i.Currency,
+		&i.Importance,
+		&i.Revision,
+		&i.Name,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
 
 const getCalendarEvent = `-- name: GetCalendarEvent :one
 SELECT ce.id, ce.source_id, ce.indicator_id, ce.scheduled_at, ce.released_at,
-       ce.previous, ce.consensus, ce.actual,
+       ce.previous, ce.consensus, ce.actual, COALESCE(ce.name, ei.name) AS name,
        ei.name AS indicator_name, ei.type AS indicator_type
 FROM calendar_events AS ce
 JOIN economic_indicators AS ei ON ei.id = ce.indicator_id
@@ -74,6 +96,7 @@ type GetCalendarEventRow struct {
 	Previous      pgtype.Numeric
 	Consensus     pgtype.Numeric
 	Actual        pgtype.Numeric
+	Name          string
 	IndicatorName string
 	IndicatorType string
 }
@@ -90,6 +113,7 @@ func (q *Queries) GetCalendarEvent(ctx context.Context, id uuid.UUID) (GetCalend
 		&i.Previous,
 		&i.Consensus,
 		&i.Actual,
+		&i.Name,
 		&i.IndicatorName,
 		&i.IndicatorType,
 	)
@@ -97,7 +121,7 @@ func (q *Queries) GetCalendarEvent(ctx context.Context, id uuid.UUID) (GetCalend
 }
 
 const listCalendarEventsPage = `-- name: ListCalendarEventsPage :many
-SELECT id, source_id, indicator_id, scheduled_at, released_at, previous, consensus, actual, created_at, updated_at
+SELECT id, source_id, indicator_id, scheduled_at, released_at, previous, consensus, actual, created_at, updated_at, country_code, currency, importance, revision, name, archived_at
 FROM calendar_events
 WHERE (
     $1::timestamptz IS NULL
@@ -136,6 +160,128 @@ func (q *Queries) ListCalendarEventsPage(ctx context.Context, arg ListCalendarEv
 			&i.Actual,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.CountryCode,
+			&i.Currency,
+			&i.Importance,
+			&i.Revision,
+			&i.Name,
+			&i.ArchivedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listReleasedCalendarEventsPage = `-- name: ListReleasedCalendarEventsPage :many
+SELECT ce.id, ce.source_id, ce.indicator_id, ce.scheduled_at, ce.released_at,
+       ce.previous, ce.consensus, ce.actual, ce.country_code, ce.currency,
+       ce.importance, ce.revision, ce.created_at, ce.updated_at,
+       COALESCE(ce.name, ei.name) AS name,
+       ei.name AS indicator_name, s.name AS source_name
+FROM calendar_events AS ce
+JOIN economic_indicators AS ei ON ei.id = ce.indicator_id
+JOIN sources AS s ON s.id = ce.source_id
+WHERE ce.scheduled_at < $1
+  AND ce.archived_at IS NULL
+  AND ce.id = (
+      SELECT peer.id
+      FROM calendar_events AS peer
+      WHERE peer.indicator_id = ce.indicator_id
+        AND peer.scheduled_at = ce.scheduled_at
+      ORDER BY peer.id ASC
+      LIMIT 1
+  )
+  AND ($2::text IS NULL
+       OR ce.country_code = ANY(string_to_array($2::text, ',')))
+  AND ($3::text IS NULL
+       OR ce.importance = ANY(string_to_array($3::text, ',')))
+  AND ($4::uuid IS NULL OR EXISTS (
+      SELECT 1
+      FROM calendar_event_entities AS link
+      JOIN user_assets AS asset ON asset.user_id = $4::uuid
+      JOIN entity_pairs AS pair ON pair.id = asset.entity_pair_id
+      WHERE link.calendar_event_id = ce.id
+        AND (link.entity_id = pair.base_entity_id OR link.entity_id = pair.quote_entity_id)
+  ))
+  AND ($5::timestamptz IS NULL
+       OR (ce.scheduled_at, ce.id) < (
+           $5::timestamptz,
+           $6::uuid
+       ))
+ORDER BY ce.scheduled_at DESC, ce.id DESC
+LIMIT $7
+`
+
+type ListReleasedCalendarEventsPageParams struct {
+	NotAfter          pgtype.Timestamptz
+	Countries         *string
+	Importances       *string
+	Watcher           pgtype.UUID
+	CursorScheduledAt pgtype.Timestamptz
+	CursorID          pgtype.UUID
+	PageSize          int32
+}
+
+type ListReleasedCalendarEventsPageRow struct {
+	ID            uuid.UUID
+	SourceID      uuid.UUID
+	IndicatorID   uuid.UUID
+	ScheduledAt   pgtype.Timestamptz
+	ReleasedAt    pgtype.Timestamptz
+	Previous      pgtype.Numeric
+	Consensus     pgtype.Numeric
+	Actual        pgtype.Numeric
+	CountryCode   *string
+	Currency      *string
+	Importance    *string
+	Revision      int32
+	CreatedAt     pgtype.Timestamptz
+	UpdatedAt     pgtype.Timestamptz
+	Name          string
+	IndicatorName string
+	SourceName    string
+}
+
+func (q *Queries) ListReleasedCalendarEventsPage(ctx context.Context, arg ListReleasedCalendarEventsPageParams) ([]ListReleasedCalendarEventsPageRow, error) {
+	rows, err := q.db.Query(ctx, listReleasedCalendarEventsPage,
+		arg.NotAfter,
+		arg.Countries,
+		arg.Importances,
+		arg.Watcher,
+		arg.CursorScheduledAt,
+		arg.CursorID,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListReleasedCalendarEventsPageRow
+	for rows.Next() {
+		var i ListReleasedCalendarEventsPageRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.SourceID,
+			&i.IndicatorID,
+			&i.ScheduledAt,
+			&i.ReleasedAt,
+			&i.Previous,
+			&i.Consensus,
+			&i.Actual,
+			&i.CountryCode,
+			&i.Currency,
+			&i.Importance,
+			&i.Revision,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Name,
+			&i.IndicatorName,
+			&i.SourceName,
 		); err != nil {
 			return nil, err
 		}
@@ -149,25 +295,49 @@ func (q *Queries) ListCalendarEventsPage(ctx context.Context, arg ListCalendarEv
 
 const listUpcomingCalendarEventsPage = `-- name: ListUpcomingCalendarEventsPage :many
 SELECT ce.id, ce.source_id, ce.indicator_id, ce.scheduled_at, ce.released_at,
-       ce.previous, ce.consensus, ce.actual, ce.created_at, ce.updated_at,
+       ce.previous, ce.consensus, ce.actual, ce.country_code, ce.currency,
+       ce.importance, ce.revision, ce.created_at, ce.updated_at,
+       COALESCE(ce.name, ei.name) AS name,
        ei.name AS indicator_name, s.name AS source_name
 FROM calendar_events AS ce
 JOIN economic_indicators AS ei ON ei.id = ce.indicator_id
 JOIN sources AS s ON s.id = ce.source_id
 WHERE ce.scheduled_at >= $1
-  AND (
-    $2::timestamptz IS NULL
-    OR (ce.scheduled_at, ce.id) > (
-        $2::timestamptz,
-        $3::uuid
-    )
+  AND ce.archived_at IS NULL
+  AND ce.id = (
+      SELECT peer.id
+      FROM calendar_events AS peer
+      WHERE peer.indicator_id = ce.indicator_id
+        AND peer.scheduled_at = ce.scheduled_at
+      ORDER BY peer.id ASC
+      LIMIT 1
   )
+  AND ($2::text IS NULL
+       OR ce.country_code = ANY(string_to_array($2::text, ',')))
+  AND ($3::text IS NULL
+       OR ce.importance = ANY(string_to_array($3::text, ',')))
+  AND ($4::uuid IS NULL OR EXISTS (
+      SELECT 1
+      FROM calendar_event_entities AS link
+      JOIN user_assets AS asset ON asset.user_id = $4::uuid
+      JOIN entity_pairs AS pair ON pair.id = asset.entity_pair_id
+      WHERE link.calendar_event_id = ce.id
+        AND (link.entity_id = pair.base_entity_id OR link.entity_id = pair.quote_entity_id)
+  ))
+  AND ($5::timestamptz IS NULL
+       OR (ce.scheduled_at, ce.id) > (
+           $5::timestamptz,
+           $6::uuid
+       ))
 ORDER BY ce.scheduled_at ASC, ce.id ASC
-LIMIT $4
+LIMIT $7
 `
 
 type ListUpcomingCalendarEventsPageParams struct {
 	NotBefore         pgtype.Timestamptz
+	Countries         *string
+	Importances       *string
+	Watcher           pgtype.UUID
 	CursorScheduledAt pgtype.Timestamptz
 	CursorID          pgtype.UUID
 	PageSize          int32
@@ -182,8 +352,13 @@ type ListUpcomingCalendarEventsPageRow struct {
 	Previous      pgtype.Numeric
 	Consensus     pgtype.Numeric
 	Actual        pgtype.Numeric
+	CountryCode   *string
+	Currency      *string
+	Importance    *string
+	Revision      int32
 	CreatedAt     pgtype.Timestamptz
 	UpdatedAt     pgtype.Timestamptz
+	Name          string
 	IndicatorName string
 	SourceName    string
 }
@@ -191,6 +366,9 @@ type ListUpcomingCalendarEventsPageRow struct {
 func (q *Queries) ListUpcomingCalendarEventsPage(ctx context.Context, arg ListUpcomingCalendarEventsPageParams) ([]ListUpcomingCalendarEventsPageRow, error) {
 	rows, err := q.db.Query(ctx, listUpcomingCalendarEventsPage,
 		arg.NotBefore,
+		arg.Countries,
+		arg.Importances,
+		arg.Watcher,
 		arg.CursorScheduledAt,
 		arg.CursorID,
 		arg.PageSize,
@@ -211,8 +389,13 @@ func (q *Queries) ListUpcomingCalendarEventsPage(ctx context.Context, arg ListUp
 			&i.Previous,
 			&i.Consensus,
 			&i.Actual,
+			&i.CountryCode,
+			&i.Currency,
+			&i.Importance,
+			&i.Revision,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Name,
 			&i.IndicatorName,
 			&i.SourceName,
 		); err != nil {
@@ -226,39 +409,52 @@ func (q *Queries) ListUpcomingCalendarEventsPage(ctx context.Context, arg ListUp
 	return items, nil
 }
 
-const upsertCalendarEvent = `-- name: UpsertCalendarEvent :one
-INSERT INTO calendar_events (id, source_id, indicator_id, scheduled_at, released_at, previous, consensus, actual)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-ON CONFLICT (source_id, indicator_id, scheduled_at) DO UPDATE
-SET released_at = COALESCE(calendar_events.released_at, EXCLUDED.released_at),
-    previous = COALESCE(EXCLUDED.previous, calendar_events.previous),
-    consensus = COALESCE(EXCLUDED.consensus, calendar_events.consensus),
-    actual = COALESCE(EXCLUDED.actual, calendar_events.actual),
-    updated_at = now()
-RETURNING id, source_id, indicator_id, scheduled_at, released_at, previous, consensus, actual, created_at, updated_at
+const restoreCalendarEvent = `-- name: RestoreCalendarEvent :execrows
+UPDATE calendar_events
+SET archived_at = NULL
+WHERE id = $1 AND archived_at IS NOT NULL
 `
 
-type UpsertCalendarEventParams struct {
-	ID          uuid.UUID
-	SourceID    uuid.UUID
-	IndicatorID uuid.UUID
+func (q *Queries) RestoreCalendarEvent(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, restoreCalendarEvent, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const updateCalendarEvent = `-- name: UpdateCalendarEvent :one
+UPDATE calendar_events
+SET name = $1,
+    scheduled_at = $2,
+    released_at = $3,
+    previous = $4,
+    consensus = $5,
+    actual = $6,
+    updated_at = now()
+WHERE id = $7
+RETURNING id, source_id, indicator_id, scheduled_at, released_at, previous, consensus, actual, created_at, updated_at, country_code, currency, importance, revision, name, archived_at
+`
+
+type UpdateCalendarEventParams struct {
+	Name        *string
 	ScheduledAt pgtype.Timestamptz
 	ReleasedAt  pgtype.Timestamptz
 	Previous    pgtype.Numeric
 	Consensus   pgtype.Numeric
 	Actual      pgtype.Numeric
+	ID          uuid.UUID
 }
 
-func (q *Queries) UpsertCalendarEvent(ctx context.Context, arg UpsertCalendarEventParams) (CalendarEvent, error) {
-	row := q.db.QueryRow(ctx, upsertCalendarEvent,
-		arg.ID,
-		arg.SourceID,
-		arg.IndicatorID,
+func (q *Queries) UpdateCalendarEvent(ctx context.Context, arg UpdateCalendarEventParams) (CalendarEvent, error) {
+	row := q.db.QueryRow(ctx, updateCalendarEvent,
+		arg.Name,
 		arg.ScheduledAt,
 		arg.ReleasedAt,
 		arg.Previous,
 		arg.Consensus,
 		arg.Actual,
+		arg.ID,
 	)
 	var i CalendarEvent
 	err := row.Scan(
@@ -272,6 +468,88 @@ func (q *Queries) UpsertCalendarEvent(ctx context.Context, arg UpsertCalendarEve
 		&i.Actual,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.CountryCode,
+		&i.Currency,
+		&i.Importance,
+		&i.Revision,
+		&i.Name,
+		&i.ArchivedAt,
+	)
+	return i, err
+}
+
+const upsertCalendarEvent = `-- name: UpsertCalendarEvent :one
+INSERT INTO calendar_events (id, source_id, indicator_id, scheduled_at, released_at, previous, consensus, actual, name, country_code, currency, importance)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+ON CONFLICT (source_id, indicator_id, country_code, scheduled_at) DO UPDATE
+SET released_at = COALESCE(calendar_events.released_at, EXCLUDED.released_at),
+    previous = COALESCE(EXCLUDED.previous, calendar_events.previous),
+    consensus = COALESCE(EXCLUDED.consensus, calendar_events.consensus),
+    actual = COALESCE(EXCLUDED.actual, calendar_events.actual),
+    name = COALESCE(EXCLUDED.name, calendar_events.name),
+    country_code = COALESCE(EXCLUDED.country_code, calendar_events.country_code),
+    currency = COALESCE(EXCLUDED.currency, calendar_events.currency),
+    importance = COALESCE(EXCLUDED.importance, calendar_events.importance),
+    revision = calendar_events.revision + CASE
+        WHEN calendar_events.released_at IS NOT NULL
+         AND (COALESCE(EXCLUDED.previous, calendar_events.previous) IS DISTINCT FROM calendar_events.previous
+           OR COALESCE(EXCLUDED.consensus, calendar_events.consensus) IS DISTINCT FROM calendar_events.consensus
+           OR COALESCE(EXCLUDED.actual, calendar_events.actual) IS DISTINCT FROM calendar_events.actual)
+        THEN 1
+        ELSE 0
+    END,
+    updated_at = now()
+RETURNING id, source_id, indicator_id, scheduled_at, released_at, previous, consensus, actual, created_at, updated_at, country_code, currency, importance, revision, name, archived_at
+`
+
+type UpsertCalendarEventParams struct {
+	ID          uuid.UUID
+	SourceID    uuid.UUID
+	IndicatorID uuid.UUID
+	ScheduledAt pgtype.Timestamptz
+	ReleasedAt  pgtype.Timestamptz
+	Previous    pgtype.Numeric
+	Consensus   pgtype.Numeric
+	Actual      pgtype.Numeric
+	Name        *string
+	CountryCode *string
+	Currency    *string
+	Importance  *string
+}
+
+func (q *Queries) UpsertCalendarEvent(ctx context.Context, arg UpsertCalendarEventParams) (CalendarEvent, error) {
+	row := q.db.QueryRow(ctx, upsertCalendarEvent,
+		arg.ID,
+		arg.SourceID,
+		arg.IndicatorID,
+		arg.ScheduledAt,
+		arg.ReleasedAt,
+		arg.Previous,
+		arg.Consensus,
+		arg.Actual,
+		arg.Name,
+		arg.CountryCode,
+		arg.Currency,
+		arg.Importance,
+	)
+	var i CalendarEvent
+	err := row.Scan(
+		&i.ID,
+		&i.SourceID,
+		&i.IndicatorID,
+		&i.ScheduledAt,
+		&i.ReleasedAt,
+		&i.Previous,
+		&i.Consensus,
+		&i.Actual,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CountryCode,
+		&i.Currency,
+		&i.Importance,
+		&i.Revision,
+		&i.Name,
+		&i.ArchivedAt,
 	)
 	return i, err
 }

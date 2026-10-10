@@ -106,7 +106,7 @@ func newRouter(
 	userGroup.Use(authentication.RequireUser(authComponents.service))
 	assets.RegisterWatchListRoutes(userGroup, userAssetService)
 	articles.RegisterFeedRoutes(userGroup, articles.NewFeedService(articleRepository, articleRepository, userAssetService))
-	calendar.RegisterRoutes(router, calendarrepositories.NewEventRepository(database, resourceStore))
+	calendar.RegisterRoutes(userGroup, calendarrepositories.NewEventRepository(database, resourceStore))
 	market.RegisterRoutes(router, marketrepositories.NewCandleRepository(database))
 
 	explanation.RegisterRoutes(router, explanation.NewService(

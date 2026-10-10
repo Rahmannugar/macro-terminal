@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	calendarmodels "github.com/Rahmannugar/macro-terminal/server/internal/calendar/models"
 	"github.com/Rahmannugar/macro-terminal/server/internal/common/paging"
 	entityservices "github.com/Rahmannugar/macro-terminal/server/internal/entities/services"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/safehttp"
@@ -38,6 +39,9 @@ func RegisterAdminConfigRoutes(router gin.IRoutes, entities Entities, sources So
 	router.PATCH("/source-configurations/:id", updateSourceConfiguration(sources))
 	router.GET("/calendar-events", listCalendarEvents(events))
 	router.POST("/calendar-events", createCalendarEvent(entities, sources, events))
+	router.PATCH("/calendar-events/:id", updateCalendarEvent(events))
+	router.POST("/calendar-events/:id/archive", archiveCalendarEvent(events))
+	router.POST("/calendar-events/:id/restore", restoreCalendarEvent(events))
 }
 
 func parseListQuery(ctx *gin.Context) (int32, *paging.Cursor, bool) {
@@ -123,6 +127,8 @@ func classifyConfigFailure(err error) (configFailure, bool) {
 		return configFailure{http.StatusBadRequest, "invalid_request", "Source type is required."}, true
 	case errors.Is(err, ErrEventScheduledAtRequired):
 		return configFailure{http.StatusBadRequest, "invalid_request", "A calendar event needs a scheduled time."}, true
+	case errors.Is(err, calendarmodels.ErrEventNotFound):
+		return configFailure{http.StatusNotFound, "event_not_found", "That calendar event does not exist."}, true
 
 	case errors.Is(err, sourceservices.ErrConfigurationTypeInvalid):
 		return configFailure{http.StatusBadRequest, "invalid_config", "Configuration type must be api, rss, or web."}, true

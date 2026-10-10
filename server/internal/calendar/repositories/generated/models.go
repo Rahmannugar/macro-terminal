@@ -20,4 +20,10 @@ type CalendarEvent struct {
 	Actual      pgtype.Numeric
 	CreatedAt   pgtype.Timestamptz
 	UpdatedAt   pgtype.Timestamptz
+	CountryCode *string
+	Currency    *string
+	Importance  *string
+	Revision    int32
+	Name        *string
+	ArchivedAt  pgtype.Timestamptz
 }

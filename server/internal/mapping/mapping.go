@@ -54,9 +54,10 @@ func (loader *Loader) Load(ctx context.Context) (Dictionary, error) {
 }
 
 type Dictionary struct {
-	phrases []phrase
-	pairs   []pair
-	codes   map[uuid.UUID]string
+	phrases  []phrase
+	pairs    []pair
+	codes    map[uuid.UUID]string
+	currency map[string]uuid.UUID
 
 	indicator indicatorIndex
 }
@@ -81,7 +82,10 @@ func Build(
 	indicators []models.Indicator,
 	indicatorTerms []models.IndicatorTerm,
 ) Dictionary {
-	dictionary := Dictionary{codes: map[uuid.UUID]string{}}
+	dictionary := Dictionary{
+		codes:    map[uuid.UUID]string{},
+		currency: map[string]uuid.UUID{},
+	}
 	seen := map[string]bool{}
 	add := func(text string, entityID uuid.UUID) {
 		lower := normalize(text)
@@ -94,6 +98,9 @@ func Build(
 
 	for _, entity := range entities {
 		dictionary.codes[entity.ID] = entity.Code
+		if entity.Type == "currency" {
+			dictionary.currency[strings.ToUpper(entity.Code)] = entity.ID
+		}
 		add(entity.Code, entity.ID)
 		add(entity.Name, entity.ID)
 	}
@@ -128,6 +135,14 @@ type Outcome struct {
 	EntityIDs   []uuid.UUID
 	EntityCodes []string
 	PairSymbols []string
+}
+
+// EntityForCurrency resolves a currency code (USD, EUR) to the currency
+// entity, so calendar events link by the provider's currency rather than
+// the classified indicator's home entity.
+func (dictionary Dictionary) EntityForCurrency(code string) (uuid.UUID, bool) {
+	id, ok := dictionary.currency[strings.ToUpper(strings.TrimSpace(code))]
+	return id, ok
 }
 
 // indicatorIndex classifies calendar event names to economic indicators.

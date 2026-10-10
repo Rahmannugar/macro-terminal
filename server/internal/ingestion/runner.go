@@ -466,6 +466,13 @@ func (runner *Runner) fetchCandles(
 	)
 }
 
+var (
+	allowedCalendarCountries = map[string]bool{
+		"US": true, "EU": true, "GB": true, "JP": true, "CN": true,
+		"CA": true, "AU": true, "CH": true, "NZ": true,
+	}
+)
+
 // fetchCalendar parses a calendar payload, classifies each indicator row,
 // and stores it. Rows the vocabulary cannot name are skipped and counted;
 // non-calendar rows only reach the news pipeline when they carry their own
@@ -481,8 +488,13 @@ func (runner *Runner) fetchCalendar(
 
 	entries := make([]calendarmodels.PersistEntry, 0, len(events))
 	unclassified := 0
+	foreign := 0
 	unmappedNames := make([]string, 0, mappingLogTitleLimit)
 	for _, event := range events {
+		if !allowedCalendarCountries[event.CountryCode] {
+			foreign++
+			continue
+		}
 		if dictionary == nil {
 			unclassified++
 			continue
@@ -495,14 +507,22 @@ func (runner *Runner) fetchCalendar(
 			}
 			continue
 		}
+		entityID := match.EntityID
+		if currencyID, known := dictionary.EntityForCurrency(event.Currency); known {
+			entityID = currencyID
+		}
 		entry := calendarmodels.PersistEntry{
 			SourceID:    configuration.SourceID,
 			IndicatorID: match.IndicatorID,
-			EntityID:    match.EntityID,
+			EntityID:    entityID,
+			Name:        event.Name,
 			ScheduledAt: event.ScheduledAt,
 			Previous:    event.Previous,
 			Consensus:   event.Consensus,
 			Actual:      event.Actual,
+			CountryCode: event.CountryCode,
+			Currency:    event.Currency,
+			Importance:  event.Importance,
 		}
 		if event.Actual != nil {
 			released := runner.now()
@@ -532,6 +552,7 @@ func (runner *Runner) fetchCalendar(
 		"duplicates", articleStats.Duplicates,
 		"invalid", calendarStats.Malformed+articleStats.Invalid,
 		"skipped", unclassified+calendarStats.NewsSkipped,
+		"foreign", foreign,
 	)
 
 	runner.storeEvents(ctx, configuration, entries, unclassified, unmappedNames)

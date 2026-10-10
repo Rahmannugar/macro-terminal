@@ -97,11 +97,16 @@ function explanationText(payload: unknown): string {
 
 export type CalendarEvent = {
   id: string;
+  name: string;
   scheduledAt: string;
   releasedAt: string | null;
   previous: number | null;
   consensus: number | null;
   actual: number | null;
+  countryCode: string;
+  currency: string;
+  importance: string;
+  revision: number;
   indicator: { id: string; name: string };
   source: { id: string; name: string };
 };

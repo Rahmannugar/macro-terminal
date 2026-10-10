@@ -15,21 +15,32 @@ import (
 	"github.com/google/uuid"
 )
 
-type fakeUpcoming struct {
-	rows []calendarmodels.UpcomingEvent
+type fakeEvents struct {
+	rows []calendarmodels.EventRow
 	next *paging.Cursor
 
-	gotNotBefore time.Time
-	gotLimit     int32
+	gotUpcoming   calendarmodels.EventPageQuery
+	gotReleased   calendarmodels.EventPageQuery
+	gotLimit      int32
+	upcomingCalls int
+	releasedCalls int
 }
 
-func (fake *fakeUpcoming) UpcomingEventsPage(_ context.Context, notBefore time.Time, _ *paging.Cursor, limit int32) ([]calendarmodels.UpcomingEvent, *paging.Cursor, error) {
-	fake.gotNotBefore = notBefore
+func (fake *fakeEvents) UpcomingEventsPage(_ context.Context, query calendarmodels.EventPageQuery, _ *paging.Cursor, limit int32) ([]calendarmodels.EventRow, *paging.Cursor, error) {
+	fake.gotUpcoming = query
 	fake.gotLimit = limit
+	fake.upcomingCalls++
 	return fake.rows, fake.next, nil
 }
 
-func calendarRouter(t *testing.T, events UpcomingEvents) *gin.Engine {
+func (fake *fakeEvents) ReleasedEventsPage(_ context.Context, query calendarmodels.EventPageQuery, _ *paging.Cursor, limit int32) ([]calendarmodels.EventRow, *paging.Cursor, error) {
+	fake.gotReleased = query
+	fake.gotLimit = limit
+	fake.releasedCalls++
+	return fake.rows, fake.next, nil
+}
+
+func calendarRouter(t *testing.T, events EventReader) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -52,45 +63,58 @@ func calendarDecodeError(t *testing.T, recorder *httptest.ResponseRecorder) open
 	return failure
 }
 
-func upcomingFixture() calendarmodels.UpcomingEvent {
-	return calendarmodels.UpcomingEvent{
+func eventFixture() calendarmodels.EventRow {
+	return calendarmodels.EventRow{
 		ID:            uuid.New(),
 		SourceID:      uuid.New(),
-		SourceName:    "FinanceCalendar",
+		SourceName:    "Xoomar",
 		IndicatorID:   uuid.New(),
 		IndicatorName: "CPI",
 		ScheduledAt:   time.Date(2026, 10, 7, 12, 30, 0, 0, time.UTC),
+		CountryCode:   "US",
+		Currency:      "USD",
+		Importance:    "high",
+		Revision:      1,
 	}
 }
 
-func TestCalendarRejectsBadPageParameters(t *testing.T) {
-	router := calendarRouter(t, &fakeUpcoming{})
+func TestCalendarRejectsBadQueryParameters(t *testing.T) {
+	router := calendarRouter(t, &fakeEvents{})
 
-	recorder := calendarPerform(router, "/api/v1/calendar-events?limit=0")
-	if recorder.Code != http.StatusBadRequest || calendarDecodeError(t, recorder).Error.Code != "invalid_limit" {
-		t.Errorf("limit=0 → status/code = %d/%q, want 400 invalid_limit", recorder.Code, calendarDecodeError(t, recorder).Error.Code)
+	cases := []struct {
+		target string
+		code   string
+	}{
+		{"/calendar-events?limit=0", "invalid_limit"},
+		{"/calendar-events?cursor=not-base64!!", "invalid_cursor"},
+		{"/calendar-events?scope=tomorrow", "invalid_scope"},
+		{"/calendar-events?country=USA", "invalid_country"},
+		{"/calendar-events?importance=extreme", "invalid_importance"},
+		{"/calendar-events?watch=maybe", "invalid_watch"},
 	}
-
-	recorder = calendarPerform(router, "/api/v1/calendar-events?cursor=not-base64!!")
-	if recorder.Code != http.StatusBadRequest || calendarDecodeError(t, recorder).Error.Code != "invalid_cursor" {
-		t.Errorf("garbage cursor → status/code = %d/%q, want 400 invalid_cursor", recorder.Code, calendarDecodeError(t, recorder).Error.Code)
+	for _, testCase := range cases {
+		recorder := calendarPerform(router, testCase.target)
+		failure := calendarDecodeError(t, recorder)
+		if recorder.Code != http.StatusBadRequest || failure.Error.Code != testCase.code {
+			t.Errorf("%s → status/code = %d/%q, want 400 %q", testCase.target, recorder.Code, failure.Error.Code, testCase.code)
+		}
 	}
 }
 
-func TestCalendarReturnsUpcomingEvents(t *testing.T) {
-	event := upcomingFixture()
-	fake := &fakeUpcoming{
-		rows: []calendarmodels.UpcomingEvent{event},
+func TestCalendarReturnsUpcomingEventsWithFilters(t *testing.T) {
+	event := eventFixture()
+	fake := &fakeEvents{
+		rows: []calendarmodels.EventRow{event},
 		next: &paging.Cursor{At: event.ScheduledAt, ID: event.ID},
 	}
 	router := calendarRouter(t, fake)
 	before := time.Now().UTC().Add(-time.Minute)
 
-	recorder := calendarPerform(router, "/api/v1/calendar-events")
+	recorder := calendarPerform(router, "/calendar-events?country=US,JP&importance=high,low")
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d body = %s, want 200", recorder.Code, recorder.Body.String())
 	}
-	var page upcomingEventListResponse
+	var page eventListResponse
 	if err := json.Unmarshal(recorder.Body.Bytes(), &page); err != nil {
 		t.Fatalf("decode body %q: %v", recorder.Body.String(), err)
 	}
@@ -98,16 +122,54 @@ func TestCalendarReturnsUpcomingEvents(t *testing.T) {
 		t.Fatalf("calendarEvents = %+v, want one event", page.CalendarEvents)
 	}
 	row := page.CalendarEvents[0]
-	if row.ID != event.ID || row.Indicator.Name != "CPI" || row.Source.Name != "FinanceCalendar" {
+	if row.ID != event.ID || row.Indicator.Name != "CPI" || row.Source.Name != "Xoomar" {
 		t.Errorf("event = %+v, want the stored event with indicator and source names", row)
+	}
+	if row.CountryCode != "US" || row.Importance != "high" || row.Revision != 1 {
+		t.Errorf("provider tags = %q/%q/%d, want US/high/1", row.CountryCode, row.Importance, row.Revision)
 	}
 	if page.NextCursor == nil {
 		t.Error("nextCursor = nil, want the page cursor")
 	}
-	if fake.gotNotBefore.Before(before) {
-		t.Errorf("notBefore = %s, want anchored at the request time", fake.gotNotBefore)
+	if fake.gotUpcoming.Now.Before(before) {
+		t.Errorf("Now = %s, want anchored at the request time", fake.gotUpcoming.Now)
+	}
+	if fake.gotUpcoming.Countries == nil || fake.gotUpcoming.Countries[0] != "US" || fake.gotUpcoming.Countries[1] != "JP" {
+		t.Errorf("Countries = %v, want [US JP]", fake.gotUpcoming.Countries)
+	}
+	if fake.gotUpcoming.Importances == nil || fake.gotUpcoming.Importances[0] != "high" {
+		t.Errorf("Importances = %v, want [high low]", fake.gotUpcoming.Importances)
 	}
 	if fake.gotLimit != defaultPageSize {
 		t.Errorf("limit = %d, want %d", fake.gotLimit, defaultPageSize)
+	}
+	if fake.releasedCalls != 0 {
+		t.Errorf("released calls = %d, want 0", fake.releasedCalls)
+	}
+}
+
+func TestCalendarReturnsReleasedEvents(t *testing.T) {
+	event := eventFixture()
+	fake := &fakeEvents{rows: []calendarmodels.EventRow{event}}
+	router := calendarRouter(t, fake)
+
+	recorder := calendarPerform(router, "/calendar-events?scope=released&importance=medium")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s, want 200", recorder.Code, recorder.Body.String())
+	}
+	if fake.releasedCalls != 1 || fake.upcomingCalls != 0 {
+		t.Errorf("calls = upcoming %d released %d, want 0/1", fake.upcomingCalls, fake.releasedCalls)
+	}
+	if fake.gotReleased.Importances == nil || fake.gotReleased.Importances[0] != "medium" {
+		t.Errorf("Importances = %v, want [medium]", fake.gotReleased.Importances)
+	}
+}
+
+func TestCalendarWatchFilterRequiresSession(t *testing.T) {
+	router := calendarRouter(t, &fakeEvents{})
+
+	recorder := calendarPerform(router, "/calendar-events?watch=1")
+	if recorder.Code != http.StatusUnauthorized || calendarDecodeError(t, recorder).Error.Code != "unauthenticated" {
+		t.Errorf("watch=1 without session → %d/%q, want 401 unauthenticated", recorder.Code, calendarDecodeError(t, recorder).Error.Code)
 	}
 }

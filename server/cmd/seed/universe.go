@@ -257,7 +257,15 @@ var seedUniverse = []seedSource{
 		sourceType: "calendar",
 		configurations: []seedConfiguration{{
 			kind:   "api",
-			config: `{"url":"https://biquote.io/api/calendar/upcoming"}`,
+			config: `{"url":"https://biquote.io/api/calendar?days=14"}`,
+		}},
+	},
+	{
+		name:       "Xoomar",
+		sourceType: "calendar",
+		configurations: []seedConfiguration{{
+			kind:   "api",
+			config: `{"url":"https://xoomar.com/api/markets/calendar"}`,
 		}},
 	},
 }

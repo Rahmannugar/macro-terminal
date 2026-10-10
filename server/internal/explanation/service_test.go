@@ -199,6 +199,7 @@ func newFixture(t *testing.T) *fixture {
 					Consensus:   &consensus,
 					Actual:      &actual,
 				},
+				Name:          "US CPI",
 				IndicatorName: "Consumer Price Index",
 				IndicatorType: "inflation",
 			},
@@ -312,8 +313,8 @@ func TestExplainEventAssemblesContextAndReturnsText(t *testing.T) {
 	}
 
 	input := fixture.explainer.event
-	if input.Indicator != "Consumer Price Index" || input.IndicatorType != "inflation" {
-		t.Errorf("indicator = %q (%q), want the joined indicator", input.Indicator, input.IndicatorType)
+	if input.Indicator != "US CPI" || input.IndicatorType != "inflation" {
+		t.Errorf("indicator = %q (%q), want the event name and the indicator type", input.Indicator, input.IndicatorType)
 	}
 	if input.Consensus == nil || *input.Consensus != 3.1 || input.Actual == nil || *input.Actual != 2.7 {
 		t.Errorf("values = consensus %v actual %v, want 3.1 and 2.7", input.Consensus, input.Actual)

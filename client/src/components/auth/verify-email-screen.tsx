@@ -86,7 +86,7 @@ export function VerifyEmailScreen() {
           id="verify-email"
           type="email"
           autoComplete="email"
-          placeholder="you@example.com"
+          placeholder="trader@email.com"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
         />

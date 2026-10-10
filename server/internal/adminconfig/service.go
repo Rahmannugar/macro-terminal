@@ -41,4 +41,7 @@ type Sources interface {
 type Events interface {
 	CreateCalendarEvent(ctx context.Context, entry calendarmodels.CreateEventEntry) (calendarmodels.EventRecord, error)
 	ListCalendarEventsPage(ctx context.Context, cursor *paging.Cursor, limit int32) ([]calendarmodels.EventRecord, *paging.Cursor, error)
+	UpdateCalendarEvent(ctx context.Context, entry calendarmodels.UpdateEventEntry) (calendarmodels.EventRecord, error)
+	ArchiveCalendarEvent(ctx context.Context, id uuid.UUID) error
+	RestoreCalendarEvent(ctx context.Context, id uuid.UUID) error
 }

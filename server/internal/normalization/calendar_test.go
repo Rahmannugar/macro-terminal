@@ -196,3 +196,45 @@ func assertFloat(t *testing.T, name string, got *float64, want float64) {
 		t.Errorf("%s = %v, want %v", name, *got, want)
 	}
 }
+
+func TestCalendarEventsParsesXoomarShape(t *testing.T) {
+	body := []byte(`{"data": [
+		{"source": "bls", "eventName": "CPI (Consumer Price Index)",
+		 "importance": "high", "scheduledAt": "2026-10-14T12:30:00.000Z",
+		 "periodLabel": "September 2026", "previous": null,
+		 "forecast": null, "actual": null, "unit": "% y/y"},
+		{"source": "dol", "eventName": "Initial Jobless Claims",
+		 "importance": "med", "scheduledAt": "2026-10-15T12:30:00.000Z",
+		 "previous": 218000, "forecast": null, "actual": 215000}
+	]}`)
+
+	events, news, stats := CalendarEvents(body)
+
+	if stats.Rows != 2 || stats.Malformed != 0 {
+		t.Fatalf("stats = %+v, want 2 rows, 0 malformed", stats)
+	}
+	if len(events) != 2 {
+		t.Fatalf("events = %d, want 2", len(events))
+	}
+	if len(news) != 0 {
+		t.Errorf("news = %d, want 0", len(news))
+	}
+	first := events[0]
+	if first.Name != "CPI (Consumer Price Index)" {
+		t.Errorf("name = %q, want the eventName field", first.Name)
+	}
+	if first.CountryCode != "US" || first.Currency != "USD" {
+		t.Errorf("country/currency = %q/%q, want US/USD defaults", first.CountryCode, first.Currency)
+	}
+	if first.Importance != "high" {
+		t.Errorf("importance = %q, want high", first.Importance)
+	}
+	if want := time.Date(2026, 10, 14, 12, 30, 0, 0, time.UTC); !first.ScheduledAt.Equal(want) {
+		t.Errorf("scheduled = %s, want %s", first.ScheduledAt, want)
+	}
+	if events[1].Importance != "medium" {
+		t.Errorf("importance = %q, want med normalized to medium", events[1].Importance)
+	}
+	assertFloat(t, "Previous", events[1].Previous, 218000)
+	assertFloat(t, "Actual", events[1].Actual, 215000)
+}

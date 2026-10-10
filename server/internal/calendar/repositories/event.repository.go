@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/calendar/models"
@@ -73,6 +74,10 @@ func (repository *EventRepository) PersistEvents(
 			Previous:    previous,
 			Consensus:   consensus,
 			Actual:      actual,
+			Name:        optionalText(entry.Name),
+			CountryCode: optionalText(entry.CountryCode),
+			Currency:    optionalText(entry.Currency),
+			Importance:  optionalText(entry.Importance),
 		})
 		if err != nil {
 			return stats, fmt.Errorf("upsert calendar event: %w", err)
@@ -132,6 +137,7 @@ func (repository *EventRepository) CreateCalendarEvent(
 		ID:          uuid.New(),
 		SourceID:    entry.SourceID,
 		IndicatorID: entry.IndicatorID,
+		Name:        optionalText(entry.Name),
 		ScheduledAt: timestampValueUnchecked(entry.ScheduledAt),
 		ReleasedAt:  timestampValue(entry.ReleasedAt),
 		Previous:    previous,
@@ -161,6 +167,71 @@ func (repository *EventRepository) CreateCalendarEvent(
 		_ = repository.store.Set(ctx, cache.CalendarEventKey(stored.ID), stored)
 	}
 	return record, nil
+}
+
+// UpdateCalendarEvent overwrites one event's displayed name, schedule, and
+// figures with an administrator's edit.
+func (repository *EventRepository) UpdateCalendarEvent(
+	ctx context.Context,
+	entry models.UpdateEventEntry,
+) (models.EventRecord, error) {
+	previous, err := numericValue(entry.Previous)
+	if err != nil {
+		return models.EventRecord{}, err
+	}
+	consensus, err := numericValue(entry.Consensus)
+	if err != nil {
+		return models.EventRecord{}, err
+	}
+	actual, err := numericValue(entry.Actual)
+	if err != nil {
+		return models.EventRecord{}, err
+	}
+	row, err := repository.queries.UpdateCalendarEvent(ctx, calendardb.UpdateCalendarEventParams{
+		ID:          entry.ID,
+		Name:        optionalText(entry.Name),
+		ScheduledAt: timestampValueUnchecked(entry.ScheduledAt),
+		ReleasedAt:  timestampValue(entry.ReleasedAt),
+		Previous:    previous,
+		Consensus:   consensus,
+		Actual:      actual,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return models.EventRecord{}, models.ErrEventNotFound
+	}
+	if err != nil {
+		return models.EventRecord{}, fmt.Errorf("update calendar event: %w", err)
+	}
+	record, err := eventRecordFromRow(row)
+	if err != nil {
+		return models.EventRecord{}, err
+	}
+	if stored, err := storedEventFromRow(row); err == nil {
+		_ = repository.store.Set(ctx, cache.CalendarEventKey(stored.ID), stored)
+	}
+	return record, nil
+}
+
+func (repository *EventRepository) ArchiveCalendarEvent(ctx context.Context, id uuid.UUID) error {
+	rows, err := repository.queries.ArchiveCalendarEvent(ctx, id)
+	if err != nil {
+		return fmt.Errorf("archive calendar event: %w", err)
+	}
+	if rows == 0 {
+		return models.ErrEventNotFound
+	}
+	return nil
+}
+
+func (repository *EventRepository) RestoreCalendarEvent(ctx context.Context, id uuid.UUID) error {
+	rows, err := repository.queries.RestoreCalendarEvent(ctx, id)
+	if err != nil {
+		return fmt.Errorf("restore calendar event: %w", err)
+	}
+	if rows == 0 {
+		return models.ErrEventNotFound
+	}
+	return nil
 }
 
 func (repository *EventRepository) ListCalendarEventsPage(
@@ -227,6 +298,7 @@ func (repository *EventRepository) CalendarEvent(ctx context.Context, id uuid.UU
 			Consensus:   consensus,
 			Actual:      actual,
 		},
+		Name:          row.Name,
 		IndicatorName: row.IndicatorName,
 		IndicatorType: row.IndicatorType,
 	}, true, nil
@@ -272,11 +344,17 @@ func eventRecordFromRow(row calendardb.CalendarEvent) (models.EventRecord, error
 		ID:          stored.ID,
 		SourceID:    stored.SourceID,
 		IndicatorID: stored.IndicatorID,
+		Name:        derefText(row.Name),
 		ScheduledAt: stored.ScheduledAt,
 		ReleasedAt:  stored.ReleasedAt,
 		Previous:    stored.Previous,
 		Consensus:   stored.Consensus,
 		Actual:      stored.Actual,
+		CountryCode: derefText(row.CountryCode),
+		Currency:    derefText(row.Currency),
+		Importance:  derefText(row.Importance),
+		Revision:    row.Revision,
+		ArchivedAt:  timeValue(row.ArchivedAt),
 		CreatedAt:   row.CreatedAt.Time,
 		UpdatedAt:   row.UpdatedAt.Time,
 	}, nil
@@ -338,15 +416,42 @@ func timestampValueUnchecked(value time.Time) pgtype.Timestamptz {
 	return pgtype.Timestamptz{Time: value, Valid: true}
 }
 
+func optionalText(value string) *string {
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func optionalCSV(values []string) *string {
+	if len(values) == 0 {
+		return nil
+	}
+	joined := strings.Join(values, ",")
+	return &joined
+}
+
+func watcherUUID(watcher *uuid.UUID) pgtype.UUID {
+	if watcher == nil {
+		return pgtype.UUID{}
+	}
+	return pgtype.UUID{Bytes: *watcher, Valid: true}
+}
+
+// UpcomingEventsPage returns events scheduled at or after the query's Now,
+// soonest first.
 func (repository *EventRepository) UpcomingEventsPage(
 	ctx context.Context,
-	notBefore time.Time,
+	query models.EventPageQuery,
 	cursor *paging.Cursor,
 	limit int32,
-) ([]models.UpcomingEvent, *paging.Cursor, error) {
+) ([]models.EventRow, *paging.Cursor, error) {
 	params := calendardb.ListUpcomingCalendarEventsPageParams{
-		NotBefore: pgtype.Timestamptz{Time: notBefore, Valid: true},
-		PageSize:  limit + 1,
+		NotBefore:   timestampValueUnchecked(query.Now),
+		Countries:   optionalCSV(query.Countries),
+		Importances: optionalCSV(query.Importances),
+		Watcher:     watcherUUID(query.Watcher),
+		PageSize:    limit + 1,
 	}
 	if cursor != nil {
 		params.CursorScheduledAt = pgtype.Timestamptz{Time: cursor.At, Valid: true}
@@ -356,43 +461,139 @@ func (repository *EventRepository) UpcomingEventsPage(
 	if err != nil {
 		return nil, nil, fmt.Errorf("list upcoming calendar events page: %w", err)
 	}
-	events := make([]models.UpcomingEvent, 0, min(len(rows), int(limit)))
+	events := make([]models.EventRow, 0, min(len(rows), int(limit)))
 	for index, row := range rows {
 		if int32(index) == limit {
 			last := events[len(events)-1]
 			return events, &paging.Cursor{At: last.ScheduledAt, ID: last.ID}, nil
 		}
-		scheduledAt := timeValue(row.ScheduledAt)
-		if scheduledAt == nil {
-			return nil, nil, fmt.Errorf("calendar event %s has no scheduled time", row.ID)
-		}
-		releasedAt := timeValue(row.ReleasedAt)
-		previous, err := numericFloat(row.Previous)
+		event, err := upcomingRowToEvent(row)
 		if err != nil {
 			return nil, nil, err
 		}
-		consensus, err := numericFloat(row.Consensus)
-		if err != nil {
-			return nil, nil, err
-		}
-		actual, err := numericFloat(row.Actual)
-		if err != nil {
-			return nil, nil, err
-		}
-		events = append(events, models.UpcomingEvent{
-			ID:            row.ID,
-			SourceID:      row.SourceID,
-			IndicatorID:   row.IndicatorID,
-			ScheduledAt:   *scheduledAt,
-			ReleasedAt:    releasedAt,
-			Previous:      previous,
-			Consensus:     consensus,
-			Actual:        actual,
-			CreatedAt:     row.CreatedAt.Time,
-			UpdatedAt:     row.UpdatedAt.Time,
-			IndicatorName: row.IndicatorName,
-			SourceName:    row.SourceName,
-		})
+		events = append(events, event)
 	}
 	return events, nil, nil
+}
+
+// ReleasedEventsPage returns events scheduled before the query's Now, most
+// recent first.
+func (repository *EventRepository) ReleasedEventsPage(
+	ctx context.Context,
+	query models.EventPageQuery,
+	cursor *paging.Cursor,
+	limit int32,
+) ([]models.EventRow, *paging.Cursor, error) {
+	params := calendardb.ListReleasedCalendarEventsPageParams{
+		NotAfter:    timestampValueUnchecked(query.Now),
+		Countries:   optionalCSV(query.Countries),
+		Importances: optionalCSV(query.Importances),
+		Watcher:     watcherUUID(query.Watcher),
+		PageSize:    limit + 1,
+	}
+	if cursor != nil {
+		params.CursorScheduledAt = pgtype.Timestamptz{Time: cursor.At, Valid: true}
+		params.CursorID = pgtype.UUID{Bytes: cursor.ID, Valid: true}
+	}
+	rows, err := repository.queries.ListReleasedCalendarEventsPage(ctx, params)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list released calendar events page: %w", err)
+	}
+	events := make([]models.EventRow, 0, min(len(rows), int(limit)))
+	for index, row := range rows {
+		if int32(index) == limit {
+			last := events[len(events)-1]
+			return events, &paging.Cursor{At: last.ScheduledAt, ID: last.ID}, nil
+		}
+		event, err := releasedRowToEvent(row)
+		if err != nil {
+			return nil, nil, err
+		}
+		events = append(events, event)
+	}
+	return events, nil, nil
+}
+
+func upcomingRowToEvent(row calendardb.ListUpcomingCalendarEventsPageRow) (models.EventRow, error) {
+	return buildEventRow(
+		row.ID, row.SourceID, row.IndicatorID, row.Name,
+		row.ScheduledAt, row.ReleasedAt,
+		row.Previous, row.Consensus, row.Actual,
+		row.CountryCode, row.Currency, row.Importance, row.Revision,
+		row.CreatedAt, row.UpdatedAt, row.IndicatorName, row.SourceName,
+	)
+}
+
+func releasedRowToEvent(row calendardb.ListReleasedCalendarEventsPageRow) (models.EventRow, error) {
+	return buildEventRow(
+		row.ID, row.SourceID, row.IndicatorID, row.Name,
+		row.ScheduledAt, row.ReleasedAt,
+		row.Previous, row.Consensus, row.Actual,
+		row.CountryCode, row.Currency, row.Importance, row.Revision,
+		row.CreatedAt, row.UpdatedAt, row.IndicatorName, row.SourceName,
+	)
+}
+
+func buildEventRow(
+	id uuid.UUID,
+	sourceID uuid.UUID,
+	indicatorID uuid.UUID,
+	name string,
+	scheduledAt pgtype.Timestamptz,
+	releasedAt pgtype.Timestamptz,
+	previous pgtype.Numeric,
+	consensus pgtype.Numeric,
+	actual pgtype.Numeric,
+	countryCode *string,
+	currency *string,
+	importance *string,
+	revision int32,
+	createdAt pgtype.Timestamptz,
+	updatedAt pgtype.Timestamptz,
+	indicatorName string,
+	sourceName string,
+) (models.EventRow, error) {
+	scheduled := timeValue(scheduledAt)
+	if scheduled == nil {
+		return models.EventRow{}, fmt.Errorf("calendar event %s has no scheduled time", id)
+	}
+	released := timeValue(releasedAt)
+	previousValue, err := numericFloat(previous)
+	if err != nil {
+		return models.EventRow{}, err
+	}
+	consensusValue, err := numericFloat(consensus)
+	if err != nil {
+		return models.EventRow{}, err
+	}
+	actualValue, err := numericFloat(actual)
+	if err != nil {
+		return models.EventRow{}, err
+	}
+	return models.EventRow{
+		ID:            id,
+		SourceID:      sourceID,
+		IndicatorID:   indicatorID,
+		Name:          name,
+		ScheduledAt:   *scheduled,
+		ReleasedAt:    released,
+		Previous:      previousValue,
+		Consensus:     consensusValue,
+		Actual:        actualValue,
+		CountryCode:   derefText(countryCode),
+		Currency:      derefText(currency),
+		Importance:    derefText(importance),
+		Revision:      revision,
+		CreatedAt:     createdAt.Time,
+		UpdatedAt:     updatedAt.Time,
+		IndicatorName: indicatorName,
+		SourceName:    sourceName,
+	}, nil
+}
+
+func derefText(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }

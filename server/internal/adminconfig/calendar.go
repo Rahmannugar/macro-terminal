@@ -14,11 +14,17 @@ type calendarEventJSON struct {
 	ID          uuid.UUID  `json:"id" example:"7d3b9f1e-5a4c-4e8b-9f2d-1c6a8b0e4f73"`
 	SourceID    uuid.UUID  `json:"sourceId" example:"5a1c3e7b-9d2f-4c8a-b6e1-7f4d2a9c3e50"`
 	IndicatorID uuid.UUID  `json:"indicatorId" example:"6b5f8e2d-4c9a-4f1e-b8d7-3a2c6e9f1b40"`
+	Name        string     `json:"name" example:"US CPI"`
 	ScheduledAt time.Time  `json:"scheduledAt" example:"2026-10-06T12:30:00Z"`
 	ReleasedAt  *time.Time `json:"releasedAt" example:"2026-10-06T12:30:00Z"`
 	Previous    *float64   `json:"previous" example:"250000"`
 	Consensus   *float64   `json:"consensus" example:"255000"`
 	Actual      *float64   `json:"actual" example:"261000"`
+	CountryCode string     `json:"countryCode" example:"US"`
+	Currency    string     `json:"currency" example:"USD"`
+	Importance  string     `json:"importance" example:"high"`
+	Revision    int32      `json:"revision" example:"0"`
+	ArchivedAt  *time.Time `json:"archivedAt" example:"2026-10-06T12:30:00Z"`
 	CreatedAt   time.Time  `json:"createdAt" example:"2026-10-06T09:00:00Z"`
 	UpdatedAt   time.Time  `json:"updatedAt" example:"2026-10-06T09:00:00Z"`
 }
@@ -35,6 +41,7 @@ type calendarEventResponse struct {
 type createCalendarEventRequest struct {
 	SourceID    uuid.UUID  `json:"sourceId" example:"5a1c3e7b-9d2f-4c8a-b6e1-7f4d2a9c3e50"`
 	IndicatorID uuid.UUID  `json:"indicatorId" example:"6b5f8e2d-4c9a-4f1e-b8d7-3a2c6e9f1b40"`
+	Name        string     `json:"name" example:"US CPI"`
 	ScheduledAt time.Time  `json:"scheduledAt" example:"2026-10-06T12:30:00Z"`
 	ReleasedAt  *time.Time `json:"releasedAt" example:"2026-10-06T12:30:00Z"`
 	Previous    *float64   `json:"previous" example:"250000"`
@@ -48,11 +55,17 @@ func newCalendarEventJSON(record calendarmodels.EventRecord) calendarEventJSON {
 		ID:          record.ID,
 		SourceID:    record.SourceID,
 		IndicatorID: record.IndicatorID,
+		Name:        record.Name,
 		ScheduledAt: record.ScheduledAt,
 		ReleasedAt:  record.ReleasedAt,
 		Previous:    record.Previous,
 		Consensus:   record.Consensus,
 		Actual:      record.Actual,
+		CountryCode: record.CountryCode,
+		Currency:    record.Currency,
+		Importance:  record.Importance,
+		Revision:    record.Revision,
+		ArchivedAt:  record.ArchivedAt,
 		CreatedAt:   record.CreatedAt,
 		UpdatedAt:   record.UpdatedAt,
 	}
@@ -143,6 +156,7 @@ func storeCalendarEvent(
 	return events.CreateCalendarEvent(ctx, calendarmodels.CreateEventEntry{
 		SourceID:    input.SourceID,
 		IndicatorID: input.IndicatorID,
+		Name:        input.Name,
 		ScheduledAt: input.ScheduledAt,
 		ReleasedAt:  input.ReleasedAt,
 		Previous:    input.Previous,
@@ -150,4 +164,104 @@ func storeCalendarEvent(
 		Actual:      input.Actual,
 		EntityIDs:   entityIDs,
 	})
+}
+
+type updateCalendarEventRequest struct {
+	Name        string     `json:"name" example:"US CPI"`
+	ScheduledAt time.Time  `json:"scheduledAt" example:"2026-10-06T12:30:00Z"`
+	ReleasedAt  *time.Time `json:"releasedAt" example:"2026-10-06T12:30:00Z"`
+	Previous    *float64   `json:"previous" example:"250000"`
+	Consensus   *float64   `json:"consensus" example:"255000"`
+	Actual      *float64   `json:"actual" example:"261000"`
+}
+
+// @Summary Update a calendar event.
+// @Description Overwrites the event's displayed name, schedule, and figures. Provider revisions continue from the stored count.
+// @Tags admin
+// @Param id path string true "The event id."
+// @Param body body updateCalendarEventRequest true "The fields to store."
+// @Success 200 {object} calendarEventResponse "The updated event."
+// @Failure 400 {object} openapi.Error "The body is invalid or the scheduled time is missing."
+// @Failure 404 {object} openapi.Error "The event does not exist."
+// @Failure 500 {object} openapi.Error "The request could not be completed."
+// @Router /api/v1/admin/calendar-events/{id} [patch]
+func updateCalendarEvent(events Events) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		id, err := uuid.Parse(ctx.Param("id"))
+		if err != nil {
+			writeFailure(ctx, http.StatusBadRequest, "invalid_event_id", "The event id must be a UUID.")
+			return
+		}
+		var request updateCalendarEventRequest
+		if err := ctx.ShouldBindJSON(&request); err != nil {
+			writeFailure(ctx, http.StatusBadRequest, "invalid_request", "The request body must be valid JSON.")
+			return
+		}
+		if request.ScheduledAt.IsZero() {
+			writeFailure(ctx, http.StatusBadRequest, "invalid_request", "A calendar event needs a scheduled time.")
+			return
+		}
+		record, err := events.UpdateCalendarEvent(ctx.Request.Context(), calendarmodels.UpdateEventEntry{
+			ID:          id,
+			Name:        request.Name,
+			ScheduledAt: request.ScheduledAt,
+			ReleasedAt:  request.ReleasedAt,
+			Previous:    request.Previous,
+			Consensus:   request.Consensus,
+			Actual:      request.Actual,
+		})
+		if err != nil {
+			writeConfigFailure(ctx, err)
+			return
+		}
+		ctx.JSON(http.StatusOK, calendarEventResponse{CalendarEvent: newCalendarEventJSON(record)})
+	}
+}
+
+// @Summary Archive a calendar event.
+// @Description Hides the event from the user calendar. Archived events stay in the admin list and can be restored.
+// @Tags admin
+// @Param id path string true "The event id."
+// @Success 204 "The event is archived."
+// @Failure 400 {object} openapi.Error "The event id is not a UUID."
+// @Failure 404 {object} openapi.Error "The event does not exist or is already archived."
+// @Failure 500 {object} openapi.Error "The request could not be completed."
+// @Router /api/v1/admin/calendar-events/{id}/archive [post]
+func archiveCalendarEvent(events Events) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		id, err := uuid.Parse(ctx.Param("id"))
+		if err != nil {
+			writeFailure(ctx, http.StatusBadRequest, "invalid_event_id", "The event id must be a UUID.")
+			return
+		}
+		if err := events.ArchiveCalendarEvent(ctx.Request.Context(), id); err != nil {
+			writeConfigFailure(ctx, err)
+			return
+		}
+		ctx.Status(http.StatusNoContent)
+	}
+}
+
+// @Summary Restore a calendar event.
+// @Description Returns an archived event to the user calendar.
+// @Tags admin
+// @Param id path string true "The event id."
+// @Success 204 "The event is restored."
+// @Failure 400 {object} openapi.Error "The event id is not a UUID."
+// @Failure 404 {object} openapi.Error "The event does not exist or is not archived."
+// @Failure 500 {object} openapi.Error "The request could not be completed."
+// @Router /api/v1/admin/calendar-events/{id}/restore [post]
+func restoreCalendarEvent(events Events) gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		id, err := uuid.Parse(ctx.Param("id"))
+		if err != nil {
+			writeFailure(ctx, http.StatusBadRequest, "invalid_event_id", "The event id must be a UUID.")
+			return
+		}
+		if err := events.RestoreCalendarEvent(ctx.Request.Context(), id); err != nil {
+			writeConfigFailure(ctx, err)
+			return
+		}
+		ctx.Status(http.StatusNoContent)
+	}
 }

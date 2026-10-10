@@ -112,6 +112,20 @@ func TestPersistCalendarEventsIsIdempotentAndRefreshesValues(t *testing.T) {
 	if !storedReleased.Equal(released) {
 		t.Fatalf("released_at = %v, want %v (the first release timestamp wins)", storedReleased, released)
 	}
+	storedRevision := calendarRevision(t, pool, eventID)
+	if storedRevision != 1 {
+		t.Fatalf("revision = %d, want 1 (the actual changed after release)", storedRevision)
+	}
+
+	// Repeating the refreshed values is not another revision.
+	if _, err := eventRepository.PersistEvents(
+		t.Context(), []calendarmodels.PersistEntry{refresh},
+	); err != nil {
+		t.Fatalf("persist unchanged pass: %v", err)
+	}
+	if storedRevision = calendarRevision(t, pool, eventID); storedRevision != 1 {
+		t.Fatalf("revision = %d, want 1 (unchanged values must not bump)", storedRevision)
+	}
 
 	// The same event linked to a second entity grows the link table only.
 	secondEntity, err := entityRepository.UpsertEntity(t.Context(), entitymodels.Entity{
@@ -184,6 +198,18 @@ func calendarEventID(
 		t.Fatalf("read event ID: %v", err)
 	}
 	return id
+}
+
+func calendarRevision(t *testing.T, pool *pgxpool.Pool, eventID uuid.UUID) int32 {
+	t.Helper()
+
+	var revision int32
+	if err := pool.QueryRow(t.Context(),
+		`SELECT revision FROM calendar_events WHERE id = $1`, eventID,
+	).Scan(&revision); err != nil {
+		t.Fatalf("read revision: %v", err)
+	}
+	return revision
 }
 
 func TestEventCacheWriteThrough(t *testing.T) {
