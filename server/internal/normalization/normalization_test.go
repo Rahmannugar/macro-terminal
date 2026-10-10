@@ -237,3 +237,28 @@ func TestArticlesNormalizesImageURL(t *testing.T) {
 		}
 	}
 }
+
+func TestArticlesStripsMarkupAndEntitiesFromTitle(t *testing.T) {
+	candidates, _ := Articles(Input{
+		SourceID:   uuid.New(),
+		SourceType: "news",
+		ConfigType: "rss",
+		Items: []FeedItem{{
+			Title: `Labour Force Survey, <span class="refper">September 2026</span>`,
+			URL:   "https://example.com/lfs",
+		}, {
+			Title: `Forex &amp; rates &#34;watch&#34;`,
+			URL:   "https://example.com/forex",
+		}},
+	})
+
+	if len(candidates) != 2 {
+		t.Fatalf("candidates = %d, want 2", len(candidates))
+	}
+	if candidates[0].Title != "Labour Force Survey, September 2026" {
+		t.Errorf("Title = %q, want markup stripped", candidates[0].Title)
+	}
+	if candidates[1].Title != `Forex & rates "watch"` {
+		t.Errorf("Title = %q, want entities decoded", candidates[1].Title)
+	}
+}

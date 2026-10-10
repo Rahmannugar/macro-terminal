@@ -211,6 +211,82 @@ var seedUniverse = []seedSource{
 		}},
 	},
 	{
+		name:       "CNBC",
+		sourceType: "news",
+		configurations: []seedConfiguration{
+			{kind: "rss", config: `{"url":"https://www.cnbc.com/id/100003114/device/rss/rss.html"}`},
+			{kind: "rss", config: `{"url":"https://www.cnbc.com/id/20910258/device/rss/rss.html"}`},
+			{kind: "rss", config: `{"url":"https://www.cnbc.com/id/10000664/device/rss/rss.html"}`},
+			{kind: "rss", config: `{"url":"https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20409666"}`},
+		},
+	},
+	{
+		name:       "MarketWatch",
+		sourceType: "news",
+		configurations: []seedConfiguration{
+			{kind: "rss", config: `{"url":"https://feeds.marketwatch.com/marketwatch/topstories"}`},
+			{kind: "rss", config: `{"url":"https://feeds.marketwatch.com/marketwatch/bulletins"}`},
+		},
+	},
+	{
+		name:       "Investing.com",
+		sourceType: "news",
+		configurations: []seedConfiguration{
+			{kind: "rss", config: `{"url":"https://www.investing.com/rss/news_14.rss"}`},
+			{kind: "rss", config: `{"url":"https://www.investing.com/rss/news_95.rss"}`},
+			{kind: "rss", config: `{"url":"https://www.investing.com/rss/news_1.rss"}`},
+			{kind: "rss", config: `{"url":"https://www.investing.com/rss/news_11.rss"}`},
+		},
+	},
+	{
+		name:       "Financial Times",
+		sourceType: "news",
+		configurations: []seedConfiguration{
+			{kind: "rss", config: `{"url":"https://www.ft.com/markets?format=rss"}`},
+			{kind: "rss", config: `{"url":"https://www.ft.com/global-economy?format=rss"}`},
+		},
+	},
+	{
+		name:       "FXStreet",
+		sourceType: "news",
+		configurations: []seedConfiguration{{
+			kind:   "rss",
+			config: `{"url":"https://www.fxstreet.com/rss/news"}`,
+		}},
+	},
+	{
+		name:       "Seeking Alpha",
+		sourceType: "news",
+		configurations: []seedConfiguration{
+			{kind: "rss", config: `{"url":"https://seekingalpha.com/market_currents.xml"}`},
+			{kind: "rss", config: `{"url":"https://seekingalpha.com/feed.xml"}`},
+		},
+	},
+	{
+		name:       "Fortune",
+		sourceType: "news",
+		configurations: []seedConfiguration{{
+			kind:   "rss",
+			config: `{"url":"https://fortune.com/feed/"}`,
+		}},
+	},
+	{
+		name:       "The Economist",
+		sourceType: "news",
+		configurations: []seedConfiguration{{
+			kind:   "rss",
+			config: `{"url":"https://www.economist.com/finance-and-economics/rss.xml"}`,
+		}},
+	},
+	{
+		name:       "Yahoo Finance",
+		sourceType: "news",
+		configurations: []seedConfiguration{{
+			kind:   "rss",
+			config: `{"url":"https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5EGSPC&region=US&lang=en-US"}`,
+		}},
+	},
+	{
 		name:       "GDELT Crypto",
 		sourceType: "news",
 		configurations: []seedConfiguration{{
@@ -236,7 +312,7 @@ var seedUniverse = []seedSource{
 	},
 	{
 		name:       "Official crypto/project sources",
-		sourceType: "news",
+		sourceType: "official",
 		configurations: []seedConfiguration{
 			{kind: "rss", config: `{"url":"https://bitcoincore.org/en/feed.xml"}`},
 			{kind: "rss", config: `{"url":"https://blog.ethereum.org/feed.xml"}`},

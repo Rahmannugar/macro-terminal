@@ -10,7 +10,9 @@ package normalization
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -101,7 +103,7 @@ func newCandidate(in Input, item FeedItem) (Candidate, bool) {
 	if !ok {
 		return Candidate{}, false
 	}
-	title := collapseWhitespace(item.Title)
+	title := plainTitle(item.Title)
 	if title == "" {
 		return Candidate{}, false
 	}
@@ -118,6 +120,15 @@ func newCandidate(in Input, item FeedItem) (Candidate, bool) {
 		PublishedAt: item.Published,
 	}, true
 }
+
+// plainTitle strips markup and decodes entities — several feeds ship
+// titles wrapped in spans or HTML-encoded.
+func plainTitle(value string) string {
+	unescaped := html.UnescapeString(value)
+	return collapseWhitespace(titleTag.ReplaceAllString(unescaped, " "))
+}
+
+var titleTag = regexp.MustCompile(`</?[a-zA-Z!?][^>]*>`)
 
 // maxImageURLLength rejects absurd links outright.
 const maxImageURLLength = 2048

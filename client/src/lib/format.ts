@@ -22,11 +22,27 @@ export function toParagraphs(value: string | null | undefined): string[] {
     .replace(/&quot;/g, '"')
     .replace(/&#0?39;/g, "'")
     .replace(/&#x27;/gi, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (match, code: string) =>
+      decodeCodePoint(Number.parseInt(code, 16), match),
+    )
+    .replace(/&#(\d+);/g, (match, code: string) => decodeCodePoint(Number(code), match))
     .replace(/&amp;/g, "&");
   return text
     .split(/\n+/)
     .map((line) => line.replace(/\s+/g, " ").trim())
     .filter(Boolean);
+}
+
+function decodeCodePoint(code: number, fallback: string): string {
+  if (
+    !Number.isInteger(code) ||
+    code < 0 ||
+    code > 0x10ffff ||
+    (code >= 0xd800 && code <= 0xdfff)
+  ) {
+    return fallback;
+  }
+  return String.fromCodePoint(code);
 }
 
 export function plainSnippet(value: string | null | undefined, maxLength = 180): string {
