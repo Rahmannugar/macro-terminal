@@ -85,8 +85,6 @@ WHERE (article.content IS NULL OR btrim(article.content) = '')
         SELECT 1
         FROM source_configurations AS configuration
         WHERE configuration.source_id = article.source_id
-          AND configuration.type = 'web'
-          AND configuration.config->'selectors'->>'content' IS NOT NULL
     )
   AND NOT EXISTS (
         SELECT 1
@@ -98,8 +96,10 @@ ORDER BY article.created_at
 LIMIT $1
 `
 
-// Content discovery fills articles a listing page produced without a body,
-// limited to sources configured with a content selector.
+// Content discovery fills articles a listing page produced without a body.
+// Any source with a configuration is eligible: the configuration supplies
+// request defaults, and the article page itself is always fetched as a web
+// page regardless of the configuration's listing type.
 func (q *Queries) EnqueueMissingContentJobs(ctx context.Context, limit int32) (int64, error) {
 	result, err := q.db.Exec(ctx, enqueueMissingContentJobs, limit)
 	if err != nil {
@@ -167,9 +167,9 @@ FROM articles AS article
 JOIN sources AS source ON source.id = article.source_id
 JOIN source_configurations AS configuration
      ON configuration.source_id = article.source_id
-    AND configuration.type = 'web'
 WHERE article.id = $1
-ORDER BY configuration.id
+ORDER BY CASE WHEN configuration.type = 'web' THEN 0 ELSE 1 END,
+         configuration.id
 LIMIT 1
 `
 

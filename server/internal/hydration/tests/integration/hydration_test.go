@@ -26,26 +26,28 @@ func TestContentEnqueueGuards(t *testing.T) {
 		`{"url":"https://example.test/other","selectors":{"item":"li","title":"a"}}`)
 	apiSource := seedHydrationSource(t, pool, sourceRepository, "API Source", "api",
 		`{"url":"https://api.example.test/articles"}`)
+	configlessSource := seedConfiglessHydrationSource(t, pool, sourceRepository, "Configless Source")
 
 	seedHydratableArticle(t, pool, hydratedSource, "Missing body", "https://example.test/a")
 	existing := "<p>Existing.</p>"
 	seedHydrationArticle(t, pool, hydratedSource, "Already has body", "https://example.test/b", &existing)
 	seedHydratableArticle(t, pool, selectorlessSource, "No selector source", "https://example.test/c")
 	seedHydratableArticle(t, pool, apiSource, "API source", "https://example.test/d")
+	seedHydratableArticle(t, pool, configlessSource, "Configless source", "https://example.test/e")
 
 	queued, err := repository.EnqueueMissingContentJobs(t.Context(), 16)
 	if err != nil {
 		t.Fatalf("enqueue content jobs: %v", err)
 	}
-	if queued != 1 {
-		t.Fatalf("first enqueue = %d, want 1 (only the empty article on the selector source)", queued)
+	if queued != 3 {
+		t.Fatalf("first enqueue = %d, want 3 (every empty article whose source has a configuration)", queued)
 	}
 	queued, err = repository.EnqueueMissingContentJobs(t.Context(), 16)
 	if err != nil {
 		t.Fatalf("repeat enqueue: %v", err)
 	}
 	if queued != 0 {
-		t.Fatalf("repeat enqueue = %d, want 0 (the queued row blocks requeueing)", queued)
+		t.Fatalf("repeat enqueue = %d, want 0 (the queued rows block requeueing)", queued)
 	}
 }
 
@@ -151,6 +153,48 @@ func TestPermanentContentFailureBlocksRequeue(t *testing.T) {
 	}
 }
 
+func TestContentTargetPrefersWebConfig(t *testing.T) {
+	pool := testdb.OpenMigratedDatabase(t)
+	repository := hydrationrepositories.NewRepository(pool, nil)
+	sourceRepository := sourcerepositories.NewSourceRepository(pool)
+
+	sourceID := seedHydrationSource(t, pool, sourceRepository, "Mixed Source", "rss", `{"url":"https://example.test/feed"}`)
+	if _, err := sourceRepository.CreateSourceConfiguration(t.Context(), sourcemodels.SourceConfiguration{
+		ID:       testID(t),
+		SourceID: sourceID,
+		Type:     "web",
+		Config:   []byte(`{"url":"https://example.test/listing","selectors":{"item":"li","title":"a"}}`),
+	}); err != nil {
+		t.Fatalf("create web configuration: %v", err)
+	}
+	articleID := seedHydratableArticle(t, pool, sourceID, "Mixed article", "https://example.test/mixed")
+
+	target, err := repository.ContentTarget(t.Context(), articleID)
+	if err != nil {
+		t.Fatalf("content target: %v", err)
+	}
+	if target.ConfigurationType != "web" {
+		t.Errorf("configuration type = %q, want web (preferred over the rss configuration)", target.ConfigurationType)
+	}
+}
+
+func TestContentTargetUsesOnlyConfigForRSSSource(t *testing.T) {
+	pool := testdb.OpenMigratedDatabase(t)
+	repository := hydrationrepositories.NewRepository(pool, nil)
+	sourceRepository := sourcerepositories.NewSourceRepository(pool)
+
+	sourceID := seedHydrationSource(t, pool, sourceRepository, "RSS Source", "rss", `{"url":"https://example.test/feed"}`)
+	articleID := seedHydratableArticle(t, pool, sourceID, "RSS article", "https://example.test/rss-article")
+
+	target, err := repository.ContentTarget(t.Context(), articleID)
+	if err != nil {
+		t.Fatalf("content target: %v", err)
+	}
+	if target.ConfigurationType != "rss" {
+		t.Errorf("configuration type = %q, want rss (the source's only configuration)", target.ConfigurationType)
+	}
+}
+
 func seedHydrationSource(
 	t *testing.T,
 	pool *pgxpool.Pool,
@@ -173,6 +217,22 @@ func seedHydrationSource(
 		Config:   []byte(config),
 	}); err != nil {
 		t.Fatalf("create source configuration: %v", err)
+	}
+	return source.ID
+}
+
+func seedConfiglessHydrationSource(
+	t *testing.T,
+	pool *pgxpool.Pool,
+	sourceRepository *sourcerepositories.SourceRepository,
+	name string,
+) uuid.UUID {
+	t.Helper()
+	source, err := sourceRepository.UpsertSource(t.Context(), sourcemodels.Source{
+		ID: testID(t), Name: name, Type: "news",
+	})
+	if err != nil {
+		t.Fatalf("create source: %v", err)
 	}
 	return source.ID
 }

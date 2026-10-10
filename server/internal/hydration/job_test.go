@@ -111,6 +111,14 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 }
 
+const longText = "The Federal Reserve held its benchmark interest rate steady today, " +
+	"signaling that policymakers want to see more evidence that inflation is " +
+	"returning to target before easing further. In the statement released " +
+	"Wednesday, the committee noted that growth remains solid and the labor " +
+	"market is still tight, while price pressures have continued to moderate " +
+	"over the past several months. Officials reiterated their data-dependent " +
+	"approach and declined to commit to the timing of any future change."
+
 func configuredTarget(contentSelector string) models.ContentTarget {
 	config := map[string]any{
 		"url": "https://example.com/listing",
@@ -189,7 +197,33 @@ func TestCyclePermanentlyFailsMissingArticle(t *testing.T) {
 	}
 }
 
-func TestCyclePermanentlyFailsWithoutContentSelector(t *testing.T) {
+func TestCycleHydratesWithoutContentSelector(t *testing.T) {
+	workID := uuid.New()
+	target := configuredTarget("")
+	repository := &fakeRepository{
+		claimed: []models.ClaimedJob{{ID: workID, ArticleID: target.ArticleID, Attempts: 1}},
+		targets: map[uuid.UUID]models.ContentTarget{target.ArticleID: target},
+	}
+	fetcher := &fakeFetcher{body: []byte(
+		`<html><body><article><p>` + longText + `</p></article></body></html>`,
+	)}
+
+	err := NewJob(repository, fetcher, testLogger()).cycle(t.Context())
+	if err != nil {
+		t.Fatalf("cycle: %v", err)
+	}
+	if got := repository.stored[target.ArticleID]; got != "<p>"+longText+"</p>" {
+		t.Errorf("stored content = %q, want the generic article body", got)
+	}
+	if len(repository.completed) != 1 {
+		t.Errorf("completed = %v, want the claimed job", repository.completed)
+	}
+	if len(repository.failures) != 0 || len(repository.permanents) != 0 {
+		t.Errorf("failures = %d, permanents = %d, want none", len(repository.failures), len(repository.permanents))
+	}
+}
+
+func TestCycleBacksOffWhenGenericExtractionIsThin(t *testing.T) {
 	workID := uuid.New()
 	target := configuredTarget("")
 	repository := &fakeRepository{
@@ -198,11 +232,38 @@ func TestCyclePermanentlyFailsWithoutContentSelector(t *testing.T) {
 	}
 
 	err := NewJob(repository, &fakeFetcher{body: []byte("<html></html>")}, testLogger()).cycle(t.Context())
+	if err == nil {
+		t.Fatal("cycle error = nil, want the thin-extraction cause joined with the backoff record")
+	}
+	if len(repository.failures) != 1 {
+		t.Fatalf("failures = %+v, want one (a heuristic miss may succeed on retry)", repository.failures)
+	}
+	if len(repository.permanents) != 0 {
+		t.Errorf("permanents = %+v, want none", repository.permanents)
+	}
+	if len(repository.completed) != 0 || len(repository.stored) != 0 {
+		t.Errorf("completed = %v stored = %v, want none", repository.completed, repository.stored)
+	}
+}
+
+func TestCycleFetchesArticlePageAsWebEvenFromRSSConfig(t *testing.T) {
+	workID := uuid.New()
+	target := configuredTarget("")
+	target.ConfigurationType = "rss"
+	repository := &fakeRepository{
+		claimed: []models.ClaimedJob{{ID: workID, ArticleID: target.ArticleID, Attempts: 1}},
+		targets: map[uuid.UUID]models.ContentTarget{target.ArticleID: target},
+	}
+	fetcher := &fakeFetcher{body: []byte(
+		`<html><body><article><p>` + longText + `</p></article></body></html>`,
+	)}
+
+	err := NewJob(repository, fetcher, testLogger()).cycle(t.Context())
 	if err != nil {
 		t.Fatalf("cycle: %v", err)
 	}
-	if len(repository.permanents) != 1 {
-		t.Fatalf("permanents = %+v, want one", repository.permanents)
+	if request := fetcher.seen[0]; request.Type != "web" {
+		t.Errorf("fetch type = %q, want web (the article page is fetched as a page, not parsed as a feed)", request.Type)
 	}
 }
 

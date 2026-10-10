@@ -170,18 +170,6 @@ func (job *Job) process(
 	}
 
 	selector := normalization.ParseSelectors(target.Config).Content
-	if selector == "" {
-		stats.failedPermanent++
-		job.logger.WarnContext(ctx,
-			"Source configuration lost its content selector",
-			"event", "hydration.failed",
-			"outbox_id", work.ID,
-			"article_id", work.ArticleID,
-			"source", target.SourceName,
-			"reason", "no_content_selector",
-		)
-		return job.repository.FailPermanently(ctx, work.ID, "source configuration has no content selector")
-	}
 
 	request, err := articleRequest(target)
 	if err != nil {
@@ -210,6 +198,11 @@ func (job *Job) process(
 
 	content, err := extractContent(result.Body, selector)
 	if err != nil {
+		if selector == "" {
+			// Generic extraction is a heuristic: a thin or badly marked-up
+			// page may extract better on a later attempt.
+			return job.backoff(ctx, work, stats, err)
+		}
 		stats.failedPermanent++
 		job.logger.WarnContext(ctx,
 			"Article page content could not be extracted",
@@ -276,7 +269,8 @@ func (job *Job) logCycle(ctx context.Context, stats cycleStats) {
 
 // articleRequest points the shared ingestion fetcher at the article's own
 // page: the source's configuration supplies spacing and headers, with the
-// request URL swapped for the article's.
+// request URL swapped for the article's. The page is fetched as a web page
+// whatever the configuration's listing type is.
 func articleRequest(target models.ContentTarget) (sourcemodels.SourceConfigurationWithSource, error) {
 	var document map[string]any
 	if err := json.Unmarshal(target.Config, &document); err != nil {
@@ -291,7 +285,7 @@ func articleRequest(target models.ContentTarget) (sourcemodels.SourceConfigurati
 		SourceConfiguration: sourcemodels.SourceConfiguration{
 			ID:       target.ConfigurationID,
 			SourceID: target.SourceID,
-			Type:     target.ConfigurationType,
+			Type:     "web",
 			Config:   merged,
 		},
 		SourceName: target.SourceName,
@@ -299,13 +293,17 @@ func articleRequest(target models.ContentTarget) (sourcemodels.SourceConfigurati
 	}, nil
 }
 
-// extractContent pulls the article body the content selector names. A page
-// the selector does not fit fails the job permanently: the same markup will
-// be served on every retry.
+// extractContent pulls the article body: the configured content selector
+// when the source has one, the generic extraction otherwise. A page the
+// selector does not fit fails permanently — the same markup will be served
+// on every retry.
 func extractContent(body []byte, selector string) (string, error) {
 	document, err := goquery.NewDocumentFromReader(bytes.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("parse article page: %w", err)
+	}
+	if selector == "" {
+		return extractGenericContent(document)
 	}
 	match := document.Find(selector).First()
 	if match.Length() == 0 {
