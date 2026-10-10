@@ -3,6 +3,7 @@ import { formatTimestamp, plainSnippet } from "../lib/format";
 import type { ArticleSummary } from "../lib/terminal";
 import { ArticleImage } from "./article-image";
 import { Button } from "./ui/button";
+import { SkeletonList } from "./ui/skeleton";
 
 type ArticleListProps = {
   articles: ArticleSummary[];
@@ -28,11 +29,7 @@ export function ArticleList({
   emptyLabel = "Nothing here yet.",
 }: ArticleListProps) {
   if (loading) {
-    return (
-      <div className="rounded-xl border border-border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
-        Loading…
-      </div>
-    );
+    return <SkeletonList rows={4} />;
   }
   if (error) {
     return (

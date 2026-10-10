@@ -10,6 +10,7 @@ import {
   signIn,
   signOut,
   signUp,
+  updateUsername,
   verifyEmail,
 } from "../lib/auth";
 
@@ -72,5 +73,13 @@ export function useSignOut() {
   return useMutation({
     mutationFn: signOut,
     onSettled: () => queryClient.removeQueries({ queryKey: authenticationQueryKey }),
+  });
+}
+
+export function useUpdateUsername() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ username }: { username: string }) => updateUsername(username),
+    onSuccess: (data) => queryClient.setQueryData(authenticationQueryKey, data),
   });
 }

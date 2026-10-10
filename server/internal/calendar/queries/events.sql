@@ -84,6 +84,8 @@ FROM calendar_events AS ce
 JOIN economic_indicators AS ei ON ei.id = ce.indicator_id
 JOIN sources AS s ON s.id = ce.source_id
 WHERE ce.scheduled_at >= sqlc.arg('not_before')
+  AND (sqlc.narg('not_after')::timestamptz IS NULL
+       OR ce.scheduled_at < sqlc.narg('not_after')::timestamptz)
   AND ce.archived_at IS NULL
   AND ce.id = (
       SELECT peer.id
@@ -123,6 +125,8 @@ FROM calendar_events AS ce
 JOIN economic_indicators AS ei ON ei.id = ce.indicator_id
 JOIN sources AS s ON s.id = ce.source_id
 WHERE ce.scheduled_at < sqlc.arg('not_after')
+  AND (sqlc.narg('not_before')::timestamptz IS NULL
+       OR ce.scheduled_at >= sqlc.narg('not_before')::timestamptz)
   AND ce.archived_at IS NULL
   AND ce.id = (
       SELECT peer.id

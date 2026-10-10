@@ -448,10 +448,14 @@ func (repository *EventRepository) UpcomingEventsPage(
 ) ([]models.EventRow, *paging.Cursor, error) {
 	params := calendardb.ListUpcomingCalendarEventsPageParams{
 		NotBefore:   timestampValueUnchecked(query.Now),
+		NotAfter:    timestampValue(query.To),
 		Countries:   optionalCSV(query.Countries),
 		Importances: optionalCSV(query.Importances),
 		Watcher:     watcherUUID(query.Watcher),
 		PageSize:    limit + 1,
+	}
+	if query.From != nil {
+		params.NotBefore = timestampValueUnchecked(*query.From)
 	}
 	if cursor != nil {
 		params.CursorScheduledAt = pgtype.Timestamptz{Time: cursor.At, Valid: true}
@@ -486,10 +490,14 @@ func (repository *EventRepository) ReleasedEventsPage(
 ) ([]models.EventRow, *paging.Cursor, error) {
 	params := calendardb.ListReleasedCalendarEventsPageParams{
 		NotAfter:    timestampValueUnchecked(query.Now),
+		NotBefore:   timestampValue(query.From),
 		Countries:   optionalCSV(query.Countries),
 		Importances: optionalCSV(query.Importances),
 		Watcher:     watcherUUID(query.Watcher),
 		PageSize:    limit + 1,
+	}
+	if query.To != nil {
+		params.NotAfter = timestampValueUnchecked(*query.To)
 	}
 	if cursor != nil {
 		params.CursorScheduledAt = pgtype.Timestamptz{Time: cursor.At, Valid: true}

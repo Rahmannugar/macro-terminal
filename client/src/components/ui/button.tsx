@@ -3,7 +3,6 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "secondary" | "quiet";
   pending?: boolean;
-  pendingLabel?: string;
   children: ReactNode;
 };
 
@@ -19,7 +18,6 @@ const variantClasses: Record<NonNullable<ButtonProps["variant"]>, string> = {
 export function Button({
   variant = "primary",
   pending = false,
-  pendingLabel = "Working…",
   className,
   disabled,
   children,
@@ -33,7 +31,14 @@ export function Button({
       disabled={disabled || pending}
       {...rest}
     >
-      {pending ? pendingLabel : children}
+      {pending ? (
+        <span
+          aria-hidden="true"
+          className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+        />
+      ) : (
+        children
+      )}
     </button>
   );
 }

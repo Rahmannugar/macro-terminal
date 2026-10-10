@@ -36,11 +36,17 @@ func extractGenericContent(document *goquery.Document) (string, error) {
 	return containerContent(container)
 }
 
+// chromeSelectors are page-chrome regions that never hold article body:
+// navigation bars, breadcrumbs, headers, footers, and asides.
+var chromeSelectors = "script, style, noscript, template, nav, header, footer, aside, [role=navigation], [role=breadcrumb], [aria-label*=readcrumb], [class*=readcrumb], [class*=Breadcrumbs]"
+
 func containerContent(node *goquery.Selection) (string, error) {
-	if len(strings.TrimSpace(node.Text())) < minGenericContentLength {
+	clone := node.Clone()
+	clone.Find(chromeSelectors).Remove()
+	if len(strings.TrimSpace(clone.Text())) < minGenericContentLength {
 		return "", errors.New("container holds too little text")
 	}
-	html, err := node.Html()
+	html, err := clone.Html()
 	if err != nil {
 		return "", fmt.Errorf("read content container: %w", err)
 	}
@@ -62,6 +68,9 @@ func densestParagraphContainer(document *goquery.Document) (*goquery.Selection, 
 	}
 	byNode := map[*html.Node]*candidate{}
 	document.Find("p").Each(func(_ int, paragraph *goquery.Selection) {
+		if paragraph.Closest("nav, header, footer, aside, [role=navigation], [role=breadcrumb], [class*=readcrumb]").Length() > 0 {
+			return
+		}
 		text := len(strings.TrimSpace(paragraph.Text()))
 		if text == 0 {
 			return

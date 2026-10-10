@@ -169,13 +169,20 @@ func importanceValue(value any) string {
 }
 
 // rowIsNonCalendar reports rows that are not economic indicators:
-// speeches, summits, holidays, and the like belong to news, not the
-// calendar store.
+// speeches, summits, and the like belong to news, not the calendar
+// store. Holidays are an exception: they stay in the calendar pipeline
+// so they never surface as news articles.
 func rowIsNonCalendar(row map[string]any) bool {
 	if value := strings.TrimSpace(textValue(row["type"])); value != "" {
+		if strings.EqualFold(value, "holiday") {
+			return false
+		}
 		return !strings.EqualFold(value, "indicator")
 	}
 	if value := strings.TrimSpace(textValue(row["category"])); value != "" {
+		if strings.EqualFold(value, "holidays") {
+			return false
+		}
 		return !strings.EqualFold(value, "economic-indicators")
 	}
 	return false

@@ -187,6 +187,8 @@ FROM calendar_events AS ce
 JOIN economic_indicators AS ei ON ei.id = ce.indicator_id
 JOIN sources AS s ON s.id = ce.source_id
 WHERE ce.scheduled_at < $1
+  AND ($2::timestamptz IS NULL
+       OR ce.scheduled_at >= $2::timestamptz)
   AND ce.archived_at IS NULL
   AND ce.id = (
       SELECT peer.id
@@ -196,29 +198,30 @@ WHERE ce.scheduled_at < $1
       ORDER BY peer.id ASC
       LIMIT 1
   )
-  AND ($2::text IS NULL
-       OR ce.country_code = ANY(string_to_array($2::text, ',')))
   AND ($3::text IS NULL
-       OR ce.importance = ANY(string_to_array($3::text, ',')))
-  AND ($4::uuid IS NULL OR EXISTS (
+       OR ce.country_code = ANY(string_to_array($3::text, ',')))
+  AND ($4::text IS NULL
+       OR ce.importance = ANY(string_to_array($4::text, ',')))
+  AND ($5::uuid IS NULL OR EXISTS (
       SELECT 1
       FROM calendar_event_entities AS link
-      JOIN user_assets AS asset ON asset.user_id = $4::uuid
+      JOIN user_assets AS asset ON asset.user_id = $5::uuid
       JOIN entity_pairs AS pair ON pair.id = asset.entity_pair_id
       WHERE link.calendar_event_id = ce.id
         AND (link.entity_id = pair.base_entity_id OR link.entity_id = pair.quote_entity_id)
   ))
-  AND ($5::timestamptz IS NULL
+  AND ($6::timestamptz IS NULL
        OR (ce.scheduled_at, ce.id) < (
-           $5::timestamptz,
-           $6::uuid
+           $6::timestamptz,
+           $7::uuid
        ))
 ORDER BY ce.scheduled_at DESC, ce.id DESC
-LIMIT $7
+LIMIT $8
 `
 
 type ListReleasedCalendarEventsPageParams struct {
 	NotAfter          pgtype.Timestamptz
+	NotBefore         pgtype.Timestamptz
 	Countries         *string
 	Importances       *string
 	Watcher           pgtype.UUID
@@ -250,6 +253,7 @@ type ListReleasedCalendarEventsPageRow struct {
 func (q *Queries) ListReleasedCalendarEventsPage(ctx context.Context, arg ListReleasedCalendarEventsPageParams) ([]ListReleasedCalendarEventsPageRow, error) {
 	rows, err := q.db.Query(ctx, listReleasedCalendarEventsPage,
 		arg.NotAfter,
+		arg.NotBefore,
 		arg.Countries,
 		arg.Importances,
 		arg.Watcher,
@@ -303,6 +307,8 @@ FROM calendar_events AS ce
 JOIN economic_indicators AS ei ON ei.id = ce.indicator_id
 JOIN sources AS s ON s.id = ce.source_id
 WHERE ce.scheduled_at >= $1
+  AND ($2::timestamptz IS NULL
+       OR ce.scheduled_at < $2::timestamptz)
   AND ce.archived_at IS NULL
   AND ce.id = (
       SELECT peer.id
@@ -312,29 +318,30 @@ WHERE ce.scheduled_at >= $1
       ORDER BY peer.id ASC
       LIMIT 1
   )
-  AND ($2::text IS NULL
-       OR ce.country_code = ANY(string_to_array($2::text, ',')))
   AND ($3::text IS NULL
-       OR ce.importance = ANY(string_to_array($3::text, ',')))
-  AND ($4::uuid IS NULL OR EXISTS (
+       OR ce.country_code = ANY(string_to_array($3::text, ',')))
+  AND ($4::text IS NULL
+       OR ce.importance = ANY(string_to_array($4::text, ',')))
+  AND ($5::uuid IS NULL OR EXISTS (
       SELECT 1
       FROM calendar_event_entities AS link
-      JOIN user_assets AS asset ON asset.user_id = $4::uuid
+      JOIN user_assets AS asset ON asset.user_id = $5::uuid
       JOIN entity_pairs AS pair ON pair.id = asset.entity_pair_id
       WHERE link.calendar_event_id = ce.id
         AND (link.entity_id = pair.base_entity_id OR link.entity_id = pair.quote_entity_id)
   ))
-  AND ($5::timestamptz IS NULL
+  AND ($6::timestamptz IS NULL
        OR (ce.scheduled_at, ce.id) > (
-           $5::timestamptz,
-           $6::uuid
+           $6::timestamptz,
+           $7::uuid
        ))
 ORDER BY ce.scheduled_at ASC, ce.id ASC
-LIMIT $7
+LIMIT $8
 `
 
 type ListUpcomingCalendarEventsPageParams struct {
 	NotBefore         pgtype.Timestamptz
+	NotAfter          pgtype.Timestamptz
 	Countries         *string
 	Importances       *string
 	Watcher           pgtype.UUID
@@ -366,6 +373,7 @@ type ListUpcomingCalendarEventsPageRow struct {
 func (q *Queries) ListUpcomingCalendarEventsPage(ctx context.Context, arg ListUpcomingCalendarEventsPageParams) ([]ListUpcomingCalendarEventsPageRow, error) {
 	rows, err := q.db.Query(ctx, listUpcomingCalendarEventsPage,
 		arg.NotBefore,
+		arg.NotAfter,
 		arg.Countries,
 		arg.Importances,
 		arg.Watcher,

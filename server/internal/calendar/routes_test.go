@@ -91,6 +91,9 @@ func TestCalendarRejectsBadQueryParameters(t *testing.T) {
 		{"/calendar-events?country=USA", "invalid_country"},
 		{"/calendar-events?importance=extreme", "invalid_importance"},
 		{"/calendar-events?watch=maybe", "invalid_watch"},
+		{"/calendar-events?from=yesterday", "invalid_from"},
+		{"/calendar-events?to=2026-13-40", "invalid_to"},
+		{"/calendar-events?from=2026-10-08T00:00:00Z&to=2026-10-07T00:00:00Z", "invalid_range"},
 	}
 	for _, testCase := range cases {
 		recorder := calendarPerform(router, testCase.target)
@@ -171,5 +174,41 @@ func TestCalendarWatchFilterRequiresSession(t *testing.T) {
 	recorder := calendarPerform(router, "/calendar-events?watch=1")
 	if recorder.Code != http.StatusUnauthorized || calendarDecodeError(t, recorder).Error.Code != "unauthenticated" {
 		t.Errorf("watch=1 without session → %d/%q, want 401 unauthenticated", recorder.Code, calendarDecodeError(t, recorder).Error.Code)
+	}
+}
+
+func TestCalendarBoundsWindowWithFromAndTo(t *testing.T) {
+	fake := &fakeEvents{}
+	router := calendarRouter(t, fake)
+
+	target := "/calendar-events?from=2026-10-06T00:00:00Z&to=2026-10-13T00:00:00Z"
+	if recorder := calendarPerform(router, target); recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s, want 200", recorder.Code, recorder.Body.String())
+	}
+	upcoming := fake.gotUpcoming
+	if upcoming.From == nil || upcoming.From.Format(time.RFC3339) != "2026-10-06T00:00:00Z" {
+		t.Errorf("From = %v, want 2026-10-06T00:00:00Z", upcoming.From)
+	}
+	if upcoming.To == nil || upcoming.To.Format(time.RFC3339) != "2026-10-13T00:00:00Z" {
+		t.Errorf("To = %v, want 2026-10-13T00:00:00Z", upcoming.To)
+	}
+
+	if recorder := calendarPerform(router, target+"&scope=released"); recorder.Code != http.StatusOK {
+		t.Fatalf("released status = %d body = %s, want 200", recorder.Code, recorder.Body.String())
+	}
+	if fake.gotReleased.From == nil || fake.gotReleased.To == nil {
+		t.Errorf("released bounds = %v/%v, want both set", fake.gotReleased.From, fake.gotReleased.To)
+	}
+}
+
+func TestCalendarLeavesBoundsUnsetByDefault(t *testing.T) {
+	fake := &fakeEvents{}
+	router := calendarRouter(t, fake)
+
+	if recorder := calendarPerform(router, "/calendar-events"); recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", recorder.Code)
+	}
+	if fake.gotUpcoming.From != nil || fake.gotUpcoming.To != nil {
+		t.Errorf("bounds = %v/%v, want both nil", fake.gotUpcoming.From, fake.gotUpcoming.To)
 	}
 }

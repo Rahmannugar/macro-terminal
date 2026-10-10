@@ -3,6 +3,8 @@ import { Bar, ComposedChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "
 import { AdminScreen } from "../components/admin/admin-screen";
 import { Button } from "../components/ui/button";
 import { Select } from "../components/ui/select";
+import { Skeleton } from "../components/ui/skeleton";
+import { Tabs } from "../components/ui/tabs";
 import { adminErrorMessage, adminRows } from "../lib/admin";
 import { candlesAscending, type Timeframe, timeframes, useCandles } from "../lib/market";
 import { usePairCatalog } from "../lib/watchlist";
@@ -59,19 +61,13 @@ export function MarketRoute() {
         </div>
         <div>
           <span className="text-sm font-medium">Interval</span>
-          <div className="mt-1.5 flex gap-2">
-            {timeframes.map((option) => (
-              <Button
-                key={option}
-                type="button"
-                variant={timeframe === option ? "primary" : "secondary"}
-                className="h-11 px-4 text-sm"
-                aria-pressed={timeframe === option}
-                onClick={() => setTimeframe(option)}
-              >
-                {option === "1min" ? "1 minute" : "1 day"}
-              </Button>
-            ))}
+          <div className="mt-1.5">
+            <Tabs
+              value={timeframe}
+              options={timeframes}
+              onChange={setTimeframe}
+              label={(option) => (option === "1min" ? "1 minute" : "1 day")}
+            />
           </div>
         </div>
       </div>
@@ -93,7 +89,7 @@ export function MarketRoute() {
             </Button>
           </div>
         ) : candles.isPending ? (
-          <p className="py-16 text-center text-sm text-muted-foreground">Loading…</p>
+          <Skeleton className="h-[440px] rounded-lg" />
         ) : chartData.length === 0 ? (
           <p className="py-16 text-center text-sm text-muted-foreground">
             {activePair

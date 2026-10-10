@@ -122,9 +122,12 @@ type EventRow struct {
 
 // EventPageQuery selects one calendar page: upcoming rows at or after Now,
 // released rows before it, narrowed by provider country and importance and
-// optionally to the watcher's followed pairs.
+// optionally to the watcher's followed pairs. From/To optionally bound the
+// window instead of Now, so the client can navigate week or month periods.
 type EventPageQuery struct {
 	Now         time.Time
+	From        *time.Time
+	To          *time.Time
 	Countries   []string
 	Importances []string
 	Watcher     *uuid.UUID

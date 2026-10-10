@@ -83,3 +83,52 @@ func TestGenericExtractionRejectsPageWithoutText(t *testing.T) {
 		t.Fatal("extract error = nil, want a rejection for a page without article text")
 	}
 }
+
+func TestGenericExtractionStripsJSONLDScripts(t *testing.T) {
+	document := parseDocument(t, `<html><body>
+		<article>
+			<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[]}</script>
+			<p>`+longText+`</p>
+		</article>
+	</body></html>`)
+
+	content, err := extractGenericContent(document)
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	if !strings.Contains(content, longText[:40]) {
+		t.Errorf("content = %q, want the article paragraph", content)
+	}
+	if strings.Contains(content, "ld+json") || strings.Contains(content, "schema.org") {
+		t.Errorf("content = %q, must not include JSON-LD script", content)
+	}
+}
+
+func TestGenericExtractionRejectsPageWithOnlyJSONLD(t *testing.T) {
+	document := parseDocument(t, `<html><body>
+		<article>
+			<script type="application/ld+json">{"@context":"https://schema.org","@type":"NewsArticle","headline":"Title"}</script>
+		</article>
+	</body></html>`)
+
+	if _, err := extractGenericContent(document); err == nil {
+		t.Fatal("extract error = nil, want a rejection for a page whose only text is JSON-LD")
+	}
+}
+
+func TestGenericExtractionStripsStyles(t *testing.T) {
+	document := parseDocument(t, `<html><body>
+		<article>
+			<style>.hero{background:url(...)}</style>
+			<p>`+longText+`</p>
+		</article>
+	</body></html>`)
+
+	content, err := extractGenericContent(document)
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	if strings.Contains(content, "<style") {
+		t.Errorf("content = %q, must not include style tag", content)
+	}
+}

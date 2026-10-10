@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Button } from "../ui/button";
+import { Skeleton } from "../ui/skeleton";
 
 export type AdminColumn<T> = {
   header: string;
@@ -32,8 +33,10 @@ export function AdminTable<T extends { id: string }>({
 }: AdminTableProps<T>) {
   if (loading) {
     return (
-      <div className="rounded-xl border border-border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
-        Loading…
+      <div className="flex flex-col gap-2">
+        {["row-1", "row-2", "row-3", "row-4", "row-5"].map((key) => (
+          <Skeleton key={key} className="h-12 rounded-xl" />
+        ))}
       </div>
     );
   }

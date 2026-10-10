@@ -41,8 +41,11 @@ func TestCalendarEventsParsesFinanceCalendarShape(t *testing.T) {
 	if stats.Rows != 2 || stats.Malformed != 0 {
 		t.Fatalf("stats = %+v, want 2 rows, 0 malformed", stats)
 	}
-	if len(events) != 1 {
-		t.Fatalf("events = %d, want 1 calendar event", len(events))
+	if len(events) != 2 {
+		t.Fatalf("events = %d, want 2 (indicator and holiday both stay in the calendar pipeline)", len(events))
+	}
+	if len(news) != 0 {
+		t.Fatalf("news = %d, want 0 (holidays must not surface as news)", len(news))
 	}
 	cpi := events[0]
 	if cpi.Name != "CPI y/y" {
@@ -55,15 +58,8 @@ func TestCalendarEventsParsesFinanceCalendarShape(t *testing.T) {
 	assertFloat(t, "Previous", cpi.Previous, 3.0)
 	assertFloat(t, "Consensus", cpi.Consensus, 2.9)
 	assertFloat(t, "Actual", cpi.Actual, 2.8)
-
-	if len(news) != 1 {
-		t.Fatalf("news = %d, want the holiday row", len(news))
-	}
-	if news[0].Title != "German Unity Day" || news[0].URL != "https://www.financecalendar.com/event/german-unity-day/" {
-		t.Errorf("news[0] = %+v, want holiday title and URL", news[0])
-	}
-	if stats.NewsRows != 1 || stats.NewsSkipped != 0 {
-		t.Errorf("news stats = %d/%d, want 1/0", stats.NewsRows, stats.NewsSkipped)
+	if stats.NewsRows != 0 || stats.NewsSkipped != 0 {
+		t.Errorf("news stats = %d/%d, want 0/0", stats.NewsRows, stats.NewsSkipped)
 	}
 }
 
@@ -74,10 +70,13 @@ func TestCalendarEventsParsesFinanceCalendarAllDayRow(t *testing.T) {
 		 "url": "https://www.financecalendar.com/event/german-unity-day/"}
 	]}`)
 
-	events, _, stats := CalendarEvents(body)
+	events, news, stats := CalendarEvents(body)
 
-	if stats.Malformed != 0 || len(events) != 0 {
-		t.Fatalf("all-day holiday should route to news, got events=%d stats=%+v", len(events), stats)
+	if stats.Malformed != 0 || len(events) != 1 {
+		t.Fatalf("all-day holiday should stay in the calendar pipeline, got events=%d stats=%+v", len(events), stats)
+	}
+	if len(news) != 0 {
+		t.Fatalf("news = %d, want 0 (holidays must not surface as news)", len(news))
 	}
 }
 

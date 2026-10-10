@@ -78,11 +78,13 @@ type eventListResponse struct {
 }
 
 // @Summary List calendar events.
-// @Description Returns upcoming events from now forward (the default) or released events before now, soonest first within each side. Pass the returned nextCursor to fetch the next page. Filters combine with AND.
+// @Description Returns upcoming events from now forward (the default) or released events before now, soonest first within each side. Optional from and to timestamps replace the now boundary with an explicit window; both scopes then page through that window, soonest first for upcoming and most recent first for released. Pass the returned nextCursor to fetch the next page. Filters combine with AND.
 // @Tags calendar
 // @Param limit query int false "Page size between 1 and 100. Defaults to 25."
 // @Param cursor query string false "Opaque cursor returned as nextCursor by the previous page."
 // @Param scope query string false "Which side to return: upcoming (default) or released."
+// @Param from query string false "RFC3339 lower bound for scheduled_at, inclusive."
+// @Param to query string false "RFC3339 upper bound for scheduled_at, exclusive."
 // @Param country query string false "Comma-separated ISO country codes to include, for example US,JP."
 // @Param importance query string false "Comma-separated importance levels to include: high, medium, low."
 // @Param watch query bool false "Return only events linked to pairs on the signed-in user's watch list."
@@ -134,9 +136,25 @@ func listEvents(events EventReader) gin.HandlerFunc {
 			writeFailure(ctx, http.StatusBadRequest, "invalid_watch", "Watch must be 1 or 0.")
 			return
 		}
+		from, err := parseBound(ctx.Query("from"))
+		if err != nil {
+			writeFailure(ctx, http.StatusBadRequest, "invalid_from", "From must be an RFC3339 timestamp.")
+			return
+		}
+		to, err := parseBound(ctx.Query("to"))
+		if err != nil {
+			writeFailure(ctx, http.StatusBadRequest, "invalid_to", "To must be an RFC3339 timestamp.")
+			return
+		}
+		if from != nil && to != nil && !from.Before(*to) {
+			writeFailure(ctx, http.StatusBadRequest, "invalid_range", "From must be before to.")
+			return
+		}
 
 		query := calendarmodels.EventPageQuery{
 			Now:         time.Now().UTC(),
+			From:        from,
+			To:          to,
 			Countries:   splitCodes(countries),
 			Importances: importances,
 			Watcher:     watcher,
@@ -185,6 +203,21 @@ var (
 	errInvalidWatch      = errors.New("invalid watch")
 	errInvalidImportance = errors.New("invalid importance")
 )
+
+// parseBound reads an optional RFC3339 window bound. An empty value means
+// unbounded on that side.
+func parseBound(raw string) (*time.Time, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil, nil
+	}
+	parsed, err := time.Parse(time.RFC3339, trimmed)
+	if err != nil {
+		return nil, err
+	}
+	parsed = parsed.UTC()
+	return &parsed, nil
+}
 
 func parseImportances(raw string) ([]string, error) {
 	trimmed := strings.TrimSpace(raw)

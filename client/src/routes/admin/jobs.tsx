@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { AdminScreen } from "../../components/admin/admin-screen";
 import { type AdminColumn, AdminTable } from "../../components/admin/admin-table";
@@ -25,12 +26,28 @@ export function FailedJobsScreen() {
     rowsKey: "jobs",
   });
   const post = useAdminPost(jobsKey);
+  const queryClient = useQueryClient();
   const [replayedId, setReplayedId] = useState<string | null>(null);
 
   function replay(row: FailedJobRow) {
     if (post.isPending) return;
     setReplayedId(row.id);
     post.mutate(`/api/v1/admin/jobs/${row.id}/replay`, {
+      onSuccess: () => {
+        queryClient.setQueriesData<{ pages: { rows: FailedJobRow[] }[] }>(
+          { queryKey: jobsKey },
+          (old) => {
+            if (!old) return old;
+            return {
+              ...old,
+              pages: old.pages.map((page) => ({
+                ...page,
+                rows: page.rows.filter((r) => r.id !== row.id),
+              })),
+            };
+          },
+        );
+      },
       onSettled: () => setReplayedId(null),
     });
   }

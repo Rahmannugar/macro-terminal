@@ -53,6 +53,21 @@ export async function signOut(): Promise<void> {
   await apiRequest("/auth/sign-out", { method: "POST" });
 }
 
+export async function updateUsername(username: string): Promise<Account> {
+  const response = await apiRequest("/api/v1/account", {
+    method: "PATCH",
+    body: JSON.stringify({ username }),
+  });
+  if (!isAccount(response)) {
+    throw new APIError(
+      502,
+      "invalid_response",
+      "Macro Terminal returned an unexpected account response.",
+    );
+  }
+  return response;
+}
+
 export async function loadAccount(): Promise<Account> {
   const response = await apiRequest("/api/v1/account");
   if (!isAccount(response)) {

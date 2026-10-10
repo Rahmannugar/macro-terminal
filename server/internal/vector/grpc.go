@@ -24,6 +24,9 @@ const (
 	articleIDKey   = "article_id"
 	publishedAtKey = "published_at"
 	requestWindow  = 60 * time.Second
+	// maxEmbedChars keeps title+content inside all-minilm-l6-v2's 256-token
+	// window; longer bodies are truncated rather than rejected.
+	maxEmbedChars = 900
 )
 
 var articlePredicates = []string{articleIDKey, publishedAtKey}
@@ -194,9 +197,18 @@ func articleCondition(articleID uuid.UUID) *predicates.PredicateCondition {
 
 func embedInput(article Article) string {
 	if article.Content == "" {
-		return article.Title
+		return truncateRunes(article.Title, maxEmbedChars)
 	}
-	return article.Title + "\n\n" + article.Content
+	body := article.Title + "\n\n" + article.Content
+	return truncateRunes(body, maxEmbedChars)
+}
+
+func truncateRunes(s string, limit int) string {
+	runes := []rune(s)
+	if len(runes) <= limit {
+		return s
+	}
+	return string(runes[:limit])
 }
 
 func formatPublishedAt(publishedAt time.Time) string {

@@ -118,7 +118,6 @@ export function ArticleRoute() {
           <Button
             variant="secondary"
             pending={explain.isPending}
-            pendingLabel="Explaining…"
             onClick={() => explain.mutate(id)}
           >
             Explain

@@ -3709,7 +3709,7 @@
         },
         "/api/v1/calendar-events": {
             "get": {
-                "description": "Returns upcoming events from now forward (the default) or released events before now, soonest first within each side. Pass the returned nextCursor to fetch the next page. Filters combine with AND.",
+                "description": "Returns upcoming events from now forward (the default) or released events before now, soonest first within each side. Optional from and to timestamps replace the now boundary with an explicit window; both scopes then page through that window, soonest first for upcoming and most recent first for released. Pass the returned nextCursor to fetch the next page. Filters combine with AND.",
                 "parameters": [
                     {
                         "description": "Page size between 1 and 100. Defaults to 25.",
@@ -3731,6 +3731,22 @@
                         "description": "Which side to return: upcoming (default) or released.",
                         "in": "query",
                         "name": "scope",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "RFC3339 lower bound for scheduled_at, inclusive.",
+                        "in": "query",
+                        "name": "from",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "description": "RFC3339 upper bound for scheduled_at, exclusive.",
+                        "in": "query",
+                        "name": "to",
                         "schema": {
                             "type": "string"
                         }
