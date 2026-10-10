@@ -4016,6 +4016,37 @@
                 ]
             }
         },
+        "/api/v1/events": {
+            "get": {
+                "description": "Emits a server-sent event whenever new articles are stored. Reconnecting browsers resume from the Last-Event-ID header. The connection is closed after a maximum lifetime and the browser reconnects automatically.",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "text/event-stream": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "description": "text/event-stream"
+                    },
+                    "401": {
+                        "content": {
+                            "text/event-stream": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "No valid session exists."
+                    }
+                },
+                "summary": "Stream live feed invalidation signals.",
+                "tags": [
+                    "events"
+                ]
+            }
+        },
         "/api/v1/search/articles": {
             "get": {
                 "description": "Embeds the query text, retrieves the closest indexed article ids from the vector index, and hydrates them from PostgreSQL in relevance order. Pass the returned nextCursor to fetch the next page.",

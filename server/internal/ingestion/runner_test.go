@@ -158,6 +158,25 @@ func (store *fakeArticleStore) stored() [][]articlemodels.PersistEntry {
 	return store.batches
 }
 
+type fakeNotifier struct {
+	mu      sync.Mutex
+	signals int
+	err     error
+}
+
+func (notifier *fakeNotifier) NotifyFeedChanged(context.Context) error {
+	notifier.mu.Lock()
+	defer notifier.mu.Unlock()
+	notifier.signals++
+	return notifier.err
+}
+
+func (notifier *fakeNotifier) signalCount() int {
+	notifier.mu.Lock()
+	defer notifier.mu.Unlock()
+	return notifier.signals
+}
+
 type fakeEventStore struct {
 	mu      sync.Mutex
 	err     error
@@ -205,6 +224,7 @@ func newTestRunner(
 	runner := NewRunner(
 		source, fetcher, loader, &fakeArticleStore{}, &fakeEventStore{},
 		&fakeCandleStore{}, &fakePairSource{}, discardLogger(), DefaultCadences(),
+		nil,
 	)
 	runner.now = func() time.Time { return now }
 	return runner, &now
@@ -487,6 +507,50 @@ func TestRunnerStoresMappingOutcomes(t *testing.T) {
 	}
 	if len(entries[1].EntityIDs) != 0 {
 		t.Fatalf("unmatched entry entities = %v, want none", entries[1].EntityIDs)
+	}
+}
+
+func TestRunnerPublishesFeedSignalAfterStoringArticles(t *testing.T) {
+	news := configuration(uuid.New(), "CoinDesk", "news", "rss")
+	source := &fakeConfigurationSource{
+		configurations: []models.SourceConfigurationWithSource{news},
+	}
+	fetcher := &fakeSourceFetcher{byID: map[uuid.UUID]fakeFetchResult{
+		news.ID: {result: Result{
+			BaseURL: "https://example.com",
+			Items:   []Item{{Title: "Federal Reserve holds rates", URL: "https://example.com/fed"}},
+		}},
+	}}
+	runner, _ := newTestRunner(source, fetcher, &fakeDictionaryLoader{})
+	notifier := &fakeNotifier{}
+	runner.notifier = notifier
+
+	runner.runDue(context.Background())
+
+	if notifier.signalCount() != 1 {
+		t.Fatalf("feed signals = %d, want 1 after a non-empty persist", notifier.signalCount())
+	}
+}
+
+func TestRunnerFeedSignalFailureDoesNotStopThePass(t *testing.T) {
+	news := configuration(uuid.New(), "CoinDesk", "news", "rss")
+	source := &fakeConfigurationSource{
+		configurations: []models.SourceConfigurationWithSource{news},
+	}
+	fetcher := &fakeSourceFetcher{byID: map[uuid.UUID]fakeFetchResult{
+		news.ID: {result: Result{
+			BaseURL: "https://example.com",
+			Items:   []Item{{Title: "Federal Reserve holds rates", URL: "https://example.com/fed"}},
+		}},
+	}}
+	runner, _ := newTestRunner(source, fetcher, &fakeDictionaryLoader{})
+	runner.notifier = &fakeNotifier{err: errors.New("redis down")}
+
+	runner.runDue(context.Background())
+
+	batches := testArticleStore(runner).stored()
+	if len(batches) != 1 {
+		t.Fatalf("persist batches = %d, want 1 (a signal failure must not stop storing)", len(batches))
 	}
 }
 

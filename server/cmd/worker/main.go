@@ -19,6 +19,7 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/enrichment"
 	enrichmentrepositories "github.com/Rahmannugar/macro-terminal/server/internal/enrichment/repositories"
 	entityrepositories "github.com/Rahmannugar/macro-terminal/server/internal/entities/repositories"
+	"github.com/Rahmannugar/macro-terminal/server/internal/events"
 	"github.com/Rahmannugar/macro-terminal/server/internal/hydration"
 	hydrationrepositories "github.com/Rahmannugar/macro-terminal/server/internal/hydration/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/indexing"
@@ -130,6 +131,7 @@ func run() (runError error) {
 		entityRepository,
 		logger,
 		ingestion.DefaultCadences(),
+		events.NewFeedSignaler(redisClient),
 	)
 
 	signalContext, stopSignals := signal.NotifyContext(

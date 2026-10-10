@@ -55,6 +55,13 @@ type ArticleStore interface {
 	) (articlemodels.PersistStats, error)
 }
 
+// FeedNotifier signals connected clients that new articles were stored; the
+// event stream publisher implements it. Publishing is best-effort and never
+// fails a persist pass.
+type FeedNotifier interface {
+	NotifyFeedChanged(context.Context) error
+}
+
 // EventStore persists classified calendar events with their entity links;
 // the calendar repository implements it.
 type EventStore interface {
@@ -92,13 +99,15 @@ type Runner struct {
 	pairs          PairSource
 	logger         *slog.Logger
 	cadences       Cadences
+	notifier       FeedNotifier
 	tick           time.Duration
 	now            func() time.Time
 	wake           chan struct{}
 	concurrency    int
 }
 
-// NewRunner builds the schedule loop.
+// NewRunner builds the schedule loop. The notifier may be nil, in which case
+// no feed signal is published after article persists.
 func NewRunner(
 	configurations ConfigurationSource,
 	fetcher SourceFetcher,
@@ -109,6 +118,7 @@ func NewRunner(
 	pairs PairSource,
 	logger *slog.Logger,
 	cadences Cadences,
+	notifier FeedNotifier,
 ) *Runner {
 	return &Runner{
 		configurations: configurations,
@@ -120,6 +130,7 @@ func NewRunner(
 		pairs:          pairs,
 		logger:         logger,
 		cadences:       cadences,
+		notifier:       notifier,
 		tick:           runnerTick,
 		now:            time.Now,
 		wake:           make(chan struct{}, 1),
@@ -681,4 +692,14 @@ func (runner *Runner) storeCandidates(
 		"unmapped_queued", stats.UnmappedQueued,
 		"resolved", stats.Resolved,
 	)
+	if len(entries) > 0 && runner.notifier != nil {
+		if err := runner.notifier.NotifyFeedChanged(ctx); err != nil {
+			runner.logger.WarnContext(ctx, "Failed to publish feed signal",
+				"event", "ingestion.feed.signal.failed",
+				"operation", "ingestion.feed.signal",
+				"source", configuration.SourceName,
+				"error", err,
+			)
+		}
+	}
 }

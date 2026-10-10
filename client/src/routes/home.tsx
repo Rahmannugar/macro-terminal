@@ -1,7 +1,10 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link } from "react-router";
 import { ArticleList } from "../components/article-list";
 import { useAccount } from "../hooks/use-account";
-import { adminErrorMessage, adminRows, useAdminList } from "../lib/admin";
+import { useLiveFeed } from "../hooks/use-live-feed";
+import { adminErrorMessage, adminRows, requestAdminPage, useAdminList } from "../lib/admin";
 import { formatTimestamp } from "../lib/format";
 import type { ArticleSummary, CalendarEvent } from "../lib/terminal";
 import { useFollowedPairs } from "../lib/watchlist";
@@ -9,6 +12,8 @@ import { useFollowedPairs } from "../lib/watchlist";
 export function HomeRoute() {
   const account = useAccount();
   const data = account.data;
+  const queryClient = useQueryClient();
+  const [newCount, setNewCount] = useState<number | null>(null);
   const followed = useFollowedPairs();
   const feed = useAdminList<ArticleSummary>({
     key: ["feed"],
@@ -21,7 +26,29 @@ export function HomeRoute() {
     rowsKey: "calendarEvents",
   });
 
+  useLiveFeed(async () => {
+    const loadedIds = new Set(adminRows(feed).map((article) => article.id));
+    try {
+      const page = await requestAdminPage<ArticleSummary>(
+        "/api/v1/articles",
+        "articles",
+        undefined,
+        null,
+      );
+      const fresh = page.rows.filter((article) => !loadedIds.has(article.id)).length;
+      if (fresh > 0) setNewCount(fresh);
+    } catch {
+      // A failed count must not disturb the open feed; the signal fires again
+      // on the next stored batch.
+    }
+  }, !!data);
+
   if (!data) return null;
+
+  const applyFeedRefresh = () => {
+    setNewCount(null);
+    queryClient.resetQueries({ queryKey: ["feed"] });
+  };
 
   const isAdmin = data.account.role === "admin";
   const followedRows = adminRows(followed);
@@ -96,6 +123,15 @@ export function HomeRoute() {
           </Link>
         </div>
         <div className="mt-3">
+          {newCount !== null && newCount > 0 ? (
+            <button
+              type="button"
+              onClick={applyFeedRefresh}
+              className="mb-3 flex w-full items-center justify-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-medium text-primary transition-colors hover:bg-primary/15"
+            >
+              {newCount === 1 ? "1 new article" : `${newCount} new articles`}
+            </button>
+          ) : null}
           <ArticleList
             articles={adminRows(feed)}
             linkState={{ from: "/" }}

@@ -20,6 +20,7 @@ import (
 	enrichmentrepositories "github.com/Rahmannugar/macro-terminal/server/internal/enrichment/repositories"
 	entityrepositories "github.com/Rahmannugar/macro-terminal/server/internal/entities/repositories"
 	entityservices "github.com/Rahmannugar/macro-terminal/server/internal/entities/services"
+	"github.com/Rahmannugar/macro-terminal/server/internal/events"
 	"github.com/Rahmannugar/macro-terminal/server/internal/explanation"
 	"github.com/Rahmannugar/macro-terminal/server/internal/health"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
@@ -107,6 +108,7 @@ func newRouter(
 	assets.RegisterWatchListRoutes(userGroup, userAssetService)
 	articles.RegisterFeedRoutes(userGroup, articles.NewFeedService(articleRepository, articleRepository, userAssetService))
 	calendar.RegisterRoutes(userGroup, calendarrepositories.NewEventRepository(database, resourceStore))
+	events.RegisterEventsRoutes(userGroup, redisClient)
 	market.RegisterRoutes(router, marketrepositories.NewCandleRepository(database))
 
 	explanation.RegisterRoutes(router, explanation.NewService(
