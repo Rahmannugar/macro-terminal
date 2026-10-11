@@ -5,7 +5,8 @@ import { type AdminColumn, AdminTable } from "../../components/admin/admin-table
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Field } from "../../components/ui/field";
-import { Select, Textarea } from "../../components/ui/select";
+import { Input } from "../../components/ui/input";
+import { Select } from "../../components/ui/select";
 import { labelFor, useSourceNames, useSourceRows } from "../../hooks/use-references";
 import {
   adminErrorMessage,
@@ -75,7 +76,7 @@ export function SourceConfigurationsScreen() {
   return (
     <AdminScreen
       title="Source configurations"
-      description="Fetch payloads per source — urls, intervals, selectors, and environment references. Secrets live in environment variables, never here."
+      description="Set up how each source is fetched — feed URLs, intervals, and selectors."
       actions={
         <Button className="h-10" onClick={() => setCreateOpen(true)}>
           Create configuration
@@ -103,16 +104,6 @@ export function SourceConfigurationsScreen() {
   );
 }
 
-function parseConfig(text: string): Record<string, unknown> | null {
-  try {
-    const parsed: unknown = JSON.parse(text);
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
-    return parsed as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
 function CreateConfigurationDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const create = useAdminCreate<{
     sourceId: string;
@@ -122,13 +113,13 @@ function CreateConfigurationDialog({ open, onClose }: { open: boolean; onClose: 
   const sources = useSourceRows();
   const [sourceId, setSourceId] = useState("");
   const [type, setType] = useState("rss");
-  const [configText, setConfigText] = useState('{\n  "url": "https://example.com/feed.xml"\n}');
+  const [url, setUrl] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
 
   function close() {
     setSourceId("");
     setType("rss");
-    setConfigText('{\n  "url": "https://example.com/feed.xml"\n}');
+    setUrl("");
     setLocalError(null);
     create.reset();
     onClose();
@@ -139,13 +130,12 @@ function CreateConfigurationDialog({ open, onClose }: { open: boolean; onClose: 
       setLocalError("Select a source.");
       return;
     }
-    const config = parseConfig(configText);
-    if (!config) {
-      setLocalError("Configuration must be a JSON object.");
+    if (!url.trim()) {
+      setLocalError("Enter a feed URL.");
       return;
     }
     setLocalError(null);
-    create.mutate({ sourceId, type, config }, { onSuccess: close });
+    create.mutate({ sourceId, type, config: { url: url.trim() } }, { onSuccess: close });
   }
 
   return (
@@ -153,7 +143,7 @@ function CreateConfigurationDialog({ open, onClose }: { open: boolean; onClose: 
       open={open}
       onClose={close}
       title="Create configuration"
-      description="The url is checked against the server's fetch policy before anything is stored."
+      description="Point a source at a feed URL or API endpoint."
       pending={create.isPending}
       errorMessage={localError ?? adminErrorMessage(create.error)}
       onSubmit={submit}
@@ -191,18 +181,14 @@ function CreateConfigurationDialog({ open, onClose }: { open: boolean; onClose: 
           <option value="web">web</option>
         </Select>
       </Field>
-      <Field
-        label="Configuration"
-        htmlFor="config-payload"
-        hint="JSON object. Reference secrets through *_env keys instead of inline values."
-      >
-        <Textarea
-          id="config-payload"
-          rows={9}
-          value={configText}
+      <Field label="Feed URL" htmlFor="config-url">
+        <Input
+          id="config-url"
+          value={url}
+          placeholder="https://example.com/feed.xml"
           spellCheck={false}
           onChange={(event) => {
-            setConfigText(event.target.value);
+            setUrl(event.target.value);
             setLocalError(null);
             create.reset();
           }}
@@ -225,8 +211,10 @@ function EditConfigurationDialog({
       ? `/api/v1/admin/source-configurations/${configuration.id}`
       : "/api/v1/admin/source-configurations",
   );
-  const [configText, setConfigText] = useState(
-    configuration ? JSON.stringify(configuration.config, null, 2) : "",
+  const [url, setUrl] = useState(
+    configuration && typeof configuration.config.url === "string"
+      ? configuration.config.url
+      : "",
   );
   const [localError, setLocalError] = useState<string | null>(null);
 
@@ -237,13 +225,12 @@ function EditConfigurationDialog({
   }
 
   function submit() {
-    const config = parseConfig(configText);
-    if (!config) {
-      setLocalError("Configuration must be a JSON object.");
+    if (!url.trim()) {
+      setLocalError("Enter a feed URL.");
       return;
     }
     setLocalError(null);
-    replace.mutate({ config }, { onSuccess: close });
+    replace.mutate({ config: { url: url.trim() } }, { onSuccess: close });
   }
 
   if (!configuration) return null;
@@ -253,24 +240,19 @@ function EditConfigurationDialog({
       open
       onClose={close}
       title="Edit configuration"
-      description="Replaces the payload. Source and type stay fixed."
+      description="Update the feed URL or API endpoint for this source."
       submitLabel="Save"
       pending={replace.isPending}
       errorMessage={localError ?? adminErrorMessage(replace.error)}
       onSubmit={submit}
     >
-      <Field
-        label="Configuration"
-        htmlFor="config-edit-payload"
-        hint="JSON object. Reference secrets through *_env keys instead of inline values."
-      >
-        <Textarea
-          id="config-edit-payload"
-          rows={11}
-          value={configText}
+      <Field label="Feed URL" htmlFor="config-edit-url">
+        <Input
+          id="config-edit-url"
+          value={url}
           spellCheck={false}
           onChange={(event) => {
-            setConfigText(event.target.value);
+            setUrl(event.target.value);
             setLocalError(null);
             replace.reset();
           }}

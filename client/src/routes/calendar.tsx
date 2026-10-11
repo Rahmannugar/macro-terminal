@@ -1,3 +1,4 @@
+import { CaretDown, CaretLeft, CaretRight, Check } from "@phosphor-icons/react";
 import { useState } from "react";
 import { AdminScreen } from "../components/admin/admin-screen";
 import { Badge } from "../components/ui/badge";
@@ -6,10 +7,8 @@ import { Select } from "../components/ui/select";
 import { Skeleton } from "../components/ui/skeleton";
 import { Tabs } from "../components/ui/tabs";
 import { adminErrorMessage, adminRows, useAdminList } from "../lib/admin";
-import { formatNumber, formatTimestamp } from "../lib/format";
+import { flagOf, formatNumber, formatTimestamp } from "../lib/format";
 import { type CalendarEvent, useExplainEvent } from "../lib/terminal";
-
-type Scope = "upcoming" | "released";
 
 type Granularity = "week" | "month";
 
@@ -85,7 +84,7 @@ const countryNames: Record<string, string> = {
   CA: "Canada",
   CH: "Switzerland",
   CN: "China",
-  EU: "Euro area",
+  EU: "EU zone",
   GB: "United Kingdom",
   JP: "Japan",
   NZ: "New Zealand",
@@ -117,15 +116,7 @@ function loadCalendarFilters(): CalendarFilters {
   }
 }
 
-function flagOf(code: string): string {
-  if (!/^[A-Z]{2}$/.test(code)) return "";
-  return String.fromCodePoint(
-    ...Array.from(code, (letter) => 0x1f1e6 + letter.charCodeAt(0) - 65),
-  );
-}
-
 export function CalendarRoute() {
-  const [scope, setScope] = useState<Scope>("upcoming");
   const [granularity, setGranularity] = useState<Granularity>("week");
   const [anchor, setAnchor] = useState(() => new Date());
   const [filters, setFilters] = useState<CalendarFilters>(loadCalendarFilters);
@@ -160,21 +151,12 @@ export function CalendarRoute() {
     to: toParam,
   };
 
-  const upcoming = useAdminList<CalendarEvent>({
-    key: ["calendar", "upcoming", countryParam, fromParam, toParam],
+  const events = useAdminList<CalendarEvent>({
+    key: ["calendar", "events", countryParam, fromParam, toParam],
     path: "/api/v1/calendar-events",
     rowsKey: "calendarEvents",
-    filters: { ...windowFilters, scope: "" },
-    enabled: scope === "upcoming",
+    filters: windowFilters,
   });
-  const released = useAdminList<CalendarEvent>({
-    key: ["calendar", "released", countryParam, fromParam, toParam],
-    path: "/api/v1/calendar-events",
-    rowsKey: "calendarEvents",
-    filters: { ...windowFilters, scope: "released" },
-    enabled: scope === "released",
-  });
-  const events = scope === "released" ? released : upcoming;
   const rows = adminRows(events);
 
   const noFilters = !filters.watch && !filters.importance && filters.countries.length === 0;
@@ -183,15 +165,6 @@ export function CalendarRoute() {
     <AdminScreen
       title="Calendar"
       description="Browse releases week by week or month by month. Filter by country, importance, or your watch list."
-      actions={
-        <Tabs
-          value={scope}
-          options={["upcoming", "released"] as const}
-          onChange={setScope}
-          label={(option) => (option === "upcoming" ? "Upcoming" : "Released")}
-          size="sm"
-        />
-      }
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
@@ -201,16 +174,7 @@ export function CalendarRoute() {
             aria-label={`Previous ${granularity}`}
             onClick={() => setAnchor(previousPeriod(anchor, granularity))}
           >
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 16 16"
-              className="size-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <path d="m10 3-5 5 5 5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            <CaretLeft className="size-4" />
           </Button>
           <span className="min-w-40 text-center text-sm font-medium">
             {formatPeriodLabel(period.start, period.end, granularity)}
@@ -221,16 +185,7 @@ export function CalendarRoute() {
             aria-label={`Next ${granularity}`}
             onClick={() => setAnchor(nextPeriod(anchor, granularity))}
           >
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 16 16"
-              className="size-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <path d="m6 3 5 5-5 5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            <CaretRight className="size-4" />
           </Button>
           <Button
             variant="secondary"
@@ -291,11 +246,7 @@ export function CalendarRoute() {
         </div>
       ) : rows.length === 0 ? (
         <div className="mt-4 rounded-xl border border-border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
-          {noFilters
-            ? scope === "upcoming"
-              ? "Nothing scheduled in this period."
-              : "Nothing released in this period."
-            : "No events match your filters."}
+          {noFilters ? "Nothing scheduled in this period." : "No events match your filters."}
         </div>
       ) : (
         <>
@@ -422,7 +373,7 @@ function CountryMenu({
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
-        className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-medium transition-colors ${
+        className={`inline-flex h-11 items-center gap-2 rounded-lg border px-3.5 text-sm font-medium transition-colors ${
           selected.length > 0
             ? "border-primary bg-primary/10 text-primary"
             : "border-border bg-card text-muted-foreground hover:bg-secondary"
@@ -430,16 +381,10 @@ function CountryMenu({
         onClick={() => setOpen((value) => !value)}
       >
         {label}
-        <svg
+        <CaretDown
           aria-hidden="true"
-          viewBox="0 0 16 16"
           className={`size-3 transition-transform ${open ? "rotate-180" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-        >
-          <path d="m4 6 4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        />
       </button>
       {open ? (
         <>
@@ -471,20 +416,7 @@ function CountryMenu({
                     }`}
                   >
                     {checked ? (
-                      <svg
-                        aria-hidden="true"
-                        viewBox="0 0 16 16"
-                        className="size-3"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      >
-                        <path
-                          d="m3.5 8.5 3 3 6-6"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
+                      <Check aria-hidden="true" className="size-3" weight="bold" />
                     ) : null}
                   </span>
                   <span aria-hidden="true">{flagOf(code)}</span>

@@ -5,6 +5,13 @@ export function formatTimestamp(value: string | null | undefined): string {
   return date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
+export function flagOf(code: string): string {
+  if (!/^[A-Z]{2}$/.test(code)) return "";
+  return String.fromCodePoint(
+    ...Array.from(code, (letter) => 0x1f1e6 + letter.charCodeAt(0) - 65),
+  );
+}
+
 export function formatNumber(value: number | null | undefined): string {
   if (value === null || value === undefined) return "—";
   return value.toLocaleString();

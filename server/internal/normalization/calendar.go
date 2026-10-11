@@ -37,8 +37,9 @@ type CalendarStats struct {
 var leadingNumber = regexp.MustCompile(`^[+-]?(?:\d+(?:\.\d*)?|\.\d+)`)
 
 type calendarNewsRow struct {
-	title string
-	url   string
+	title     string
+	url       string
+	published time.Time
 }
 
 // CalendarEvents parses a calendar payload into rows awaiting
@@ -93,8 +94,9 @@ func CalendarEvents(body []byte) ([]CalendarEvent, []FeedItem, CalendarStats) {
 		}
 		if rowIsNonCalendar(row) {
 			newsRows = append(newsRows, calendarNewsRow{
-				title: event.Name,
-				url:   strings.TrimSpace(textValue(rowValue(row, "url", "sourceUrl"))),
+				title:     event.Name,
+				url:       strings.TrimSpace(textValue(rowValue(row, "url", "sourceUrl"))),
+				published: event.ScheduledAt,
 			})
 			continue
 		}
@@ -114,7 +116,9 @@ func CalendarEvents(body []byte) ([]CalendarEvent, []FeedItem, CalendarStats) {
 			stats.NewsSkipped++
 			continue
 		}
-		news = append(news, FeedItem{Title: row.title, URL: row.url})
+		// The row's scheduled time is the event's real date; without it the
+		// article would rank in the feed by ingestion time instead.
+		news = append(news, FeedItem{Title: row.title, URL: row.url, Published: row.published})
 		stats.NewsRows++
 	}
 	return events, news, stats

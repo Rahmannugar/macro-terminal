@@ -1,3 +1,4 @@
+import { X } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
@@ -8,7 +9,7 @@ import { SkeletonList } from "../components/ui/skeleton";
 import { useAccount } from "../hooks/use-account";
 import { useLiveFeed } from "../hooks/use-live-feed";
 import { adminErrorMessage, adminRows, requestAdminPage, useAdminList } from "../lib/admin";
-import { formatTimestamp } from "../lib/format";
+import { flagOf, formatTimestamp } from "../lib/format";
 import type { ArticleSummary, CalendarEvent } from "../lib/terminal";
 import { useFollowedPairs, useToggleFollow } from "../lib/watchlist";
 
@@ -109,16 +110,7 @@ export function HomeRoute() {
                   className="grid size-6 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-50"
                   onClick={() => toggle.mutate({ pairId: pair.id, following: false })}
                 >
-                  <svg
-                    aria-hidden="true"
-                    viewBox="0 0 16 16"
-                    className="size-3"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                  >
-                    <path d="m4 4 8 8M12 4l-8 8" strokeLinecap="round" />
-                  </svg>
+                  <X aria-hidden="true" className="size-3" />
                 </button>
               </span>
             ))}
@@ -184,9 +176,14 @@ export function HomeRoute() {
                   <li key={event.id}>
                     <Link
                       to="/calendar"
-                      className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-xl border border-border bg-card px-4 py-3 transition-colors hover:border-primary/40 hover:bg-secondary/60"
+                      className="flex flex-col gap-1 rounded-xl border border-border bg-card px-4 py-3 transition-colors hover:border-primary/40 hover:bg-secondary/60"
                     >
-                      <span className="text-sm font-semibold">{event.indicator.name}</span>
+                      <span className="flex items-center gap-2 text-sm font-semibold">
+                        {event.countryCode ? (
+                          <span aria-hidden="true">{flagOf(event.countryCode)}</span>
+                        ) : null}
+                        {event.name || event.indicator.name}
+                      </span>
                       <span className="text-xs text-muted-foreground">
                         {event.source.name} · {formatTimestamp(event.scheduledAt)}
                       </span>

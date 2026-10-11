@@ -743,6 +743,10 @@ func TestRunnerCalendarRoutesNonCalendarRowToNews(t *testing.T) {
 	if articleBatches[0][0].Title != "Fed Chair remarks" {
 		t.Errorf("article title = %q, want Fed Chair remarks", articleBatches[0][0].Title)
 	}
+	wantPublished := time.Date(2026, 10, 4, 15, 0, 0, 0, time.UTC)
+	if articleBatches[0][0].PublishedAt == nil || !articleBatches[0][0].PublishedAt.Equal(wantPublished) {
+		t.Errorf("article PublishedAt = %v, want the event time %v", articleBatches[0][0].PublishedAt, wantPublished)
+	}
 }
 
 func TestRunnerCalendarWithoutDictionaryStoresNothing(t *testing.T) {

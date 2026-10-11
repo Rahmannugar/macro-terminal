@@ -1,4 +1,24 @@
-import { type ReactNode, useState } from "react";
+import {
+  BookOpen,
+  Calendar,
+  ClipboardText,
+  Eye,
+  Gauge,
+  House,
+  LinkSimple,
+  List,
+  MagnifyingGlass,
+  Rss,
+  SidebarSimple,
+  SlidersHorizontal,
+  Stack,
+  TrendUp,
+  User,
+  Users,
+  Warning,
+  X,
+} from "@phosphor-icons/react";
+import { type ComponentType, type ReactNode, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router";
 import { useAccount, useSignOut, useUpdateUsername } from "../hooks/use-account";
 import type { Account } from "../lib/auth";
@@ -8,44 +28,64 @@ import { Dialog } from "./ui/dialog";
 import { Field } from "./ui/field";
 import { Input } from "./ui/input";
 
-type NavItem = { label: string; to: string; end?: boolean };
+type NavItem = {
+  label: string;
+  to: string;
+  end?: boolean;
+  icon: ComponentType<{ className?: string }>;
+};
 type NavSection = { label?: string; adminOnly?: boolean; items: NavItem[] };
 
 const navigation: NavSection[] = [
   {
     items: [
-      { label: "Home", to: "/", end: true },
-      { label: "Search", to: "/search" },
-      { label: "Watch list", to: "/watchlist" },
-      { label: "Calendar", to: "/calendar" },
-      { label: "Market", to: "/market" },
+      { label: "Home", to: "/", end: true, icon: House },
+      { label: "Search", to: "/search", icon: MagnifyingGlass },
+      { label: "Watch list", to: "/watchlist", icon: Eye },
+      { label: "Calendar", to: "/calendar", icon: Calendar },
+      { label: "Market", to: "/market", icon: TrendUp },
     ],
   },
   {
     label: "Admin",
     adminOnly: true,
     items: [
-      { label: "Users", to: "/admin/users" },
-      { label: "Failed jobs", to: "/admin/jobs" },
+      { label: "Users", to: "/admin/users", icon: Users },
+      { label: "Failed jobs", to: "/admin/jobs", icon: Warning },
     ],
   },
   {
     label: "Configuration",
     adminOnly: true,
     items: [
-      { label: "Entities", to: "/admin/entities" },
-      { label: "Entity pairs", to: "/admin/entity-pairs" },
-      { label: "Indicators", to: "/admin/indicators" },
-      { label: "Knowledge terms", to: "/admin/knowledge-terms" },
-      { label: "Sources", to: "/admin/sources" },
-      { label: "Source configurations", to: "/admin/source-configurations" },
-      { label: "Calendar events", to: "/admin/calendar-events" },
+      { label: "Entities", to: "/admin/entities", icon: Stack },
+      { label: "Entity pairs", to: "/admin/entity-pairs", icon: LinkSimple },
+      { label: "Indicators", to: "/admin/indicators", icon: Gauge },
+      { label: "Knowledge terms", to: "/admin/knowledge-terms", icon: BookOpen },
+      { label: "Sources", to: "/admin/sources", icon: Rss },
+      {
+        label: "Source configurations",
+        to: "/admin/source-configurations",
+        icon: SlidersHorizontal,
+      },
+      { label: "Calendar events", to: "/admin/calendar-events", icon: ClipboardText },
     ],
   },
 ];
 
+const sidebarStorageKey = "macro-terminal.sidebar";
+
+function loadSidebarCollapsed(): boolean {
+  try {
+    return localStorage.getItem(sidebarStorageKey) === "collapsed";
+  } catch {
+    return false;
+  }
+}
+
 export function AppShell({ account, children }: { account: Account; children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(loadSidebarCollapsed);
   const location = useLocation();
   const [lastPath, setLastPath] = useState(location.pathname);
 
@@ -54,13 +94,29 @@ export function AppShell({ account, children }: { account: Account; children: Re
     setDrawerOpen(false);
   }
 
+  function toggleCollapsed() {
+    setCollapsed((value) => {
+      const next = !value;
+      try {
+        localStorage.setItem(sidebarStorageKey, next ? "collapsed" : "expanded");
+      } catch {
+        // Storage unavailable; the toggle still applies for this session.
+      }
+      return next;
+    });
+  }
+
   const isAdmin = account.account.role === "admin";
   const sections = navigation.filter((section) => !section.adminOnly || isAdmin);
 
   return (
     <div className="min-h-svh bg-background">
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-border bg-background md:flex">
-        <SidebarBody sections={sections} />
+      <aside
+        className={`fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-border bg-background md:flex ${
+          collapsed ? "w-14" : "w-60"
+        }`}
+      >
+        <SidebarBody sections={sections} collapsed={collapsed} />
       </aside>
 
       {drawerOpen ? (
@@ -71,29 +127,33 @@ export function AppShell({ account, children }: { account: Account; children: Re
             onClick={() => setDrawerOpen(false)}
           />
           <aside className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col border-r border-border bg-background shadow-2xl">
-            <SidebarBody sections={sections} onClose={() => setDrawerOpen(false)} />
+            <SidebarBody
+              sections={sections}
+              collapsed={false}
+              onClose={() => setDrawerOpen(false)}
+            />
           </aside>
         </div>
       ) : null}
 
-      <div className="flex min-h-svh flex-col md:pl-60">
-        <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-border bg-background px-4 sm:px-6">
+      <div className={`flex min-h-svh flex-col ${collapsed ? "md:pl-14" : "md:pl-60"}`}>
+        <header className="sticky top-0 z-20 flex h-14 items-center gap-3 bg-background/90 px-4 backdrop-blur-xl sm:px-6">
+          <button
+            type="button"
+            aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+            title={collapsed ? "Expand navigation" : "Collapse navigation"}
+            className="hidden size-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground md:grid"
+            onClick={toggleCollapsed}
+          >
+            <SidebarSimple className="size-[18px]" />
+          </button>
           <button
             type="button"
             aria-label="Open navigation"
             className="grid size-9 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground md:hidden"
             onClick={() => setDrawerOpen(true)}
           >
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 16 16"
-              className="size-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <path d="M2 4h12M2 8h12M2 12h12" strokeLinecap="round" />
-            </svg>
+            <List className="size-4" />
           </button>
           <Link to="/" className="flex items-center gap-2 md:hidden">
             <span className="font-display text-[15px] font-semibold tracking-[-0.02em]">
@@ -112,15 +172,40 @@ export function AppShell({ account, children }: { account: Account; children: Re
   );
 }
 
-function SidebarBody({ sections, onClose }: { sections: NavSection[]; onClose?: () => void }) {
+function SidebarBody({
+  sections,
+  collapsed,
+  onClose,
+}: {
+  sections: NavSection[];
+  collapsed: boolean;
+  onClose?: () => void;
+}) {
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-border px-4">
-        <Link to="/" className="flex min-w-0 items-center gap-2.5" onClick={onClose}>
-          <img src="/macroterminal.png" alt="" width={26} height={26} className="rounded-lg" />
-          <span className="truncate font-display text-[15px] font-semibold tracking-[-0.02em]">
-            Macro Terminal
-          </span>
+      <div
+        className={`flex shrink-0 items-center py-3 ${
+          collapsed ? "justify-center" : "gap-2.5 px-4"
+        }`}
+      >
+        <Link
+          to="/"
+          className={`flex min-w-0 items-center ${collapsed ? "" : "gap-2.5"}`}
+          onClick={onClose}
+          title={collapsed ? "Macro Terminal" : undefined}
+        >
+          <img
+            src="/macroterminal.png"
+            alt=""
+            width={26}
+            height={26}
+            className="shrink-0 rounded-lg"
+          />
+          {collapsed ? null : (
+            <span className="truncate font-display text-[15px] font-semibold tracking-[-0.02em]">
+              Macro Terminal
+            </span>
+          )}
         </Link>
         {onClose ? (
           <button
@@ -129,24 +214,15 @@ function SidebarBody({ sections, onClose }: { sections: NavSection[]; onClose?: 
             className="ml-auto grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             onClick={onClose}
           >
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 16 16"
-              className="size-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <path d="m4 4 8 8M12 4l-8 8" strokeLinecap="round" />
-            </svg>
+            <X className="size-4" />
           </button>
         ) : null}
       </div>
 
-      <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
+      <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-1">
         {sections.map((section, index) => (
           <div key={section.label ?? index} className="mb-5 last:mb-0">
-            {section.label ? (
+            {section.label && !collapsed ? (
               <p className="px-2.5 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                 {section.label}
               </p>
@@ -158,15 +234,19 @@ function SidebarBody({ sections, onClose }: { sections: NavSection[]; onClose?: 
                   to={item.to}
                   end={item.end}
                   onClick={onClose}
+                  title={collapsed ? item.label : undefined}
                   className={({ isActive }) =>
-                    `flex h-9 items-center rounded-md px-2.5 text-[13px] font-medium transition-colors ${
+                    `flex h-9 items-center rounded-md text-[13px] font-medium transition-colors ${
+                      collapsed ? "justify-center px-0" : "gap-2.5 px-2.5"
+                    } ${
                       isActive
                         ? "bg-secondary font-semibold text-foreground"
                         : "text-muted-foreground hover:bg-secondary hover:text-foreground"
                     }`
                   }
                 >
-                  {item.label}
+                  <item.icon className="size-[18px] shrink-0" />
+                  {collapsed ? null : <span className="truncate">{item.label}</span>}
                 </NavLink>
               ))}
             </div>
@@ -197,20 +277,7 @@ function AccountMenu() {
           className="grid size-9 place-items-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary/90"
           onClick={() => setOpen((value) => !value)}
         >
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 16 16"
-            className="size-4"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-          >
-            <circle cx="8" cy="5.5" r="2.75" />
-            <path
-              d="M2.75 13.5c0-2.35 2.35-4.25 5.25-4.25s5.25 1.9 5.25 4.25"
-              strokeLinecap="round"
-            />
-          </svg>
+          <User className="size-4" />
         </button>
         {open ? (
           <>

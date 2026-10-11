@@ -35,7 +35,7 @@ export function SearchRoute() {
   return (
     <AdminScreen
       title="Search"
-      description="Semantic search across the article archive — results are ordered by meaning, not by date."
+      description="Find articles across the archive by topic, theme, or question."
     >
       <form onSubmit={submit} className="flex max-w-[560px] gap-2">
         <Input

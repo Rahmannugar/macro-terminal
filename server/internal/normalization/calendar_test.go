@@ -110,7 +110,11 @@ func TestCalendarEventsParsesBiquoteShape(t *testing.T) {
 		t.Errorf("news stats = %d/%d, want 1/0", stats.NewsRows, stats.NewsSkipped)
 	}
 	if len(news) != 1 || news[0].Title != "Fed Chair Powell remarks" {
-		t.Errorf("news = %+v, want Powell speech", news)
+		t.Fatalf("news = %+v, want Powell speech", news)
+	}
+	wantPublished := time.Date(2026, 10, 4, 14, 0, 0, 0, time.UTC)
+	if !news[0].Published.Equal(wantPublished) {
+		t.Errorf("news Published = %v, want the row's scheduled time %v", news[0].Published, wantPublished)
 	}
 }
 

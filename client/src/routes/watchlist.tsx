@@ -1,3 +1,4 @@
+import { X } from "@phosphor-icons/react";
 import { useState } from "react";
 import { AdminScreen } from "../components/admin/admin-screen";
 import { PairPickerDialog } from "../components/pair-picker-dialog";
@@ -61,16 +62,7 @@ export function WatchListRoute() {
                     className="grid size-6 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-50"
                     onClick={() => toggle.mutate({ pairId: pair.id, following: false })}
                   >
-                    <svg
-                      aria-hidden="true"
-                      viewBox="0 0 16 16"
-                      className="size-3"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                    >
-                      <path d="m4 4 8 8M12 4l-8 8" strokeLinecap="round" />
-                    </svg>
+                    <X aria-hidden="true" className="size-3" />
                   </button>
                 </span>
               );

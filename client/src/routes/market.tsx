@@ -37,7 +37,7 @@ export function MarketRoute() {
   return (
     <AdminScreen
       title="Market"
-      description="Price history for the pairs Macro Terminal tracks, straight from the candle store."
+      description="Price history for the pairs Macro Terminal tracks, updated continuously from live market data."
     >
       <div className="flex flex-wrap items-end gap-3">
         <div className="w-full max-w-[280px]">
