@@ -32,6 +32,8 @@ export function UsersScreen() {
   const post = useAdminPost(usersKey);
   const account = useAccount();
   const actingId = account.data?.account.id;
+  const actorRole = account.data?.account.role;
+  const isSuperAdmin = actorRole === "super_admin";
   const pendingPath =
     post.isPending && typeof post.variables === "string" ? post.variables : null;
 
@@ -52,7 +54,7 @@ export function UsersScreen() {
     {
       header: "Role",
       cell: (row) => (
-        <Badge tone={row.role === "admin" ? "primary" : "neutral"}>{row.role}</Badge>
+        <Badge tone={row.role === "user" ? "neutral" : "primary"}>{row.role}</Badge>
       ),
     },
     {
@@ -79,6 +81,14 @@ export function UsersScreen() {
                 busy={busy && pendingPath?.includes("/promote")}
                 disabled={post.isPending}
                 onClick={() => act(`/api/v1/admin/users/${row.id}/promote`)}
+              />
+            ) : null}
+            {row.role === "admin" && isSuperAdmin ? (
+              <ActionButton
+                label="Demote"
+                busy={busy && pendingPath?.includes("/demote")}
+                disabled={post.isPending}
+                onClick={() => act(`/api/v1/admin/users/${row.id}/demote`)}
               />
             ) : null}
             {row.status === "active" && !isSelf ? (
@@ -118,6 +128,7 @@ export function UsersScreen() {
               onChange={(event) => setRole(event.target.value)}
             >
               <option value="">All roles</option>
+              <option value="super_admin">super_admin</option>
               <option value="admin">admin</option>
               <option value="user">user</option>
             </Select>

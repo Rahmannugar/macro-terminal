@@ -20,6 +20,7 @@ func RegisterAdminRoutes(router gin.IRoutes, service *AdminService) {
 	router.POST("/users/:id/suspend", suspendUser(service))
 	router.POST("/users/:id/reactivate", reactivateUser(service))
 	router.POST("/users/:id/promote", promoteUser(service))
+	router.POST("/users/:id/demote", demoteUser(service))
 }
 
 type adminUserJSON struct {
@@ -43,7 +44,7 @@ type adminUserResponse struct {
 // @Summary List user accounts.
 // @Description Returns accounts newest first with their role and status, optionally filtered by role or status. Pass the returned nextCursor to fetch the next page.
 // @Tags admin
-// @Param role query string false "Filter by role: admin or user."
+// @Param role query string false "Filter by role: super_admin, admin, or user."
 // @Param status query string false "Filter by status: active or suspended."
 // @Param limit query int false "Page size between 1 and 100. Defaults to 25."
 // @Param cursor query string false "Opaque cursor returned as nextCursor by the previous page."
@@ -69,7 +70,7 @@ func listUsers(service *AdminService) gin.HandlerFunc {
 		page, err := service.List(ctx.Request.Context(), role, status, cursor, limit)
 		switch {
 		case errors.Is(err, ErrInvalidFilter):
-			writeFailure(ctx, http.StatusBadRequest, "invalid_filter", "Role must be admin or user; status must be active or suspended.")
+			writeFailure(ctx, http.StatusBadRequest, "invalid_filter", "Role must be super_admin, admin, or user; status must be active or suspended.")
 		case err != nil:
 			slog.Default().ErrorContext(ctx.Request.Context(), "user list failed", "error", err)
 			writeFailure(ctx, http.StatusInternalServerError, "internal_error", "The request could not be completed.")
@@ -130,6 +131,26 @@ func promoteUser(service *AdminService) gin.HandlerFunc {
 	})
 }
 
+// @Summary Demote an administrator to a regular user.
+// @Description Only a super admin can demote administrators. Demoting a regular user changes nothing. Super admins cannot be demoted.
+// @Tags admin
+// @Param id path string true "User id (UUID)."
+// @Success 200 {object} adminUserResponse "The updated account."
+// @Failure 400 {object} openapi.Error "The id is not a valid UUID."
+// @Failure 403 {object} openapi.Error "The actor is not a super admin, or the target is a super admin."
+// @Failure 404 {object} openapi.Error "No account has that id."
+// @Failure 500 {object} openapi.Error "The request could not be completed."
+// @Router /api/v1/admin/users/{id}/demote [post]
+func demoteUser(service *AdminService) gin.HandlerFunc {
+	return mutateUser(service, func(ctx *gin.Context, service *AdminService, id uuid.UUID) (models.User, error) {
+		actorRole := ""
+		if actor, ok := authentication.AdminAccount(ctx); ok {
+			actorRole = actor.User.Role
+		}
+		return service.Demote(ctx.Request.Context(), actorRole, id)
+	})
+}
+
 func mutateUser(
 	service *AdminService,
 	mutation func(*gin.Context, *AdminService, uuid.UUID) (models.User, error),
@@ -144,6 +165,8 @@ func mutateUser(
 		switch {
 		case errors.Is(err, ErrSelfSuspend):
 			writeFailure(ctx, http.StatusConflict, "cannot_suspend_self", "An administrator cannot suspend their own account.")
+		case errors.Is(err, ErrCannotDemote):
+			writeFailure(ctx, http.StatusForbidden, "cannot_demote", "Only a super admin can demote administrators, and super admins cannot be demoted.")
 		case errors.Is(err, ErrUserNotFound):
 			writeFailure(ctx, http.StatusNotFound, "not_found", "No account has that id.")
 		case err != nil:

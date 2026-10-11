@@ -1,4 +1,4 @@
-import { CaretDown, CaretLeft, CaretRight, Check } from "@phosphor-icons/react";
+import { ArrowLeftIcon, ArrowRightIcon, CaretDownIcon, CheckIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { AdminScreen } from "../components/admin/admin-screen";
 import { Badge } from "../components/ui/badge";
@@ -174,7 +174,7 @@ export function CalendarRoute() {
             aria-label={`Previous ${granularity}`}
             onClick={() => setAnchor(previousPeriod(anchor, granularity))}
           >
-            <CaretLeft className="size-4" />
+            <ArrowLeftIcon size={16} />
           </Button>
           <span className="min-w-40 text-center text-sm font-medium">
             {formatPeriodLabel(period.start, period.end, granularity)}
@@ -185,7 +185,7 @@ export function CalendarRoute() {
             aria-label={`Next ${granularity}`}
             onClick={() => setAnchor(nextPeriod(anchor, granularity))}
           >
-            <CaretRight className="size-4" />
+            <ArrowRightIcon size={16} />
           </Button>
           <Button
             variant="secondary"
@@ -198,7 +198,7 @@ export function CalendarRoute() {
         <Tabs
           value={granularity}
           options={["week", "month"] as const}
-          onChange={setGranularity}
+          onChange={(value) => setGranularity(value as Granularity)}
           label={(option) => (option === "week" ? "Week" : "Month")}
           size="sm"
         />
@@ -381,7 +381,7 @@ function CountryMenu({
         onClick={() => setOpen((value) => !value)}
       >
         {label}
-        <CaretDown
+        <CaretDownIcon
           aria-hidden="true"
           className={`size-3 transition-transform ${open ? "rotate-180" : ""}`}
         />
@@ -416,7 +416,7 @@ function CountryMenu({
                     }`}
                   >
                     {checked ? (
-                      <Check aria-hidden="true" className="size-3" weight="bold" />
+                      <CheckIcon aria-hidden="true" className="size-3" weight="bold" />
                     ) : null}
                   </span>
                   <span aria-hidden="true">{flagOf(code)}</span>

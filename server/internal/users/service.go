@@ -13,6 +13,7 @@ import (
 var (
 	ErrUserNotFound  = errors.New("user not found")
 	ErrInvalidFilter = errors.New("filter value is not valid")
+	ErrCannotDemote  = errors.New("only a super admin can demote an administrator")
 )
 
 const (
@@ -47,7 +48,7 @@ func (service *AdminService) List(
 	cursor *paging.Cursor,
 	limit int32,
 ) (UserPage, error) {
-	if role != nil && *role != models.RoleAdmin && *role != models.RoleUser {
+	if role != nil && *role != models.RoleSuperAdmin && *role != models.RoleAdmin && *role != models.RoleUser {
 		return UserPage{}, ErrInvalidFilter
 	}
 	if status != nil && *status != models.StatusActive && *status != models.StatusSuspended {
@@ -73,10 +74,27 @@ func (service *AdminService) Promote(ctx context.Context, id uuid.UUID) (models.
 	if err != nil {
 		return models.User{}, err
 	}
-	if user.Role == models.RoleAdmin {
+	if user.Role == models.RoleSuperAdmin || user.Role == models.RoleAdmin {
 		return user, nil
 	}
 	return service.users.UpdateRole(ctx, id, models.RoleAdmin)
+}
+
+func (service *AdminService) Demote(ctx context.Context, actorRole string, id uuid.UUID) (models.User, error) {
+	if actorRole != models.RoleSuperAdmin {
+		return models.User{}, ErrCannotDemote
+	}
+	user, err := service.user(ctx, id)
+	if err != nil {
+		return models.User{}, err
+	}
+	if user.Role == models.RoleSuperAdmin {
+		return models.User{}, ErrCannotDemote
+	}
+	if user.Role == models.RoleUser {
+		return user, nil
+	}
+	return service.users.UpdateRole(ctx, id, models.RoleUser)
 }
 
 func (service *AdminService) setStatus(ctx context.Context, id uuid.UUID, status string) (models.User, error) {

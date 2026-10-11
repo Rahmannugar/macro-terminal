@@ -1,22 +1,22 @@
 import {
-  BookOpen,
-  Calendar,
-  ClipboardText,
-  Eye,
-  Gauge,
-  House,
-  LinkSimple,
-  List,
-  MagnifyingGlass,
-  Rss,
-  SidebarSimple,
-  SlidersHorizontal,
-  Stack,
-  TrendUp,
-  User,
-  Users,
-  Warning,
-  X,
+  BookOpenIcon,
+  CalendarIcon,
+  ClipboardTextIcon,
+  EyeIcon,
+  GaugeIcon,
+  HouseIcon,
+  LinkSimpleIcon,
+  ListIcon,
+  MagnifyingGlassIcon,
+  RssIcon,
+  SidebarSimpleIcon,
+  SlidersHorizontalIcon,
+  StackIcon,
+  TrendUpIcon,
+  UserIcon,
+  UsersIcon,
+  WarningIcon,
+  XIcon,
 } from "@phosphor-icons/react";
 import { type ComponentType, type ReactNode, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router";
@@ -39,36 +39,36 @@ type NavSection = { label?: string; adminOnly?: boolean; items: NavItem[] };
 const navigation: NavSection[] = [
   {
     items: [
-      { label: "Home", to: "/", end: true, icon: House },
-      { label: "Search", to: "/search", icon: MagnifyingGlass },
-      { label: "Watch list", to: "/watchlist", icon: Eye },
-      { label: "Calendar", to: "/calendar", icon: Calendar },
-      { label: "Market", to: "/market", icon: TrendUp },
+      { label: "Home", to: "/", end: true, icon: HouseIcon },
+      { label: "Search", to: "/search", icon: MagnifyingGlassIcon },
+      { label: "Watch list", to: "/watchlist", icon: EyeIcon },
+      { label: "Calendar", to: "/calendar", icon: CalendarIcon },
+      { label: "Market", to: "/market", icon: TrendUpIcon },
     ],
   },
   {
     label: "Admin",
     adminOnly: true,
     items: [
-      { label: "Users", to: "/admin/users", icon: Users },
-      { label: "Failed jobs", to: "/admin/jobs", icon: Warning },
+      { label: "Users", to: "/admin/users", icon: UsersIcon },
+      { label: "Failed jobs", to: "/admin/jobs", icon: WarningIcon },
     ],
   },
   {
     label: "Configuration",
     adminOnly: true,
     items: [
-      { label: "Entities", to: "/admin/entities", icon: Stack },
-      { label: "Entity pairs", to: "/admin/entity-pairs", icon: LinkSimple },
-      { label: "Indicators", to: "/admin/indicators", icon: Gauge },
-      { label: "Knowledge terms", to: "/admin/knowledge-terms", icon: BookOpen },
-      { label: "Sources", to: "/admin/sources", icon: Rss },
+      { label: "Entities", to: "/admin/entities", icon: StackIcon },
+      { label: "Entity pairs", to: "/admin/entity-pairs", icon: LinkSimpleIcon },
+      { label: "Indicators", to: "/admin/indicators", icon: GaugeIcon },
+      { label: "Knowledge terms", to: "/admin/knowledge-terms", icon: BookOpenIcon },
+      { label: "Sources", to: "/admin/sources", icon: RssIcon },
       {
         label: "Source configurations",
         to: "/admin/source-configurations",
-        icon: SlidersHorizontal,
+        icon: SlidersHorizontalIcon,
       },
-      { label: "Calendar events", to: "/admin/calendar-events", icon: ClipboardText },
+      { label: "Calendar events", to: "/admin/calendar-events", icon: ClipboardTextIcon },
     ],
   },
 ];
@@ -145,7 +145,7 @@ export function AppShell({ account, children }: { account: Account; children: Re
             className="hidden size-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground md:grid"
             onClick={toggleCollapsed}
           >
-            <SidebarSimple className="size-[18px]" />
+            <SidebarSimpleIcon className="size-[18px]" />
           </button>
           <button
             type="button"
@@ -153,7 +153,7 @@ export function AppShell({ account, children }: { account: Account; children: Re
             className="grid size-9 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground md:hidden"
             onClick={() => setDrawerOpen(true)}
           >
-            <List className="size-4" />
+            <ListIcon className="size-4" />
           </button>
           <Link to="/" className="flex items-center gap-2 md:hidden">
             <span className="font-display text-[15px] font-semibold tracking-[-0.02em]">
@@ -214,7 +214,7 @@ function SidebarBody({
             className="ml-auto grid size-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             onClick={onClose}
           >
-            <X className="size-4" />
+            <XIcon className="size-4" />
           </button>
         ) : null}
       </div>
@@ -277,7 +277,7 @@ function AccountMenu() {
           className="grid size-9 place-items-center rounded-full bg-primary text-primary-foreground transition-colors hover:bg-primary/90"
           onClick={() => setOpen((value) => !value)}
         >
-          <User className="size-4" />
+          <UserIcon className="size-4" />
         </button>
         {open ? (
           <>

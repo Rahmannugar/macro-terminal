@@ -26,7 +26,8 @@ const (
 	requestWindow  = 60 * time.Second
 	// maxEmbedChars keeps title+content inside all-minilm-l6-v2's 256-token
 	// window; longer bodies are truncated rather than rejected.
-	maxEmbedChars = 900
+	// 256 tokens × ~2 chars/token worst case ≈ 512; use 480 for safety margin.
+	maxEmbedChars = 480
 )
 
 var articlePredicates = []string{articleIDKey, publishedAtKey}

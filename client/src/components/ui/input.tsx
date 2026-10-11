@@ -1,4 +1,4 @@
-import { Eye, EyeSlash } from "@phosphor-icons/react";
+import { EyeIcon, EyeSlashIcon } from "@phosphor-icons/react";
 import { type InputHTMLAttributes, useState } from "react";
 
 export const inputClassName =
@@ -29,7 +29,7 @@ export function PasswordInput(props: InputHTMLAttributes<HTMLInputElement>) {
         onClick={() => setVisible((current) => !current)}
         className="absolute inset-y-0 right-0 flex w-10 items-center justify-center rounded-lg text-muted-foreground transition outline-none hover:text-foreground focus-visible:ring-4 focus-visible:ring-primary/15"
       >
-        {visible ? <EyeSlash size={16} /> : <Eye size={16} />}
+        {visible ? <EyeSlashIcon size={16} /> : <EyeIcon size={16} />}
       </button>
     </span>
   );

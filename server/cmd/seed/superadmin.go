@@ -75,12 +75,12 @@ func ensureAdmin(
 	}
 
 	users := userrepositories.NewUserRepository(pool)
-	account, err := users.ResolveUser(ctx, subjectID, models.RoleAdmin)
+	account, err := users.ResolveUser(ctx, subjectID, models.RoleSuperAdmin)
 	if err != nil {
 		return "", fmt.Errorf("bootstrap admin user: %w", err)
 	}
-	if account.Role != models.RoleAdmin {
-		account, err = users.UpdateRole(ctx, account.ID, models.RoleAdmin)
+	if account.Role != models.RoleSuperAdmin {
+		account, err = users.UpdateRole(ctx, account.ID, models.RoleSuperAdmin)
 		if err != nil {
 			return "", fmt.Errorf("promote admin user: %w", err)
 		}

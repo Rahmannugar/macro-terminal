@@ -1,4 +1,4 @@
-import { Image } from "@phosphor-icons/react";
+import { ImageIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 
 type ArticleImageProps = {
@@ -16,7 +16,7 @@ export function ArticleImage({ src, alt, className }: ArticleImageProps) {
         aria-hidden="true"
         className={`flex items-center justify-center bg-secondary text-muted-foreground ${className ?? ""}`}
       >
-        <Image className="size-1/3 max-h-8 max-w-8" />
+        <ImageIcon className="size-1/3 max-h-8 max-w-8" />
       </div>
     );
   }

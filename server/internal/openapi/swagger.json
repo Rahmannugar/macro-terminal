@@ -2937,7 +2937,7 @@
                 "description": "Returns accounts newest first with their role and status, optionally filtered by role or status. Pass the returned nextCursor to fetch the next page.",
                 "parameters": [
                     {
-                        "description": "Filter by role: admin or user.",
+                        "description": "Filter by role: super_admin, admin, or user.",
                         "in": "query",
                         "name": "role",
                         "schema": {
@@ -3002,6 +3002,78 @@
                     }
                 },
                 "summary": "List user accounts.",
+                "tags": [
+                    "admin"
+                ]
+            }
+        },
+        "/api/v1/admin/users/{id}/demote": {
+            "post": {
+                "description": "Only a super admin can demote administrators. Demoting a regular user changes nothing. Super admins cannot be demoted.",
+                "parameters": [
+                    {
+                        "description": "User id (UUID).",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/users.adminUserResponse"
+                                }
+                            }
+                        },
+                        "description": "The updated account."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The id is not a valid UUID."
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The actor is not a super admin, or the target is a super admin."
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "No account has that id."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Demote an administrator to a regular user.",
                 "tags": [
                     "admin"
                 ]

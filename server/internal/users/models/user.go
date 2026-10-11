@@ -7,8 +7,9 @@ import (
 )
 
 const (
-	RoleAdmin = "admin"
-	RoleUser  = "user"
+	RoleSuperAdmin = "super_admin"
+	RoleAdmin      = "admin"
+	RoleUser       = "user"
 
 	StatusActive    = "active"
 	StatusSuspended = "suspended"

@@ -1,4 +1,4 @@
-import { X } from "@phosphor-icons/react";
+import { XIcon } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
@@ -110,7 +110,7 @@ export function HomeRoute() {
                   className="grid size-6 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-50"
                   onClick={() => toggle.mutate({ pairId: pair.id, following: false })}
                 >
-                  <X aria-hidden="true" className="size-3" />
+                  <XIcon aria-hidden="true" className="size-3" />
                 </button>
               </span>
             ))}

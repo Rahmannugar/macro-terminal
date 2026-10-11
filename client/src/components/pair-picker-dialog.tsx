@@ -23,9 +23,19 @@ export function PairPickerDialog({
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const search = query.trim().toLowerCase();
+  const search = query
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
   const rows = adminRows(catalog)
-    .filter((pair) => !search || pair.symbol.toLowerCase().includes(search))
+    .filter(
+      (pair) =>
+        !search ||
+        pair.symbol
+          .toLowerCase()
+          .replace(/[^a-z0-9]/g, "")
+          .includes(search),
+    )
     .toSorted((a, b) => a.symbol.localeCompare(b.symbol));
 
   function togglePair(pairId: string) {

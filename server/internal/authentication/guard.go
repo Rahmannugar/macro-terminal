@@ -32,7 +32,7 @@ func RequireAdmin(service *Service) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		if account.User.Role != models.RoleAdmin {
+		if account.User.Role != models.RoleAdmin && account.User.Role != models.RoleSuperAdmin {
 			writeFailure(ctx, http.StatusForbidden, "admin_required", "This action requires an administrator account.")
 			ctx.Abort()
 			return
