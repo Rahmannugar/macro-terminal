@@ -170,7 +170,7 @@ export function CalendarRoute() {
         <div className="flex items-center gap-1.5">
           <Button
             variant="secondary"
-            className="h-9 w-9 px-0"
+            className="h-9! w-9! px-0!"
             aria-label={`Previous ${granularity}`}
             onClick={() => setAnchor(previousPeriod(anchor, granularity))}
           >
@@ -181,7 +181,7 @@ export function CalendarRoute() {
           </span>
           <Button
             variant="secondary"
-            className="h-9 w-9 px-0"
+            className="h-9! w-9! px-0!"
             aria-label={`Next ${granularity}`}
             onClick={() => setAnchor(nextPeriod(anchor, granularity))}
           >
@@ -189,7 +189,7 @@ export function CalendarRoute() {
           </Button>
           <Button
             variant="secondary"
-            className="h-9 px-3 text-xs"
+            className="h-9! px-3! text-xs"
             onClick={() => setAnchor(new Date())}
           >
             Today

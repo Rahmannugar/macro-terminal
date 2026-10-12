@@ -388,7 +388,9 @@ var seedEntities = []seedEntity{
 	{code: "N225", name: "Nikkei 225", kind: "index"},
 	{code: "STOXX50", name: "Euro Stoxx 50", kind: "index"},
 	// Mapping anchor for China news; fan-out lives in relationship rules.
-	{code: "CHINA", name: "China", kind: "country"},
+	// The code is the ISO-3166 alpha-2 country code so calendar events,
+	// which carry ISO country codes, resolve to this entity.
+	{code: "CN", name: "China", kind: "country"},
 }
 
 var seedPairs = []seedPair{
@@ -466,8 +468,8 @@ var seedKnowledgeTerms = []seedKnowledgeTerm{
 	{name: "Swiss National Bank", kind: "institution", entity: "CHF"},
 	{name: "Bank of Canada", kind: "institution", entity: "CAD"},
 	{name: "BoC", kind: "institution", entity: "CAD"},
-	{name: "People's Bank of China", kind: "institution", entity: "CHINA"},
-	{name: "PBOC", kind: "institution", entity: "CHINA"},
+	{name: "People's Bank of China", kind: "institution", entity: "CN"},
+	{name: "PBOC", kind: "institution", entity: "CN"},
 
 	// Policymakers whose names stand in for their institutions
 	{name: "Kevin Warsh", kind: "person", entity: "USD"},
@@ -515,9 +517,9 @@ var seedKnowledgeTerms = []seedKnowledgeTerm{
 	{name: "euros", kind: "alias", entity: "EUR"},
 	{name: "fibre", kind: "alias", entity: "EUR"},
 	{name: "single currency", kind: "alias", entity: "EUR"},
-	{name: "yuan", kind: "alias", entity: "CHINA"},
-	{name: "renminbi", kind: "alias", entity: "CHINA"},
-	{name: "beijing", kind: "alias", entity: "CHINA"},
+	{name: "yuan", kind: "alias", entity: "CN"},
+	{name: "renminbi", kind: "alias", entity: "CN"},
+	{name: "beijing", kind: "alias", entity: "CN"},
 
 	// Market prose names
 	{name: "ether", kind: "alias", entity: "ETH"},
@@ -569,12 +571,12 @@ var seedKnowledgeTerms = []seedKnowledgeTerm{
 	{name: "quantitative tightening", kind: "topic", entity: "USD"},
 	{name: "carry trade", kind: "topic", entity: "JPY"},
 	{name: "carry trades", kind: "topic", entity: "JPY"},
-	{name: "tariff", kind: "topic", entity: "CHINA"},
-	{name: "tariffs", kind: "topic", entity: "CHINA"},
-	{name: "tariff war", kind: "topic", entity: "CHINA"},
-	{name: "tariff wars", kind: "topic", entity: "CHINA"},
-	{name: "trade war", kind: "topic", entity: "CHINA"},
-	{name: "trade wars", kind: "topic", entity: "CHINA"},
+	{name: "tariff", kind: "topic", entity: "CN"},
+	{name: "tariffs", kind: "topic", entity: "CN"},
+	{name: "tariff war", kind: "topic", entity: "CN"},
+	{name: "tariff wars", kind: "topic", entity: "CN"},
+	{name: "trade war", kind: "topic", entity: "CN"},
+	{name: "trade wars", kind: "topic", entity: "CN"},
 }
 
 type seedIndicator struct {
@@ -702,12 +704,12 @@ var seedIndicators = []seedIndicator{
 		"rbnz rate decision", "reserve bank of new zealand rate", "rbnz interest rate"}},
 
 	// China
-	{entity: "CHINA", kind: "inflation", name: "China CPI", terms: []string{
+	{entity: "CN", kind: "inflation", name: "China CPI", terms: []string{
 		"china cpi", "chinese cpi"}},
-	{entity: "CHINA", kind: "inflation", name: "China PPI", terms: []string{
+	{entity: "CN", kind: "inflation", name: "China PPI", terms: []string{
 		"china ppi", "chinese ppi"}},
-	{entity: "CHINA", kind: "activity", name: "China PMI", terms: []string{
+	{entity: "CN", kind: "activity", name: "China PMI", terms: []string{
 		"china pmi", "chinese pmi", "nbs manufacturing pmi", "cai manufacturing pmi"}},
-	{entity: "CHINA", kind: "activity", name: "China Trade Balance", terms: []string{
+	{entity: "CN", kind: "activity", name: "China Trade Balance", terms: []string{
 		"china trade balance"}},
 }

@@ -58,6 +58,7 @@ type Dictionary struct {
 	pairs    []pair
 	codes    map[uuid.UUID]string
 	currency map[string]uuid.UUID
+	country  map[string]uuid.UUID
 
 	indicator indicatorIndex
 }
@@ -85,6 +86,7 @@ func Build(
 	dictionary := Dictionary{
 		codes:    map[uuid.UUID]string{},
 		currency: map[string]uuid.UUID{},
+		country:  map[string]uuid.UUID{},
 	}
 	seen := map[string]bool{}
 	add := func(text string, entityID uuid.UUID) {
@@ -100,6 +102,9 @@ func Build(
 		dictionary.codes[entity.ID] = entity.Code
 		if entity.Type == "currency" {
 			dictionary.currency[strings.ToUpper(entity.Code)] = entity.ID
+		}
+		if entity.Type == "country" {
+			dictionary.country[strings.ToUpper(entity.Code)] = entity.ID
 		}
 		add(entity.Code, entity.ID)
 		add(entity.Name, entity.ID)
@@ -142,6 +147,14 @@ type Outcome struct {
 // the classified indicator's home entity.
 func (dictionary Dictionary) EntityForCurrency(code string) (uuid.UUID, bool) {
 	id, ok := dictionary.currency[strings.ToUpper(strings.TrimSpace(code))]
+	return id, ok
+}
+
+// EntityForCountry resolves a country code (US, CN, GB) to the country
+// entity, so calendar events link by the event's country rather than the
+// classified indicator's home entity.
+func (dictionary Dictionary) EntityForCountry(code string) (uuid.UUID, bool) {
+	id, ok := dictionary.country[strings.ToUpper(strings.TrimSpace(code))]
 	return id, ok
 }
 

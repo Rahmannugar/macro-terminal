@@ -13,6 +13,16 @@
   <meta property="og:description" content="Macro intelligence and fundamental research terminal." />
   <meta property="og:image" content="/macroterminal.png" />
   <title>Macro Terminal</title>
+  <script>
+    (() => {
+      try {
+        const theme = localStorage.getItem("macro-terminal.theme") || "system";
+        const dark = theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        if (dark) document.documentElement.classList.add("dark");
+        document.documentElement.style.colorScheme = dark ? "dark" : "light";
+      } catch (_e) {}
+    })();
+  </script>
 </head>
 
 <body>

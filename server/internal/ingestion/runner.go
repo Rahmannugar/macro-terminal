@@ -519,7 +519,9 @@ func (runner *Runner) fetchCalendar(
 			continue
 		}
 		entityID := match.EntityID
-		if currencyID, known := dictionary.EntityForCurrency(event.Currency); known {
+		if countryID, known := dictionary.EntityForCountry(event.CountryCode); known {
+			entityID = countryID
+		} else if currencyID, known := dictionary.EntityForCurrency(event.Currency); known {
 			entityID = currencyID
 		}
 		entry := calendarmodels.PersistEntry{

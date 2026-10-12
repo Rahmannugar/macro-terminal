@@ -98,7 +98,7 @@ export function SourceConfigurationsScreen() {
       cell: (row) => (
         <Button
           variant="quiet"
-          className="h-8 rounded-md px-2.5 text-xs font-medium"
+          className="h-8! rounded-md px-2.5! text-xs font-medium"
           onClick={() => setEditing(row)}
         >
           Edit
@@ -113,7 +113,7 @@ export function SourceConfigurationsScreen() {
       title="Source configurations"
       description="Set up how each source is fetched — feed URLs, intervals, and selectors."
       actions={
-        <Button className="h-10" onClick={() => setCreateOpen(true)}>
+        <Button className="h-10!" onClick={() => setCreateOpen(true)}>
           Create configuration
         </Button>
       }
@@ -153,7 +153,7 @@ function SelectorsEditor({
         <Button
           type="button"
           variant="quiet"
-          className="h-8 gap-1.5 rounded-md px-2.5 text-xs font-medium"
+          className="h-8! gap-1.5 rounded-md px-2.5! text-xs font-medium"
           onClick={() => onChange([...rows, newSelectorRow()])}
         >
           <PlusIcon size={14} />

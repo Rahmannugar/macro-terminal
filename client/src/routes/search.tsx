@@ -60,7 +60,7 @@ export function SearchRoute() {
             <p className="text-sm text-muted-foreground">{adminErrorMessage(list.error)}</p>
             <Button
               variant="secondary"
-              className="mt-4 h-9 px-4 text-sm"
+              className="mt-4 h-9! px-4 text-sm"
               onClick={() => list.refetch()}
             >
               Retry

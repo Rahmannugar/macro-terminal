@@ -387,6 +387,33 @@ func TestClassifyIndicatorWithoutIndexMatchesNothing(t *testing.T) {
 	}
 }
 
+func TestEntityForCountryAndCurrencyResolveTypedEntities(t *testing.T) {
+	cnID := uuid.New()
+	dictionary := Build(
+		[]models.Entity{
+			{ID: usdID, Code: "USD", Name: "United States Dollar", Type: "currency"},
+			{ID: cnID, Code: "CN", Name: "China", Type: "country"},
+		},
+		nil, nil, nil, nil,
+	)
+
+	if id, ok := dictionary.EntityForCountry("CN"); !ok || id != cnID {
+		t.Errorf("EntityForCountry(CN) = %v/%v, want %v/true", id, ok, cnID)
+	}
+	if id, ok := dictionary.EntityForCountry(" cn "); !ok || id != cnID {
+		t.Errorf("EntityForCountry(' cn ') = %v/%v, want %v/true", id, ok, cnID)
+	}
+	if _, ok := dictionary.EntityForCountry("US"); ok {
+		t.Error("EntityForCountry(US) resolved, but no US country entity exists")
+	}
+	if id, ok := dictionary.EntityForCurrency("usd"); !ok || id != usdID {
+		t.Errorf("EntityForCurrency(usd) = %v/%v, want %v/true", id, ok, usdID)
+	}
+	if _, ok := dictionary.EntityForCurrency("CNY"); ok {
+		t.Error("EntityForCurrency(CNY) resolved, but no CNY currency entity exists")
+	}
+}
+
 func equalStrings(got, want []string) bool {
 	if len(got) == 0 && len(want) == 0 {
 		return true

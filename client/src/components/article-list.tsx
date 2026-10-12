@@ -38,7 +38,7 @@ export function ArticleList({
           {error instanceof Error ? error.message : "The list could not be loaded."}
         </p>
         {onRetry ? (
-          <Button variant="secondary" className="mt-4 h-9 px-4 text-sm" onClick={onRetry}>
+          <Button variant="secondary" className="mt-4 h-9! px-4 text-sm" onClick={onRetry}>
             Retry
           </Button>
         ) : null}
@@ -88,7 +88,7 @@ export function ArticleList({
         <div className="mt-3 flex min-h-10 items-center justify-center">
           <Button
             variant="secondary"
-            className="h-10 px-5 text-sm"
+            className="h-10! px-5! text-sm"
             pending={loadingMore}
             onClick={onLoadMore}
           >

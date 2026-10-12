@@ -89,7 +89,7 @@ export function FailedJobsScreen() {
       cell: (row) => (
         <Button
           variant="secondary"
-          className="h-8 rounded-md px-3 text-xs font-medium"
+          className="h-8! rounded-md px-3! text-xs font-medium"
           pending={replayedId === row.id && post.isPending}
           disabled={post.isPending && replayedId !== row.id}
           onClick={() => replay(row)}

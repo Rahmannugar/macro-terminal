@@ -64,7 +64,7 @@ export function WatchListRoute() {
                   <span className="text-sm font-medium">{pair.symbol}</span>
                   <Button
                     variant={following ? "secondary" : "primary"}
-                    className="h-8 min-w-24 justify-center gap-1.5 px-3 text-xs"
+                    className="h-8! min-w-24 justify-center gap-1.5 px-3! text-xs"
                     disabled={pending}
                     onClick={() => toggle.mutate({ pairId: pair.id, following: !following })}
                   >
@@ -88,7 +88,7 @@ export function WatchListRoute() {
             <div className="mt-3 flex justify-center">
               <Button
                 variant="quiet"
-                className="h-9 px-3 text-xs"
+                className="h-9! px-3! text-xs"
                 onClick={() => catalog.fetchNextPage()}
               >
                 Load more

@@ -72,7 +72,7 @@ export function KnowledgeTermsScreen() {
       title="Knowledge terms"
       description="Classification phrases linked to an entity, an indicator, or both — how titles map onto the terminal."
       actions={
-        <Button className="h-10" onClick={() => setCreateOpen(true)}>
+        <Button className="h-10!" onClick={() => setCreateOpen(true)}>
           Create term
         </Button>
       }

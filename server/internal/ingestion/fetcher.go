@@ -40,6 +40,10 @@ const (
 	maxResponseBytes = 16 << 20
 	// userAgent identifies the terminal to providers.
 	userAgent = "macro-terminal/1.0 (+https://macroterminal.consumel.com)"
+	// articleUserAgent mimics a real browser for article page fetches.
+	// News sites like Investing.com return 403 to known bot User-Agents,
+	// so hydration uses this to read public article pages.
+	articleUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
 
 // HTTPDoer is the part of http.Client the fetcher needs: just Do.
@@ -291,7 +295,16 @@ func (fetcher *Fetcher) buildRequest(
 		return nil, err
 	}
 
-	request.Header.Set("User-Agent", userAgent)
+	// Article page fetches use a browser User-Agent: news sites block
+	// known bot User-Agents with 403. API/RSS fetches keep the
+	// identifying User-Agent so providers can identify the terminal.
+	if configuration.Type == "web" {
+		request.Header.Set("User-Agent", articleUserAgent)
+		request.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8")
+		request.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	} else {
+		request.Header.Set("User-Agent", userAgent)
+	}
 	if envName, ok := document["bearer_env"].(string); ok && strings.TrimSpace(envName) != "" {
 		envName = strings.TrimSpace(envName)
 		secret := os.Getenv(envName)
@@ -302,11 +315,14 @@ func (fetcher *Fetcher) buildRequest(
 	}
 	// SDMX statistics gateways answer 500 when Accept includes
 	// application/json, so a configuration can override this header.
-	accept := acceptFor(configuration.Type)
-	if value, ok := document["accept"].(string); ok && strings.TrimSpace(value) != "" {
-		accept = value
+	// Web article fetches already set a browser Accept above.
+	if configuration.Type != "web" {
+		accept := acceptFor(configuration.Type)
+		if value, ok := document["accept"].(string); ok && strings.TrimSpace(value) != "" {
+			accept = value
+		}
+		request.Header.Set("Accept", accept)
 	}
-	request.Header.Set("Accept", accept)
 	return request, nil
 }
 

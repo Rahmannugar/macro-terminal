@@ -35,7 +35,7 @@ export function SourcesScreen() {
       title="Sources"
       description="Logical sources — configurations, articles, and calendar events hang off these."
       actions={
-        <Button className="h-10" onClick={() => setCreateOpen(true)}>
+        <Button className="h-10!" onClick={() => setCreateOpen(true)}>
           Create source
         </Button>
       }

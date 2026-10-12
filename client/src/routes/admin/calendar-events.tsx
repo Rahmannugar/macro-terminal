@@ -120,7 +120,7 @@ export function CalendarEventsScreen() {
         <div className="flex justify-end gap-1">
           <Button
             variant="quiet"
-            className="h-8 rounded-md px-2.5 text-xs font-medium"
+            className="h-8! rounded-md px-2.5! text-xs font-medium"
             onClick={() => setEditing(row)}
           >
             Edit
@@ -128,7 +128,7 @@ export function CalendarEventsScreen() {
           {row.archivedAt ? (
             <Button
               variant="quiet"
-              className="h-8 rounded-md px-2.5 text-xs font-medium"
+              className="h-8! rounded-md px-2.5! text-xs font-medium"
               pending={restore.isPending && restore.variables === row.id}
               onClick={() => restore.mutate(`/api/v1/admin/calendar-events/${row.id}/restore`)}
             >
@@ -137,7 +137,7 @@ export function CalendarEventsScreen() {
           ) : (
             <Button
               variant="quiet"
-              className="h-8 rounded-md px-2.5 text-xs font-medium"
+              className="h-8! rounded-md px-2.5! text-xs font-medium"
               pending={archive.isPending && archive.variables === row.id}
               onClick={() => archive.mutate(`/api/v1/admin/calendar-events/${row.id}/archive`)}
             >
@@ -155,7 +155,7 @@ export function CalendarEventsScreen() {
       title="Calendar events"
       description="Scheduled and released figures per source and indicator. Archive hides an event from the user calendar without deleting it."
       actions={
-        <Button className="h-10" onClick={() => setCreateOpen(true)}>
+        <Button className="h-10!" onClick={() => setCreateOpen(true)}>
           Create event
         </Button>
       }

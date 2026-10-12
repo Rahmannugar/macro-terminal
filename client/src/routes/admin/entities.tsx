@@ -39,7 +39,7 @@ export function EntitiesScreen() {
       title="Entities"
       description="Reference entities — currencies, countries, and markets the terminal classifies against."
       actions={
-        <Button className="h-10" onClick={() => setCreateOpen(true)}>
+        <Button className="h-10!" onClick={() => setCreateOpen(true)}>
           Create entity
         </Button>
       }

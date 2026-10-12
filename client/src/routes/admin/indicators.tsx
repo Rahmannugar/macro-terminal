@@ -43,7 +43,7 @@ export function IndicatorsScreen() {
       title="Economic indicators"
       description="Indicators belong to one entity and carry the series the calendar tracks."
       actions={
-        <Button className="h-10" onClick={() => setCreateOpen(true)}>
+        <Button className="h-10!" onClick={() => setCreateOpen(true)}>
           Create indicator
         </Button>
       }

@@ -186,7 +186,7 @@ function ActionButton({
   return (
     <Button
       variant="quiet"
-      className="h-8 rounded-md px-2.5 text-xs font-medium"
+      className="h-8! rounded-md px-2.5! text-xs font-medium"
       pending={busy}
       disabled={disabled && !busy}
       onClick={onClick}

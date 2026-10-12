@@ -76,7 +76,7 @@ export function HomeRoute() {
           <h2 className="text-sm font-semibold">Watch list</h2>
           <Button
             variant="secondary"
-            className="h-9 px-4 text-sm"
+            className="h-9! px-4 text-sm"
             onClick={() => setPickerOpen(true)}
           >
             Pick pairs

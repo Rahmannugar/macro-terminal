@@ -47,13 +47,13 @@ export function AdminFormDialog({
           <Button
             type="button"
             variant="quiet"
-            className="h-10 px-4"
+            className="h-10! px-4"
             disabled={pending}
             onClick={onClose}
           >
             Cancel
           </Button>
-          <Button type="submit" className="h-10 px-4" pending={pending}>
+          <Button type="submit" className="h-10! px-4" pending={pending}>
             {submitLabel}
           </Button>
         </div>

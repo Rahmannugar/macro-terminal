@@ -49,7 +49,7 @@ export function EntityPairsScreen() {
       title="Entity pairs"
       description="Tradable pairs built from two existing entities under an explicit symbol."
       actions={
-        <Button className="h-10" onClick={() => setCreateOpen(true)}>
+        <Button className="h-10!" onClick={() => setCreateOpen(true)}>
           Create pair
         </Button>
       }

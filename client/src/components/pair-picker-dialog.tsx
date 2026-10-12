@@ -129,7 +129,7 @@ export function PairPickerDialog({
         <div className="mt-2 flex justify-center">
           <Button
             variant="quiet"
-            className="h-9 px-3 text-xs"
+            className="h-9! px-3! text-xs"
             pending={catalog.isFetchingNextPage}
             onClick={() => catalog.fetchNextPage()}
           >

@@ -156,6 +156,13 @@ export function AppShell({ account, children }: { account: Account; children: Re
             <ListIcon className="size-4" />
           </button>
           <Link to="/" className="flex items-center gap-2 md:hidden">
+            <img
+              src="/macroterminal.png"
+              alt=""
+              width={26}
+              height={26}
+              className="shrink-0 rounded-lg"
+            />
             <span className="font-display text-[15px] font-semibold tracking-[-0.02em]">
               Macro Terminal
             </span>
