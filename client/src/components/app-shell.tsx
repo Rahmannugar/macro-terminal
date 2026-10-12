@@ -106,7 +106,7 @@ export function AppShell({ account, children }: { account: Account; children: Re
     });
   }
 
-  const isAdmin = account.account.role === "admin";
+  const isAdmin = account.account.role === "admin" || account.account.role === "super_admin";
   const sections = navigation.filter((section) => !section.adminOnly || isAdmin);
 
   return (
@@ -290,7 +290,12 @@ function AccountMenu() {
               <div className="px-2.5 py-2">
                 <p className="truncate text-sm font-medium">{data.account.email}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  {[data.account.username, data.account.role === "admin" ? "admin" : null]
+                  {[
+                    data.account.username,
+                    data.account.role === "admin" || data.account.role === "super_admin"
+                      ? data.account.role
+                      : null,
+                  ]
                     .filter(Boolean)
                     .join(" · ")}
                 </p>

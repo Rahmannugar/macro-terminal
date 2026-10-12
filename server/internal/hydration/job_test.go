@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -176,6 +177,56 @@ func TestCycleHydratesClaimedArticle(t *testing.T) {
 	}
 	if document["url"] != target.ArticleURL {
 		t.Errorf("request url = %v, want the article URL", document["url"])
+	}
+}
+
+func TestCycleSelectorPicksDensestBlockAndStripsChrome(t *testing.T) {
+	workID := uuid.New()
+	target := configuredTarget(".m-block--text")
+	repository := &fakeRepository{
+		claimed: []models.ClaimedJob{{ID: workID, ArticleID: target.ArticleID, Attempts: 1}},
+		targets: map[uuid.UUID]models.ContentTarget{target.ArticleID: target},
+	}
+	body := `<html><body>
+		<nav class="m-block--text"><p>Menu</p></nav>
+		<div class="m-block--text"><p>` + longText + `</p><p>` + longText + `</p></div>
+		<footer class="m-block--text"><p>Footer</p></footer>
+	</body></html>`
+	fetcher := &fakeFetcher{body: []byte(body)}
+
+	err := NewJob(repository, fetcher, testLogger()).cycle(t.Context())
+	if err != nil {
+		t.Fatalf("cycle: %v", err)
+	}
+	got := repository.stored[target.ArticleID]
+	if !strings.Contains(got, longText[:40]) {
+		t.Errorf("stored content = %q, want the densest block's paragraphs", got)
+	}
+	if strings.Contains(got, "Menu") || strings.Contains(got, "Footer") {
+		t.Errorf("stored content = %q, must not include nav or footer", got)
+	}
+}
+
+func TestCycleSelectorMissFallsBackToGeneric(t *testing.T) {
+	workID := uuid.New()
+	target := configuredTarget(".gone")
+	repository := &fakeRepository{
+		claimed: []models.ClaimedJob{{ID: workID, ArticleID: target.ArticleID, Attempts: 1}},
+		targets: map[uuid.UUID]models.ContentTarget{target.ArticleID: target},
+	}
+	body := `<html><body><article><p>` + longText + `</p></article></body></html>`
+	fetcher := &fakeFetcher{body: []byte(body)}
+
+	err := NewJob(repository, fetcher, testLogger()).cycle(t.Context())
+	if err != nil {
+		t.Fatalf("cycle: %v", err)
+	}
+	got := repository.stored[target.ArticleID]
+	if !strings.Contains(got, longText[:40]) {
+		t.Errorf("stored content = %q, want the generic article body after a selector miss", got)
+	}
+	if len(repository.completed) != 1 {
+		t.Errorf("completed = %v, want the claimed job", repository.completed)
 	}
 }
 

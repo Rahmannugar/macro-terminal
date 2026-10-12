@@ -1,4 +1,4 @@
-import { createRail, RailBoundary, requireAuth, requireRole } from "authrail";
+import { createRail, type Middleware, RailBoundary, requireAuth } from "authrail";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router";
 import { useAccount, useSignOut } from "../../hooks/use-account";
@@ -7,8 +7,21 @@ import { Button } from "../ui/button";
 
 type RailContext = { user: { role: string } | null };
 
+function requireAdmin(): Middleware<RailContext> {
+  return async (ctx) => {
+    if (!ctx.user || (ctx.user.role !== "admin" && ctx.user.role !== "super_admin")) {
+      return {
+        decision: {
+          type: "deny",
+          reason: "insufficient_role",
+        },
+      };
+    }
+  };
+}
+
 const authenticatedRail = createRail<RailContext>("authenticated", [requireAuth("/sign-in")]);
-const adminRail = createRail<RailContext>("admin", [requireRole("admin")]);
+const adminRail = createRail<RailContext>("admin", [requireAdmin()]);
 
 export function AuthenticatedBoundary({
   children,

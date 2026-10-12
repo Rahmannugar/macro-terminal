@@ -1,3 +1,4 @@
+import { PlusIcon, XIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { AdminFormDialog } from "../../components/admin/admin-form-dialog";
 import { AdminScreen } from "../../components/admin/admin-screen";
@@ -27,7 +28,41 @@ type SourceConfigurationRow = {
   lastRunAt: string | null;
 };
 
+type SelectorRow = { id: string; key: string; value: string };
+
+let selectorRowSeq = 0;
+function newSelectorRow(key = "", value = ""): SelectorRow {
+  selectorRowSeq += 1;
+  return { id: `selector-${selectorRowSeq}`, key, value };
+}
+
 const configurationsKey = ["admin", "source-configurations"];
+
+function selectorsFromConfig(config: Record<string, unknown>): SelectorRow[] {
+  const raw = config.selectors;
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return [];
+  return Object.entries(raw as Record<string, unknown>).map(([key, value]) =>
+    newSelectorRow(key, typeof value === "string" ? value : String(value ?? "")),
+  );
+}
+
+function selectorsToObject(rows: SelectorRow[]): Record<string, string> | undefined {
+  const result: Record<string, string> = {};
+  for (const row of rows) {
+    const key = row.key.trim();
+    if (!key) continue;
+    result[key] = row.value;
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function parseInterval(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const value = Number(trimmed);
+  if (!Number.isInteger(value) || value <= 0) return null;
+  return value;
+}
 
 export function SourceConfigurationsScreen() {
   const list = useAdminList<SourceConfigurationRow>({
@@ -104,6 +139,95 @@ export function SourceConfigurationsScreen() {
   );
 }
 
+function SelectorsEditor({
+  rows,
+  onChange,
+}: {
+  rows: SelectorRow[];
+  onChange: (rows: SelectorRow[]) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium">Selectors</p>
+        <Button
+          type="button"
+          variant="quiet"
+          className="h-8 gap-1.5 rounded-md px-2.5 text-xs font-medium"
+          onClick={() => onChange([...rows, newSelectorRow()])}
+        >
+          <PlusIcon size={14} />
+          Add selector
+        </Button>
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No selectors on this configuration.</p>
+      ) : null}
+      {rows.map((row) => (
+        <div key={row.id} className="flex items-center gap-2">
+          <Input
+            aria-label="Selector name"
+            placeholder="title"
+            value={row.key}
+            className="h-10"
+            onChange={(event) => {
+              const next = rows.map((item) =>
+                item.id === row.id ? { ...item, key: event.target.value } : item,
+              );
+              onChange(next);
+            }}
+          />
+          <Input
+            aria-label="Selector value"
+            placeholder=".article-title"
+            value={row.value}
+            className="h-10"
+            onChange={(event) => {
+              const next = rows.map((item) =>
+                item.id === row.id ? { ...item, value: event.target.value } : item,
+              );
+              onChange(next);
+            }}
+          />
+          <button
+            type="button"
+            aria-label="Remove selector"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition hover:text-foreground"
+            onClick={() => onChange(rows.filter((item) => item.id !== row.id))}
+          >
+            <XIcon size={16} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function IntervalField({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <Field label="Fetch interval (seconds)" htmlFor={id} hint="Leave empty to use the default.">
+      <Input
+        id={id}
+        type="number"
+        min={1}
+        step={1}
+        inputMode="numeric"
+        value={value}
+        placeholder="e.g. 60"
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </Field>
+  );
+}
+
 function CreateConfigurationDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const create = useAdminCreate<{
     sourceId: string;
@@ -114,12 +238,16 @@ function CreateConfigurationDialog({ open, onClose }: { open: boolean; onClose: 
   const [sourceId, setSourceId] = useState("");
   const [type, setType] = useState("rss");
   const [url, setUrl] = useState("");
+  const [interval, setInterval] = useState("");
+  const [selectors, setSelectors] = useState<SelectorRow[]>([]);
   const [localError, setLocalError] = useState<string | null>(null);
 
   function close() {
     setSourceId("");
     setType("rss");
     setUrl("");
+    setInterval("");
+    setSelectors([]);
     setLocalError(null);
     create.reset();
     onClose();
@@ -134,8 +262,17 @@ function CreateConfigurationDialog({ open, onClose }: { open: boolean; onClose: 
       setLocalError("Enter a feed URL.");
       return;
     }
+    const intervalSeconds = parseInterval(interval);
+    if (interval.trim() && intervalSeconds === null) {
+      setLocalError("Fetch interval must be a whole number of seconds.");
+      return;
+    }
+    const config: Record<string, unknown> = { url: url.trim() };
+    if (intervalSeconds !== null) config.min_interval_s = intervalSeconds;
+    const selectorObject = selectorsToObject(selectors);
+    if (selectorObject) config.selectors = selectorObject;
     setLocalError(null);
-    create.mutate({ sourceId, type, config: { url: url.trim() } }, { onSuccess: close });
+    create.mutate({ sourceId, type, config }, { onSuccess: close });
   }
 
   return (
@@ -194,6 +331,8 @@ function CreateConfigurationDialog({ open, onClose }: { open: boolean; onClose: 
           }}
         />
       </Field>
+      <IntervalField id="config-interval" value={interval} onChange={setInterval} />
+      {type === "web" ? <SelectorsEditor rows={selectors} onChange={setSelectors} /> : null}
     </AdminFormDialog>
   );
 }
@@ -216,7 +355,15 @@ function EditConfigurationDialog({
       ? configuration.config.url
       : "",
   );
+  const [interval, setInterval] = useState(() => {
+    const raw = configuration?.config.min_interval_s;
+    return typeof raw === "number" ? String(raw) : "";
+  });
+  const [selectors, setSelectors] = useState<SelectorRow[]>(() =>
+    selectorsFromConfig(configuration?.config ?? {}),
+  );
   const [localError, setLocalError] = useState<string | null>(null);
+  const showSelectors = configuration?.type === "web" || selectors.length > 0;
 
   function close() {
     setLocalError(null);
@@ -225,12 +372,30 @@ function EditConfigurationDialog({
   }
 
   function submit() {
+    if (!configuration) return;
     if (!url.trim()) {
       setLocalError("Enter a feed URL.");
       return;
     }
+    const intervalSeconds = parseInterval(interval);
+    if (interval.trim() && intervalSeconds === null) {
+      setLocalError("Fetch interval must be a whole number of seconds.");
+      return;
+    }
+    const next: Record<string, unknown> = { ...configuration.config, url: url.trim() };
+    if (intervalSeconds !== null) {
+      next.min_interval_s = intervalSeconds;
+    } else {
+      delete next.min_interval_s;
+    }
+    const selectorObject = selectorsToObject(selectors);
+    if (selectorObject) {
+      next.selectors = selectorObject;
+    } else {
+      delete next.selectors;
+    }
     setLocalError(null);
-    replace.mutate({ config: { url: url.trim() } }, { onSuccess: close });
+    replace.mutate({ config: next }, { onSuccess: close });
   }
 
   if (!configuration) return null;
@@ -240,7 +405,7 @@ function EditConfigurationDialog({
       open
       onClose={close}
       title="Edit configuration"
-      description="Update the feed URL or API endpoint for this source."
+      description="Update the feed URL, interval, or selectors for this source."
       submitLabel="Save"
       pending={replace.isPending}
       errorMessage={localError ?? adminErrorMessage(replace.error)}
@@ -258,6 +423,25 @@ function EditConfigurationDialog({
           }}
         />
       </Field>
+      <IntervalField
+        id="config-edit-interval"
+        value={interval}
+        onChange={(value) => {
+          setInterval(value);
+          setLocalError(null);
+          replace.reset();
+        }}
+      />
+      {showSelectors ? (
+        <SelectorsEditor
+          rows={selectors}
+          onChange={(rows) => {
+            setSelectors(rows);
+            setLocalError(null);
+            replace.reset();
+          }}
+        />
+      ) : null}
     </AdminFormDialog>
   );
 }

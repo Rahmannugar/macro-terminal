@@ -294,30 +294,63 @@ func articleRequest(target models.ContentTarget) (sourcemodels.SourceConfigurati
 }
 
 // extractContent pulls the article body: the configured content selector
-// when the source has one, the generic extraction otherwise. A page the
-// selector does not fit fails permanently — the same markup will be served
-// on every retry.
+// when the source has one, the generic extraction otherwise. A selector can
+// match several blocks on a page (promos, listings, the article body); the
+// block holding the most paragraph text wins, chrome is stripped, and a
+// miss or a chrome-only match falls through to the generic path.
 func extractContent(body []byte, selector string) (string, error) {
 	document, err := goquery.NewDocumentFromReader(bytes.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("parse article page: %w", err)
 	}
-	if selector == "" {
-		return extractGenericContent(document)
+	if selector != "" {
+		if content, err := selectorContent(document, selector); err == nil {
+			return content, nil
+		}
 	}
-	match := document.Find(selector).First()
-	if match.Length() == 0 {
+	return extractGenericContent(document)
+}
+
+// selectorContent extracts from the configured content selector. Chrome is
+// stripped, but the text floor is not applied — the source explicitly
+// configured this selector, so its length is trusted. A miss or an empty
+// after-chrome result is rejected so the caller can fall back.
+func selectorContent(document *goquery.Document, selector string) (string, error) {
+	matches := document.Find(selector)
+	if matches.Length() == 0 {
 		return "", fmt.Errorf("no element matches content selector %q", selector)
 	}
-	html, err := match.Html()
+	var best *goquery.Selection
+	matches.Each(func(_ int, node *goquery.Selection) {
+		if paragraphTextLength(node) > paragraphTextLength(best) {
+			best = node
+		}
+	})
+	clone := best.Clone()
+	clone.Find(chromeSelectors).Remove()
+	html, err := clone.Html()
 	if err != nil {
 		return "", fmt.Errorf("read content element: %w", err)
 	}
 	content := strings.TrimSpace(html)
 	if content == "" {
-		return "", fmt.Errorf("content selector %q matched an empty element", selector)
+		return "", fmt.Errorf("content selector %q matched only page chrome", selector)
 	}
 	return content, nil
+}
+
+// paragraphTextLength sums the plain text inside direct paragraph elements.
+// Scoring by paragraph text — rather than total text — keeps link lists,
+// nav blocks, and dialog shells from outscoring the real article body.
+func paragraphTextLength(node *goquery.Selection) int {
+	if node == nil || node.Length() == 0 {
+		return 0
+	}
+	total := 0
+	node.Find("p").Each(func(_ int, paragraph *goquery.Selection) {
+		total += len(strings.TrimSpace(paragraph.Text()))
+	})
+	return total
 }
 
 func truncate(value string, limit int) string {
