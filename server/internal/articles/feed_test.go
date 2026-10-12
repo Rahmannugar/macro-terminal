@@ -13,6 +13,7 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/articles/models"
 	"github.com/Rahmannugar/macro-terminal/server/internal/authentication"
 	"github.com/Rahmannugar/macro-terminal/server/internal/common/paging"
+	entitymodels "github.com/Rahmannugar/macro-terminal/server/internal/entities/models"
 	usersmodels "github.com/Rahmannugar/macro-terminal/server/internal/users/models"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -71,10 +72,25 @@ func (fake *fakeFeedRepo) RecentArticleIDsPage(_ context.Context, entityIDs []uu
 }
 
 type fakeFeedAssets struct {
-	ids []uuid.UUID
+	ids   []uuid.UUID
+	pairs []entitymodels.EntityPair
 }
 
 func (fake *fakeFeedAssets) EntityIDsForUser(context.Context, uuid.UUID) ([]uuid.UUID, error) {
+	return fake.ids, nil
+}
+
+func (fake *fakeFeedAssets) PairsForUser(context.Context, uuid.UUID) ([]entitymodels.EntityPair, error) {
+	return fake.pairs, nil
+}
+
+type fakeFeedSearcher struct {
+	ids      []uuid.UUID
+	gotQuery string
+}
+
+func (fake *fakeFeedSearcher) SearchArticles(_ context.Context, query string, _ int) ([]uuid.UUID, error) {
+	fake.gotQuery = query
 	return fake.ids, nil
 }
 
@@ -135,7 +151,7 @@ func TestFeedPreservesRequestedOrder(t *testing.T) {
 		first:  feedArticleFixture(first, "First story"),
 		second: feedArticleFixture(second, "Second story"),
 	}}
-	feed := NewFeedService(repo, hydrator, &fakeFeedAssets{ids: []uuid.UUID{uuid.New()}})
+	feed := NewFeedService(repo, hydrator, &fakeFeedAssets{ids: []uuid.UUID{uuid.New()}}, nil)
 	router := feedRouter(t, feed)
 
 	recorder := performFeed(router, "/api/v1/articles")
@@ -163,7 +179,7 @@ func TestFeedWithoutFollowsQueriesEverything(t *testing.T) {
 	hydrator := reverseHydrator{articles: map[uuid.UUID]models.StoredArticle{
 		id: feedArticleFixture(id, "Global story"),
 	}}
-	feed := NewFeedService(repo, hydrator, &fakeFeedAssets{})
+	feed := NewFeedService(repo, hydrator, &fakeFeedAssets{}, nil)
 	router := feedRouter(t, feed)
 
 	recorder := performFeed(router, "/api/v1/articles")
@@ -183,7 +199,7 @@ func TestFeedWithoutFollowsQueriesEverything(t *testing.T) {
 }
 
 func TestFeedRejectsBadPageParameters(t *testing.T) {
-	feed := NewFeedService(&fakeFeedRepo{}, reverseHydrator{}, &fakeFeedAssets{})
+	feed := NewFeedService(&fakeFeedRepo{}, reverseHydrator{}, &fakeFeedAssets{}, nil)
 	router := feedRouter(t, feed)
 
 	recorder := performFeed(router, "/api/v1/articles?limit=0")
@@ -199,12 +215,74 @@ func TestFeedRejectsBadPageParameters(t *testing.T) {
 
 func TestFeedRequiresSession(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	feed := NewFeedService(&fakeFeedRepo{}, reverseHydrator{}, &fakeFeedAssets{})
+	feed := NewFeedService(&fakeFeedRepo{}, reverseHydrator{}, &fakeFeedAssets{}, nil)
 	router := gin.New()
 	RegisterFeedRoutes(router.Group("/api/v1"), feed)
 
 	recorder := performFeed(router, "/api/v1/articles")
 	if recorder.Code != http.StatusUnauthorized || decodeFailure(t, recorder).Error.Code != "unauthenticated" {
 		t.Errorf("status/code = %d/%q, want 401 unauthenticated", recorder.Code, decodeFailure(t, recorder).Error.Code)
+	}
+}
+
+func TestFeedRelevanceSortUsesSearcher(t *testing.T) {
+	id := uuid.New()
+	repo := &fakeFeedRepo{}
+	hydrator := reverseHydrator{articles: map[uuid.UUID]models.StoredArticle{
+		id: feedArticleFixture(id, "Relevant story"),
+	}}
+	assets := &fakeFeedAssets{
+		pairs: []entitymodels.EntityPair{{Symbol: "EURUSD"}, {Symbol: "GBPUSD"}},
+	}
+	searcher := &fakeFeedSearcher{ids: []uuid.UUID{id}}
+	feed := NewFeedService(repo, hydrator, assets, searcher)
+	router := feedRouter(t, feed)
+
+	recorder := performFeed(router, "/api/v1/articles?sort=relevance")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s, want 200", recorder.Code, recorder.Body.String())
+	}
+	if searcher.gotQuery != "EURUSD GBPUSD" {
+		t.Errorf("search query = %q, want the followed pair symbols", searcher.gotQuery)
+	}
+	var page feedResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &page); err != nil {
+		t.Fatalf("decode body %q: %v", recorder.Body.String(), err)
+	}
+	if len(page.Articles) != 1 || page.Articles[0].ID != id {
+		t.Errorf("articles = %+v, want the relevance result", page.Articles)
+	}
+}
+
+func TestFeedRelevanceSortFallsBackToLatestWithoutPairs(t *testing.T) {
+	id := uuid.New()
+	repo := &fakeFeedRepo{refs: []models.RecentArticleRef{{ID: id}}}
+	hydrator := reverseHydrator{articles: map[uuid.UUID]models.StoredArticle{
+		id: feedArticleFixture(id, "Global story"),
+	}}
+	assets := &fakeFeedAssets{}
+	searcher := &fakeFeedSearcher{}
+	feed := NewFeedService(repo, hydrator, assets, searcher)
+	router := feedRouter(t, feed)
+
+	recorder := performFeed(router, "/api/v1/articles?sort=relevance")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s, want 200", recorder.Code, recorder.Body.String())
+	}
+	if searcher.gotQuery != "" {
+		t.Errorf("search query = %q, want empty so latest is used", searcher.gotQuery)
+	}
+	if len(repo.gotEntityIDs) != 0 {
+		t.Errorf("entityIDs = %v, want the latest-feed fallback path", repo.gotEntityIDs)
+	}
+}
+
+func TestFeedRejectsBadSort(t *testing.T) {
+	feed := NewFeedService(&fakeFeedRepo{}, reverseHydrator{}, &fakeFeedAssets{}, nil)
+	router := feedRouter(t, feed)
+
+	recorder := performFeed(router, "/api/v1/articles?sort=bogus")
+	if recorder.Code != http.StatusBadRequest || decodeFailure(t, recorder).Error.Code != "invalid_sort" {
+		t.Errorf("sort=bogus → status/code = %d/%q, want 400 invalid_sort", recorder.Code, decodeFailure(t, recorder).Error.Code)
 	}
 }

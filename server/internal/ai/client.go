@@ -21,8 +21,14 @@ type EnrichInput struct {
 	EntityCodes []string
 }
 
+type BatchEnrichInput struct {
+	Articles    []EnrichInput
+	EntityCodes []string
+}
+
 type Enricher interface {
 	Enrich(ctx context.Context, input EnrichInput) (Enrichment, error)
+	BatchEnrich(ctx context.Context, input BatchEnrichInput) ([]Enrichment, error)
 }
 
 type ExplainArticleInput struct {

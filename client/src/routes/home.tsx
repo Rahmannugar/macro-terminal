@@ -6,6 +6,7 @@ import { ArticleList } from "../components/article-list";
 import { PairPickerDialog } from "../components/pair-picker-dialog";
 import { Button } from "../components/ui/button";
 import { SkeletonList } from "../components/ui/skeleton";
+import { Tabs } from "../components/ui/tabs";
 import { useAccount } from "../hooks/use-account";
 import { useLiveFeed } from "../hooks/use-live-feed";
 import { adminErrorMessage, adminRows, requestAdminPage, useAdminList } from "../lib/admin";
@@ -19,12 +20,14 @@ export function HomeRoute() {
   const queryClient = useQueryClient();
   const [newCount, setNewCount] = useState<number | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [feedSort, setFeedSort] = useState<"latest" | "relevance">("latest");
   const followed = useFollowedPairs();
   const toggle = useToggleFollow();
   const feed = useAdminList<ArticleSummary>({
     key: ["feed"],
     path: "/api/v1/articles",
     rowsKey: "articles",
+    filters: feedSort === "relevance" ? { sort: "relevance" } : undefined,
   });
   const calendar = useAdminList<CalendarEvent>({
     key: ["calendar"],
@@ -120,11 +123,22 @@ export function HomeRoute() {
 
       <div className="mt-10 flex flex-col gap-10 lg:flex-row lg:items-start lg:gap-8">
         <section className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold">
-            {followedRows.length > 0
-              ? "Latest for your watch list"
-              : "Latest from the terminal"}
-          </h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold">
+              {feedSort === "relevance"
+                ? "Relevant to your watch list"
+                : followedRows.length > 0
+                  ? "Latest for your watch list"
+                  : "Latest from the terminal"}
+            </h2>
+            <Tabs
+              value={feedSort}
+              options={["latest", "relevance"] as const}
+              onChange={(value) => setFeedSort(value as "latest" | "relevance")}
+              label={(option) => (option === "latest" ? "Latest" : "Relevant")}
+              size="sm"
+            />
+          </div>
           <div className="mt-3">
             {newCount !== null && newCount > 0 ? (
               <button

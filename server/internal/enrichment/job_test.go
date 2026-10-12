@@ -98,16 +98,33 @@ func (lister *fakeEntities) ListEntities(context.Context) ([]entitymodels.Entity
 }
 
 type fakeEnricher struct {
-	result ai.Enrichment
-	err    error
-	calls  int
-	last   ai.EnrichInput
+	result     ai.Enrichment
+	err        error
+	calls      int
+	last       ai.EnrichInput
+	batchCodes []string
 }
 
 func (enricher *fakeEnricher) Enrich(_ context.Context, input ai.EnrichInput) (ai.Enrichment, error) {
 	enricher.calls++
 	enricher.last = input
 	return enricher.result, enricher.err
+}
+
+func (enricher *fakeEnricher) BatchEnrich(_ context.Context, input ai.BatchEnrichInput) ([]ai.Enrichment, error) {
+	enricher.calls++
+	enricher.batchCodes = input.EntityCodes
+	if len(input.Articles) > 0 {
+		enricher.last = input.Articles[0]
+	}
+	if enricher.err != nil {
+		return nil, enricher.err
+	}
+	results := make([]ai.Enrichment, len(input.Articles))
+	for i := range results {
+		results[i] = enricher.result
+	}
+	return results, nil
 }
 
 func testLogger() *slog.Logger {
@@ -148,8 +165,8 @@ func TestCycleEnrichesClaimedArticle(t *testing.T) {
 	if enricher.calls != 1 {
 		t.Fatalf("enrich calls = %d, want 1", enricher.calls)
 	}
-	if len(enricher.last.EntityCodes) != 2 || enricher.last.EntityCodes[0] != "USD" {
-		t.Errorf("prompt entity codes = %v, want the known universe", enricher.last.EntityCodes)
+	if len(enricher.batchCodes) != 2 || enricher.batchCodes[0] != "USD" {
+		t.Errorf("batch entity codes = %v, want the known universe", enricher.batchCodes)
 	}
 	var stored ai.Enrichment
 	if err := json.Unmarshal(repository.storedResult, &stored); err != nil {

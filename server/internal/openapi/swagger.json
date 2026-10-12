@@ -3277,8 +3277,16 @@
         },
         "/api/v1/articles": {
             "get": {
-                "description": "Returns the newest articles mapped to the account's followed asset pairs, newest first, falling back to the whole terminal when nothing is followed. Pass the returned nextCursor to fetch the next page.",
+                "description": "Returns articles mapped to the account's followed asset pairs, falling back to the whole terminal when nothing is followed. sort=latest (default) returns newest first with cursor pagination; sort=relevance returns articles ranked by vector similarity to the followed pair symbols (no cursor). Pass the returned nextCursor to fetch the next page when using sort=latest.",
                 "parameters": [
+                    {
+                        "description": "Sort order: latest or relevance. Defaults to latest.",
+                        "in": "query",
+                        "name": "sort",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
                     {
                         "description": "Page size between 1 and 100. Defaults to 25.",
                         "in": "query",
@@ -3288,7 +3296,7 @@
                         }
                     },
                     {
-                        "description": "Opaque cursor returned as nextCursor by the previous page.",
+                        "description": "Opaque cursor returned as nextCursor by the previous page. Only used with sort=latest.",
                         "in": "query",
                         "name": "cursor",
                         "schema": {
@@ -3315,7 +3323,7 @@
                                 }
                             }
                         },
-                        "description": "The limit or cursor is invalid."
+                        "description": "The sort, limit, or cursor is invalid."
                     },
                     "401": {
                         "content": {

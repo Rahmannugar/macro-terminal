@@ -16,8 +16,10 @@ import (
 const (
 	geminiBaseURL          = "https://generativelanguage.googleapis.com"
 	requestTimeout         = 20 * time.Second
+	batchTimeout           = 60 * time.Second
 	explainTimeout         = 30 * time.Second
 	maxOutputTokens        = 1024
+	batchMaxOutputTokens   = 4096
 	explainMaxOutputTokens = 4096
 )
 
@@ -58,6 +60,32 @@ func (client *geminiClient) Enrich(ctx context.Context, input EnrichInput) (Enri
 		return Enrichment{}, fmt.Errorf("decode enrichment JSON: %w", err)
 	}
 	return enrichment, nil
+}
+
+func (client *geminiClient) BatchEnrich(ctx context.Context, input BatchEnrichInput) ([]Enrichment, error) {
+	if client.apiKey == "" {
+		return nil, ErrMissingKey
+	}
+	if client.model == "" {
+		return nil, errors.New("enrichment model is not configured")
+	}
+	if len(input.Articles) == 0 {
+		return nil, nil
+	}
+
+	decoded, err := client.generate(ctx, client.buildBatchRequest(input), batchTimeout)
+	if err != nil {
+		return nil, err
+	}
+	text := decoded.firstText()
+	if text == "" {
+		return nil, errors.New("provider response carried no text part")
+	}
+	var batch batchEnrichmentResponse
+	if err := json.Unmarshal([]byte(text), &batch); err != nil {
+		return nil, fmt.Errorf("decode batch enrichment JSON: %w", err)
+	}
+	return batch.Results, nil
 }
 
 func (client *geminiClient) ExplainArticle(ctx context.Context, input ExplainArticleInput) (string, error) {
@@ -154,6 +182,50 @@ func enrichmentSchema() *schema {
 		},
 		Required: []string{"entities", "topics", "concepts"},
 	}
+}
+
+func (client *geminiClient) buildBatchRequest(input BatchEnrichInput) generateRequest {
+	var builder strings.Builder
+	builder.WriteString("Classify the following financial news articles.\n\n")
+	builder.WriteString("Return entities only from this list of known asset and institution codes: ")
+	builder.WriteString(strings.Join(input.EntityCodes, ", "))
+	builder.WriteString("\n\n")
+	for i, article := range input.Articles {
+		fmt.Fprintf(&builder, "Article %d:\nTitle: %s\nContent: %s\n\n", i+1, article.Title, article.Content)
+	}
+	builder.WriteString("For each article, list the entity codes the article is actually about, its topics, and its key concepts. Return results in the same order as the articles.")
+	return generateRequest{
+		Contents: []content{{Parts: []part{{Text: builder.String()}}}},
+		GenerationConfig: generationConfig{
+			ResponseMimeType: "application/json",
+			ResponseSchema:   batchEnrichmentSchema(),
+			MaxOutputTokens:  batchMaxOutputTokens,
+		},
+	}
+}
+
+func batchEnrichmentSchema() *schema {
+	stringArray := schema{Type: "array", Items: &schema{Type: "string"}}
+	enrichmentItem := schema{
+		Type: "object",
+		Properties: map[string]schema{
+			"entities": stringArray,
+			"topics":   stringArray,
+			"concepts": stringArray,
+		},
+		Required: []string{"entities", "topics", "concepts"},
+	}
+	return &schema{
+		Type: "object",
+		Properties: map[string]schema{
+			"results": {Type: "array", Items: &enrichmentItem},
+		},
+		Required: []string{"results"},
+	}
+}
+
+type batchEnrichmentResponse struct {
+	Results []Enrichment `json:"results"`
 }
 
 type generateRequest struct {

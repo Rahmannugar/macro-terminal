@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -17,7 +18,7 @@ import (
 const (
 	cycleInterval  = 30 * time.Second
 	enqueueLimit   = 16
-	batchSize      = 8
+	batchSize      = 10
 	maxAttempts    = 8
 	maxCauseLength = 500
 )
@@ -146,114 +147,159 @@ func (job *Job) cycle(ctx context.Context) error {
 	stats.claimed = len(claimed)
 	if len(claimed) == 0 {
 		if stats.reclaimed > 0 {
-			job.logCycle(ctx, stats)
+			job.logCycle(ctx, &stats)
 		}
 		return nil
 	}
 
-	var processErr error
-	for _, work := range claimed {
-		if err := job.process(ctx, work, known, codes, &stats); err != nil {
-			job.logger.ErrorContext(ctx,
-				"AI enrichment job handling failed",
-				"event", "ai.enrichment.job_error",
-				"outbox_id", work.ID,
-				"error", err,
-			)
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			processErr = err
-		}
-	}
-	job.logCycle(ctx, stats)
-	return processErr
+	return job.processBatch(ctx, claimed, known, codes, &stats)
 }
 
-func (job *Job) process(
+type pendingWork struct {
+	work    models.ClaimedJob
+	article models.Article
+}
+
+// processBatch fetches every claimed article, enriches them in a single
+// provider call, then stores each result and completes its outbox row.
+func (job *Job) processBatch(
 	ctx context.Context,
-	work models.ClaimedJob,
+	claimed []models.ClaimedJob,
 	known map[string]struct{},
 	codes []string,
 	stats *cycleStats,
 ) error {
-	article, err := job.repository.Article(ctx, work.ArticleID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			stats.failedPermanent++
-			job.logger.WarnContext(ctx,
-				"Enrichment payload references a missing article",
-				"event", "ai.enrichment.failed",
-				"outbox_id", work.ID,
-				"article_id", work.ArticleID,
-				"reason", "article_missing",
-			)
-			return job.repository.FailPermanently(ctx, work.ID, "article not found")
+	articles := make([]pendingWork, 0, len(claimed))
+	for _, work := range claimed {
+		article, err := job.repository.Article(ctx, work.ArticleID)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				stats.failedPermanent++
+				job.logger.WarnContext(ctx,
+					"Enrichment payload references a missing article",
+					"event", "ai.enrichment.failed",
+					"outbox_id", work.ID,
+					"article_id", work.ArticleID,
+					"reason", "article_missing",
+				)
+				if err := job.repository.FailPermanently(ctx, work.ID, "article not found"); err != nil {
+					return err
+				}
+				continue
+			}
+			stats.failedBackoff++
+			loadErr := err
+			if err := job.repository.Fail(ctx, work.ID, maxAttempts, truncate(loadErr.Error(), maxCauseLength)); err != nil {
+				return err
+			}
+			return loadErr
 		}
-		stats.failedBackoff++
-		return errors.Join(err, job.repository.Fail(ctx, work.ID, maxAttempts, truncate(err.Error(), maxCauseLength)))
+		articles = append(articles, pendingWork{work: work, article: article})
+	}
+
+	if len(articles) == 0 {
+		job.logCycle(ctx, stats)
+		return nil
+	}
+
+	inputs := make([]ai.EnrichInput, len(articles))
+	for i, item := range articles {
+		inputs[i] = ai.EnrichInput{Title: item.article.Title, Content: item.article.Content}
 	}
 
 	started := time.Now()
-	enrichment, err := job.enricher.Enrich(ctx, ai.EnrichInput{
-		Title:       article.Title,
-		Content:     article.Content,
+	results, err := job.enricher.BatchEnrich(ctx, ai.BatchEnrichInput{
+		Articles:    inputs,
 		EntityCodes: codes,
 	})
 	if err != nil {
-		return job.fail(ctx, work, stats, err)
+		return job.failBatch(ctx, articles, stats, err)
+	}
+	if len(results) != len(articles) {
+		err := fmt.Errorf("provider returned %d results for %d articles", len(results), len(articles))
+		return job.failBatch(ctx, articles, stats, err)
 	}
 
-	clean, report := sanitize(enrichment, known)
-	result, err := json.Marshal(clean)
-	if err != nil {
-		return job.fail(ctx, work, stats, err)
-	}
-	stored, err := job.repository.StoreEnrichment(ctx, article.ID, job.model, result)
-	if err != nil {
-		return job.fail(ctx, work, stats, err)
-	}
-	if err := job.repository.Complete(ctx, work.ID); err != nil {
-		return err
-	}
-	if stored {
-		stats.enriched++
-	} else {
-		stats.skippedExisting++
+	var processErr error
+	for i, item := range articles {
+		clean, report := sanitize(results[i], known)
+		result, err := json.Marshal(clean)
+		if err != nil {
+			stats.failedBackoff++
+			if err := job.repository.Fail(ctx, item.work.ID, maxAttempts, truncate(err.Error(), maxCauseLength)); err != nil && processErr == nil {
+				processErr = err
+			}
+			continue
+		}
+		stored, err := job.repository.StoreEnrichment(ctx, item.article.ID, job.model, result)
+		if err != nil {
+			stats.failedBackoff++
+			if err := job.repository.Fail(ctx, item.work.ID, maxAttempts, truncate(err.Error(), maxCauseLength)); err != nil && processErr == nil {
+				processErr = err
+			}
+			continue
+		}
+		if err := job.repository.Complete(ctx, item.work.ID); err != nil {
+			if processErr == nil {
+				processErr = err
+			}
+			continue
+		}
+		if stored {
+			stats.enriched++
+		} else {
+			stats.skippedExisting++
+		}
+		job.logger.InfoContext(ctx,
+			"Article enriched",
+			"event", "ai.enrichment.completed",
+			"outbox_id", item.work.ID,
+			"article_id", item.article.ID,
+			"model", job.model,
+			"entities", len(clean.Entities),
+			"topics", len(clean.Topics),
+			"concepts", len(clean.Concepts),
+			"unknown_entities", report.UnknownEntities,
+			"dropped_values", report.Dropped,
+			"stored", stored,
+		)
 	}
 
 	job.logger.InfoContext(ctx,
-		"Article enriched",
-		"event", "ai.enrichment.completed",
-		"outbox_id", work.ID,
-		"article_id", article.ID,
-		"model", job.model,
+		"Batch enrichment completed",
+		"event", "ai.enrichment.batch_completed",
+		"batch_size", len(articles),
 		"duration_ms", time.Since(started).Milliseconds(),
-		"entities", len(clean.Entities),
-		"topics", len(clean.Topics),
-		"concepts", len(clean.Concepts),
-		"unknown_entities", report.UnknownEntities,
-		"dropped_values", report.Dropped,
-		"stored", stored,
 	)
-	return nil
+	job.logCycle(ctx, stats)
+	return processErr
 }
 
-func (job *Job) fail(ctx context.Context, work models.ClaimedJob, stats *cycleStats, cause error) error {
-	if work.Attempts >= maxAttempts {
-		stats.failedPermanent++
-	} else {
-		stats.failedBackoff++
+func (job *Job) failBatch(
+	ctx context.Context,
+	articles []pendingWork,
+	stats *cycleStats,
+	cause error,
+) error {
+	for _, item := range articles {
+		if item.work.Attempts >= maxAttempts {
+			stats.failedPermanent++
+		} else {
+			stats.failedBackoff++
+		}
+		job.logger.WarnContext(ctx,
+			"Enrichment attempt failed",
+			"event", "ai.enrichment.failed",
+			"outbox_id", item.work.ID,
+			"article_id", item.article.ID,
+			"attempts", item.work.Attempts,
+			"error", truncate(cause.Error(), maxCauseLength),
+		)
+		if err := job.repository.Fail(ctx, item.work.ID, maxAttempts, truncate(cause.Error(), maxCauseLength)); err != nil {
+			return err
+		}
 	}
-	job.logger.WarnContext(ctx,
-		"Enrichment attempt failed",
-		"event", "ai.enrichment.failed",
-		"outbox_id", work.ID,
-		"article_id", work.ArticleID,
-		"attempts", work.Attempts,
-		"error", truncate(cause.Error(), maxCauseLength),
-	)
-	return job.repository.Fail(ctx, work.ID, maxAttempts, truncate(cause.Error(), maxCauseLength))
+	return nil
 }
 
 func (job *Job) entityUniverse(ctx context.Context) (map[string]struct{}, []string, error) {
@@ -273,7 +319,7 @@ func (job *Job) entityUniverse(ctx context.Context) (map[string]struct{}, []stri
 	return known, codes, nil
 }
 
-func (job *Job) logCycle(ctx context.Context, stats cycleStats) {
+func (job *Job) logCycle(ctx context.Context, stats *cycleStats) {
 	job.logger.InfoContext(ctx,
 		"AI enrichment cycle finished",
 		"event", "ai.enrichment.cycle",

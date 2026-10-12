@@ -106,7 +106,7 @@ func newRouter(
 	userGroup := router.Group("/api/v1")
 	userGroup.Use(authentication.RequireUser(authComponents.service))
 	assets.RegisterWatchListRoutes(userGroup, userAssetService)
-	articles.RegisterFeedRoutes(userGroup, articles.NewFeedService(articleRepository, articleRepository, userAssetService))
+	articles.RegisterFeedRoutes(userGroup, articles.NewFeedService(articleRepository, articleRepository, userAssetService, searcher))
 	calendar.RegisterRoutes(userGroup, calendarrepositories.NewEventRepository(database, resourceStore))
 	events.RegisterEventsRoutes(userGroup, redisClient)
 	market.RegisterRoutes(router, marketrepositories.NewCandleRepository(database))
