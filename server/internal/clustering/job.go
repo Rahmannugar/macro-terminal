@@ -72,7 +72,7 @@ func (job *Job) Wake() {
 func (job *Job) Run(ctx context.Context) error {
 	if !job.enabled {
 		job.logger.InfoContext(ctx,
-			"Story clustering disabled until the Ahnlich address is configured",
+			"Story clustering disabled until the AI API key is configured",
 			"event", "clustering.skipped",
 			"reason", "missing_config",
 		)

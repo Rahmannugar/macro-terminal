@@ -23,6 +23,7 @@ const (
 	defaultPostgresPort       = 5432
 	defaultAIModel            = "gemini-3.1-flash-lite"
 	defaultExplanationModel   = "gemini-3.5-flash-lite"
+	defaultEmbeddingModel     = "gemini-embedding-001"
 	defaultBackfillDailyDays  = 1825
 	defaultBackfillMinuteDays = 30
 )
@@ -41,7 +42,6 @@ type Config struct {
 	Redis       Redis
 	Auth        Auth
 	AI          AI
-	Ahnlich     Ahnlich
 	Resend      Resend
 	Backfill    Backfill
 }
@@ -83,10 +83,7 @@ type AI struct {
 	APIKey           string
 	Model            string
 	ExplanationModel string
-}
-
-type Ahnlich struct {
-	AIAddr string
+	EmbeddingModel   string
 }
 
 type Backfill struct {
@@ -192,7 +189,10 @@ func Load() (Config, error) {
 	if model := strings.TrimSpace(k.String("ai.explanation_model")); model != "" {
 		cfg.AI.ExplanationModel = model
 	}
-	cfg.Ahnlich.AIAddr = strings.TrimSpace(k.String("ahnlich.ai_addr"))
+	cfg.AI.EmbeddingModel = defaultEmbeddingModel
+	if model := strings.TrimSpace(k.String("ai.embedding_model")); model != "" {
+		cfg.AI.EmbeddingModel = model
+	}
 	cfg.Backfill.DailyDays = defaultBackfillDailyDays
 	if days := strings.TrimSpace(k.String("backfill.daily_days")); days != "" {
 		value, err := strconv.Atoi(days)

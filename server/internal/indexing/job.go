@@ -13,9 +13,11 @@ import (
 )
 
 const (
-	cycleInterval  = 30 * time.Second
-	enqueueLimit   = 16
-	batchSize      = 8
+	cycleInterval = 30 * time.Second
+	enqueueLimit  = 16
+	// batchSize stays small because each claim issues one embedding API
+	// call; the free embedding tier allows only a handful per minute.
+	batchSize      = 2
 	maxAttempts    = 8
 	maxCauseLength = 500
 )
@@ -63,7 +65,7 @@ func (job *Job) Wake() {
 func (job *Job) Run(ctx context.Context) error {
 	if !job.enabled {
 		job.logger.InfoContext(ctx,
-			"Article indexing disabled until the Ahnlich address is configured",
+			"Article indexing disabled until the AI API key is configured",
 			"event", "indexing.skipped",
 			"reason", "missing_config",
 		)
@@ -120,40 +122,35 @@ func (job *Job) cycle(ctx context.Context) error {
 		)
 	}
 
-	var processErr error
-	for {
-		claimed, err := job.repository.ClaimBatch(ctx, batchSize)
-		if err != nil {
-			return errors.Join(processErr, err)
-		}
-		stats.claimed = len(claimed)
-		if len(claimed) == 0 {
-			if stats.reclaimed > 0 {
-				job.logCycle(ctx, stats)
-			}
-			return processErr
-		}
-
-		for _, work := range claimed {
-			if err := job.process(ctx, work, &stats); err != nil {
-				job.logger.ErrorContext(ctx,
-					"Article indexing job handling failed",
-					"event", "indexing.job_error",
-					"outbox_id", work.ID,
-					"error", err,
-				)
-				if ctx.Err() != nil {
-					return ctx.Err()
-				}
-				processErr = err
-			}
-		}
-		job.logCycle(ctx, stats)
-		if len(claimed) < batchSize {
-			return processErr
-		}
-		stats = cycleStats{}
+	claimed, err := job.repository.ClaimBatch(ctx, batchSize)
+	if err != nil {
+		return err
 	}
+	stats.claimed = len(claimed)
+	if len(claimed) == 0 {
+		if stats.reclaimed > 0 {
+			job.logCycle(ctx, stats)
+		}
+		return nil
+	}
+
+	var processErr error
+	for _, work := range claimed {
+		if err := job.process(ctx, work, &stats); err != nil {
+			job.logger.ErrorContext(ctx,
+				"Article indexing job handling failed",
+				"event", "indexing.job_error",
+				"outbox_id", work.ID,
+				"error", err,
+			)
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			processErr = err
+		}
+	}
+	job.logCycle(ctx, stats)
+	return processErr
 }
 
 func (job *Job) process(ctx context.Context, work models.ClaimedJob, stats *cycleStats) error {

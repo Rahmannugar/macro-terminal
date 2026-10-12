@@ -88,9 +88,6 @@ func (service *AdminService) Demote(ctx context.Context, actorRole string, id uu
 	if err != nil {
 		return models.User{}, err
 	}
-	if user.Role == models.RoleSuperAdmin {
-		return models.User{}, ErrCannotDemote
-	}
 	if user.Role == models.RoleUser {
 		return user, nil
 	}

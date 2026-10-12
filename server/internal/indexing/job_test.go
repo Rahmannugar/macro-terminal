@@ -227,7 +227,7 @@ func TestCycleRetriesTransientArticleErrors(t *testing.T) {
 	}
 }
 
-func TestCycleDrainsBackToBackBatches(t *testing.T) {
+func TestCycleClaimsOneBatchPerTick(t *testing.T) {
 	articles := map[uuid.UUID]models.Article{}
 	fill := func(n int) []models.ClaimedJob {
 		batch := make([]models.ClaimedJob, 0, n)
@@ -248,18 +248,18 @@ func TestCycleDrainsBackToBackBatches(t *testing.T) {
 		t.Fatalf("cycle: %v", err)
 	}
 
-	if repository.claimCalls != 2 {
-		t.Errorf("claim calls = %d, want 2 (full batch drains again, partial batch stops)", repository.claimCalls)
+	if repository.claimCalls != 1 {
+		t.Errorf("claim calls = %d, want 1 (one batch per tick leaves the rest for the next)", repository.claimCalls)
 	}
-	if indexer.calls != batchSize+2 {
-		t.Errorf("store calls = %d, want %d", indexer.calls, batchSize+2)
+	if indexer.calls != batchSize {
+		t.Errorf("store calls = %d, want %d", indexer.calls, batchSize)
 	}
-	if len(repository.completed) != batchSize+2 {
-		t.Errorf("completed = %d, want %d", len(repository.completed), batchSize+2)
+	if len(repository.completed) != batchSize {
+		t.Errorf("completed = %d, want %d", len(repository.completed), batchSize)
 	}
 }
 
-func TestCycleStopsDrainingWhenQueueIsEmptyAfterAFullBatch(t *testing.T) {
+func TestCycleStopsAfterOneBatchEvenWhenQueueStillHasWork(t *testing.T) {
 	articles := map[uuid.UUID]models.Article{}
 	batch := make([]models.ClaimedJob, 0, batchSize)
 	for i := 0; i < batchSize; i++ {
@@ -277,8 +277,8 @@ func TestCycleStopsDrainingWhenQueueIsEmptyAfterAFullBatch(t *testing.T) {
 		t.Fatalf("cycle: %v", err)
 	}
 
-	if repository.claimCalls != 2 {
-		t.Errorf("claim calls = %d, want 2 (reclaim an empty queue and stop)", repository.claimCalls)
+	if repository.claimCalls != 1 {
+		t.Errorf("claim calls = %d, want 1 (stop after one batch to respect rate limits)", repository.claimCalls)
 	}
 	if indexer.calls != batchSize {
 		t.Errorf("store calls = %d, want %d", indexer.calls, batchSize)

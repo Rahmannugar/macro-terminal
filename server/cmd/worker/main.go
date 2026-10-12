@@ -150,23 +150,24 @@ func run() (runError error) {
 		logger,
 	)
 
+	vectorEnabled := cfg.AI.APIKey != ""
 	var articleVectors vector.Client
-	if cfg.Ahnlich.AIAddr != "" {
-		articleVectors, err = vector.NewClient(cfg.Ahnlich.AIAddr)
-		if err != nil {
-			return fmt.Errorf("connect Ahnlich: %w", err)
-		}
+	if vectorEnabled {
+		articleVectors = vector.NewClient(
+			databasePool,
+			ai.NewEmbedder(telemetry.NewHTTPClient(providerFetchTimeout), cfg.AI.APIKey, cfg.AI.EmbeddingModel),
+		)
 	}
 	indexingJob := indexing.NewJob(
 		indexingrepositories.NewOutboxRepository(databasePool),
 		articleVectors,
-		cfg.Ahnlich.AIAddr != "",
+		vectorEnabled,
 		logger,
 	)
 	clusteringJob := clustering.NewJob(
 		clusteringrepositories.NewRepository(databasePool, resourceStore),
 		articleVectors,
-		cfg.Ahnlich.AIAddr != "",
+		vectorEnabled,
 		logger,
 	)
 	notificationJob := notification.NewJob(

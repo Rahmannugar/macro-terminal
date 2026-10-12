@@ -11,7 +11,7 @@ tasks:
   up:
     desc: Start the local containers using existing images
     cmds:
-      - docker compose up --detach --wait postgres redis ahnlich-db ahnlich-ai
+      - docker compose up --detach --wait postgres redis
       - docker compose run --rm migrate
       - docker compose up --detach --wait api worker
 

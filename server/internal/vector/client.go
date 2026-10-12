@@ -35,16 +35,3 @@ type Client interface {
 	Indexer
 	Searcher
 }
-
-func NewIndexer(addr string) (Indexer, error) {
-	return newGrpcClient(addr)
-}
-
-func NewSearcher(addr string) (Searcher, error) {
-	return newGrpcClient(addr)
-}
-
-// NewClient dials once for callers that need both indexing and search.
-func NewClient(addr string) (Client, error) {
-	return newGrpcClient(addr)
-}

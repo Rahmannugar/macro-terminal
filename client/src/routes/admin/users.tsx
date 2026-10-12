@@ -83,7 +83,8 @@ export function UsersScreen() {
                 onClick={() => act(`/api/v1/admin/users/${row.id}/promote`)}
               />
             ) : null}
-            {row.role === "admin" && isSuperAdmin ? (
+            {(row.role === "admin" || (row.role === "super_admin" && !isSelf)) &&
+            isSuperAdmin ? (
               <ActionButton
                 label="Demote"
                 busy={busy && pendingPath?.includes("/demote")}

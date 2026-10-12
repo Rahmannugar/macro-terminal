@@ -19,10 +19,14 @@ func TestLoadAppliesAIDefaultsAndOverrides(t *testing.T) {
 	if cfg.AI.ExplanationModel != "gemini-3.5-flash-lite" {
 		t.Errorf("explanation model = %q, want the shipped default", cfg.AI.ExplanationModel)
 	}
+	if cfg.AI.EmbeddingModel != "gemini-embedding-001" {
+		t.Errorf("embedding model = %q, want the shipped default", cfg.AI.EmbeddingModel)
+	}
 
 	t.Setenv("MACRO_TERMINAL_AI_API_KEY", " key ")
 	t.Setenv("MACRO_TERMINAL_AI_MODEL", "other-model")
 	t.Setenv("MACRO_TERMINAL_AI_EXPLANATION_MODEL", "other-explain-model")
+	t.Setenv("MACRO_TERMINAL_AI_EMBEDDING_MODEL", "other-embed-model")
 
 	cfg, err = Load()
 	if err != nil {
@@ -36,6 +40,9 @@ func TestLoadAppliesAIDefaultsAndOverrides(t *testing.T) {
 	}
 	if cfg.AI.ExplanationModel != "other-explain-model" {
 		t.Errorf("explanation model = %q, want the override", cfg.AI.ExplanationModel)
+	}
+	if cfg.AI.EmbeddingModel != "other-embed-model" {
+		t.Errorf("embedding model = %q, want the override", cfg.AI.EmbeddingModel)
 	}
 }
 

@@ -80,11 +80,11 @@ func newRouter(
 	adminjobs.RegisterRoutes(adminGroup, adminjobsrepositories.NewJobRepository(database))
 
 	var searcher vector.Searcher
-	if cfg.Ahnlich.AIAddr != "" {
-		searcher, err = vector.NewSearcher(cfg.Ahnlich.AIAddr)
-		if err != nil {
-			return nil, fmt.Errorf("connect vector search: %w", err)
-		}
+	if cfg.AI.APIKey != "" {
+		searcher = vector.NewSearcher(
+			database,
+			ai.NewEmbedder(telemetry.NewHTTPClient(aiHTTPTimeout), cfg.AI.APIKey, cfg.AI.EmbeddingModel),
+		)
 	}
 	resourceStore := cache.NewJSONStore(redisClient)
 	adminconfig.RegisterAdminConfigRoutes(
