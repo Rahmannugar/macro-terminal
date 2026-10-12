@@ -196,7 +196,7 @@ func (job *Job) process(
 		return job.backoff(ctx, work, stats, err)
 	}
 
-	content, err := extractContent(result.Body, selector)
+	content, err := extractContent(result.Body, selector, target.ArticleURL)
 	if err != nil {
 		if selector == "" {
 			// Generic extraction is a heuristic: a thin or badly marked-up
@@ -293,20 +293,26 @@ func articleRequest(target models.ContentTarget) (sourcemodels.SourceConfigurati
 	}, nil
 }
 
-// extractContent pulls the article body: the configured content selector
-// when the source has one, the generic extraction otherwise. A selector can
-// match several blocks on a page (promos, listings, the article body); the
-// block holding the most paragraph text wins, chrome is stripped, and a
-// miss or a chrome-only match falls through to the generic path.
-func extractContent(body []byte, selector string) (string, error) {
+// extractContent pulls the article body in layers: the configured content
+// selector when the source has one, then Readability (the Firefox Reader
+// View algorithm), then the generic container heuristic. Each layer strips
+// chrome before storing; a layer that produces nothing falls through to the
+// next so a bad page shape never blocks hydration.
+func extractContent(body []byte, selector string, pageURL string) (string, error) {
+	if selector != "" {
+		document, err := goquery.NewDocumentFromReader(bytes.NewReader(body))
+		if err == nil {
+			if content, err := selectorContent(document, selector); err == nil {
+				return content, nil
+			}
+		}
+	}
+	if content, err := readabilityContent(body, pageURL); err == nil {
+		return content, nil
+	}
 	document, err := goquery.NewDocumentFromReader(bytes.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("parse article page: %w", err)
-	}
-	if selector != "" {
-		if content, err := selectorContent(document, selector); err == nil {
-			return content, nil
-		}
 	}
 	return extractGenericContent(document)
 }

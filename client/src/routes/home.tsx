@@ -41,7 +41,7 @@ export function HomeRoute() {
       const page = await requestAdminPage<ArticleSummary>(
         "/api/v1/articles",
         "articles",
-        undefined,
+        feedSort === "relevance" ? { sort: "relevance" } : undefined,
         null,
       );
       const fresh = page.rows.filter((article) => !loadedIds.has(article.id)).length;
@@ -134,7 +134,10 @@ export function HomeRoute() {
             <Tabs
               value={feedSort}
               options={["latest", "relevance"] as const}
-              onChange={(value) => setFeedSort(value as "latest" | "relevance")}
+              onChange={(value) => {
+                setNewCount(null);
+                setFeedSort(value as "latest" | "relevance");
+              }}
               label={(option) => (option === "latest" ? "Latest" : "Relevant")}
               size="sm"
             />

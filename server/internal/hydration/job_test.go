@@ -263,8 +263,8 @@ func TestCycleHydratesWithoutContentSelector(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cycle: %v", err)
 	}
-	if got := repository.stored[target.ArticleID]; got != "<p>"+longText+"</p>" {
-		t.Errorf("stored content = %q, want the generic article body", got)
+	if got := repository.stored[target.ArticleID]; !strings.Contains(got, longText) {
+		t.Errorf("stored content = %q, want it to contain the article text", got)
 	}
 	if len(repository.completed) != 1 {
 		t.Errorf("completed = %v, want the claimed job", repository.completed)
