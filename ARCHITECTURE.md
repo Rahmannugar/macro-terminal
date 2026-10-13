@@ -1,262 +1,273 @@
-# Macro Terminal — Architecture
+# Macro Terminal Architecture
 
-This document describes how Macro Terminal is actually built and why. It is the in-repository architecture reference for the Go API, the worker, the React client, and the infrastructure around them. The product definition lives in `README.md`; the API surface lives in `api.md`.
+Macro Terminal is a macroeconomic intelligence terminal. It continuously ingests information from official economic institutions, financial news sources, market-data providers, and economic-calendar providers; normalizes and deduplicates that information; maps it to relevant entities and asset relationships; and enriches it with structured AI-generated context.
 
-## 1. System at a glance
+Users configure the assets and economic relationships they care about, and Macro Terminal surfaces the relevant information for those assets. Users can search the information semantically, discover related stories, view economic-calendar data, request one-shot AI explanations of individual articles or calendar events using the surrounding macro context, and receive alerts for followed pairs in-app or over Slack and Discord webhooks.
 
-```
-                        ┌──────────────────────────────┐
-   Browser (React SPA)  │  Vite dev server / Caddy     │
-        │  HTTPS/JSON   │  static assets + SPA fallback│
-        ▼               └──────────────────────────────┘
-┌─────────────────────┐   session cookie (Authlier)
-│  api   (Go, Gin)    │──────────────────────────────────┐
-│  REST + SSE         │                                  │
-└────┬───────────┬────┘   /auth/* + /account/*           │
-     │           │          proxied to Authlier ─────────┘
-     │           │
-     │           ▼
-     │    ┌────────────┐      ┌──────────────────────────┐
-     │    │ Redis      │      │ worker (Go)              │
-     │    │ pub/sub +  │◄─────┤ scheduler, backfill,     │
-     │    │ cache      │      │ hydration, enrichment,   │
-     │    └────────────┘      │ indexing, clustering,    │
-     │                        │ notifications, email     │
-     │                        └───┬──────────┬───────────┘
-     ▼                            │          │
-┌─────────────────────┐           │          │
-│ PostgreSQL 17       │◄──────────┘          ▼
-│ rows + vectors +    │              Providers: RSS/web/API feeds,
-│ LISTEN/NOTIFY +     │              Binance, Biquote, Gemini,
-│ outbox tables       │              Resend (transactional email)
-└─────────────────────┘
-     │
-     ▼  OTLP
-┌─────────────────────┐
-│ otel-collector      │ ──► New Relic
-└─────────────────────┘
-```
+It is not a trading execution platform. It generates no buy/sell signals and makes no directional trading recommendations. Its purpose is to help users understand what is happening in the macro environment, how pieces of information are connected, and why a particular piece of information matters in context.
 
-Runtime components (see `compose.yaml`):
+The HTTP surface is mapped in [API.md](API.md).
 
-| Component | Role |
-|---|---|
-| `api` | Gin HTTP server: REST API, SSE feed, session handling, Swagger UI |
-| `worker` | All background work: ingestion, backfill, hydration, AI pipelines, notifications, email |
-| `postgres` | System of record: articles, entities, calendar, candles, vectors, outbox, jobs |
-| `redis` | Pub/sub for live-feed fan-out, response caching |
-| `otel-collector` | Telemetry pipeline → New Relic |
-| `migrate` | Applies Tern migrations from `db/migrations/` at startup |
-| Caddy (deploy only) | Reverse proxy, TLS, static serving in production |
-
-## 2. Stack
-
-- **Go 1.26** — `server/cmd/api` and `server/cmd/worker`, module `github.com/Rahmannugar/macro-terminal`
-- **Gin** HTTP framework; middleware for telemetry, CORS, rate limiting, safe headers
-- **sqlc** (compile-checked SQL), **Tern** migrations, **swag** (OpenAPI 3.1 from Go annotations)
-- **PostgreSQL 17** — rows, pgvector-style cosine over stored embeddings, `LISTEN/NOTIFY`
-- **Redis 8** — pub/sub and cache
-- **React 19 + Vite + TypeScript**, TanStack Query, Tailwind CSS v4, Phosphor icons, lightweight-charts
-- **Authlier** — authentication service, proxied under `/auth` and `/account`
-- **Gemini** — embeddings (article vectors), article/event explanations, enrichment tagging
-- **OpenTelemetry → collector → New Relic**; structured `slog` JSON logs with `event` names
-
-## 3. Server layout and layering
+## System diagram
 
 ```
-server/
-├── cmd/api/main.go         # config, telemetry, pool, router
-├── cmd/api/router.go       # route assembly + middleware wiring
-├── cmd/worker/main.go      # job wiring + graceful shutdown
-└── internal/               # one package per domain (see below)
+                                ┌─────────────────────────────────────────────┐
+                                │                  Caddy                       │
+                                │        reverse proxy + static SPA            │
+                                └───────────────┬─────────────┬───────────────┘
+                                                │             │
+                                      /api, /docs, /health   /* (static client)
+                                                │             │
+                          ┌─────────────────────▼──┐   ┌──────▼──────────┐
+                          │   API (Go, Gin)        │   │  Client (React) │
+                          │   server/cmd/api       │   │  client/        │
+                          └───┬────────────┬───────┘   └─────────────────┘
+                              │            │
+   /auth/*, /account/* ───────┘            │ semantic search / related articles
+   (reverse proxy)                         │
+                              ┌────────────▼───────────────────────────────┐
+                              │                PostgreSQL                   │
+                              │  articles · calendar events · market data   │
+                              │  entities · pairs · users · outbox · cache  │
+                              └────────────▲───────────────▲───────────────┘
+                                           │               │
+                              ┌────────────┴───┐   ┌───────┴──────────────┐
+                              │ Worker (Go)    │   │      Redis           │
+                              │ server/cmd/    │   │  outbox relay →      │
+                              │ worker         │   │  Streams · SSE wake  │
+                              └───┬────────┬───┘   │  · short-lived AI    │
+                                  │        │       │    explanation cache │
+                 fetch/parse/map/enrich    │       └──────────────────────┘
+                                  │        │
+                    ┌─────────────▼──┐  ┌──▼────────────────────────────┐
+                    │  Providers     │  │  Gemini API                    │
+                    │  RSS · API ·   │  │  embeddings · explanations ·   │
+                    │  web selectors │  │  enrichment tagging            │
+                    │  · market APIs │  └───────────────┬────────────────┘
+                    └────────────────┘                  │ external vectors
+                                                    ┌──▼────────────────────┐
+                                                    │  Ahnlich DB           │
+                                                    │  vector index (store  │
+                                                    │  "articles", cosine)  │
+                                                    └───────────────────────┘
+
+  Authlier (managed auth service) ── session cookie + /auth/* proxy
+  New Relic ← OpenTelemetry collector ← API + worker traces/metrics/logs
+  Slack / Discord ── signed webhook deliveries (outbox type "webhook_delivery")
 ```
 
-Every feature follows the same shape:
+## Stack
+
+- **Go 1.26** — API and worker, one module (`github.com/Rahmannugar/macro-terminal`)
+- **Gin** — HTTP routing; handlers wrap `net/http` handlers where the standard library already solves the job
+- **React 19 + Vite + TypeScript** — single-page client (`client/`), TanStack Query, Tailwind
+- **PostgreSQL** — system of record for all domain data; Tern migrations, sqlc-generated repositories
+- **Redis** — durable outbox relay (Streams), live-feed wake channel, short-lived AI-explanation cache
+- **Ahnlich DB** — vector index. Gemini embeds; Ahnlich stores the vectors and answers cosine nearest-neighbour queries from an in-memory index with a persistence snapshot on disk. There is no pgvector and no embedding table in PostgreSQL.
+- **Gemini** — embeddings (`gemini-embedding-001`), article/event explanations, enrichment tagging
+- **Authlier** — authentication; session cookie, `/auth/*` reverse-proxied
+- **Caddy** — production reverse proxy and static SPA serving
+- **OpenTelemetry → New Relic** — traces, metrics, structured logs via the collector
+- **Docker** — local development stack (`compose.yaml`)
+
+## Layout
 
 ```
-routes.go        HTTP binding: parse, guard, validate, map status codes
-    ↓
-service (or job) Business rules, orchestration — no SQL here
-    ↓
-repositories/    sqlc-generated queries + thin domain helpers
-    ↓
-PostgreSQL
+macro-terminal/
+├── Taskfile.yml          # every development task (up, check, generate, logs, …)
+├── compose.yaml          # postgres, redis, ahnlich-db, otel-collector, api, worker
+├── go.mod
+├── client/               # React SPA
+├── server/
+│   ├── cmd/
+│   │   ├── api/          # HTTP server
+│   │   ├── worker/       # scheduled pipelines + outbox consumers
+│   │   ├── seed/         # bootstrap admin + catalog seed
+│   │   └── reindex/      # re-opens completed/failed index jobs (index-loss recovery)
+│   └── internal/         # every domain package (see Domain map)
+├── db/migrations/        # Tern migrations (up + down)
+└── deploy/               # production container definitions
 ```
 
-Cross-cutting packages:
+Every domain package under `server/internal/` follows the same internal layout:
 
-- `common/httpresponse` — the single JSON writer; every error goes out through the shared envelope
-- `common/paging` — keyset cursor encode/decode (`base64(unixNanos + "." + uuid)`)
-- `config` — all environment parsing with defaults and validation (one `Config` struct)
-- `infra/*` — database pool, Redis, telemetry, CORS, rate limiting, email delivery, authentication glue
-- `openapi` — generated spec, served at `/openapi.json`, plus shared request/response types
+```
+domain/
+├── models.go             # domain types (no SQL, no HTTP)
+├── service.go            # business logic; depends on consumer-declared repository interfaces
+├── repository.go         # interface the service needs (consumer-side)
+├── handlers.go           # HTTP handlers (Gin)
+├── queries/              # sqlc-authored SQL (one file per concern)
+├── repositories/generated/  # sqlc output — never edited by hand
+└── *_test.go
+```
 
-Code generation is mandatory and reviewed: `task generate` runs `sqlc generate` and `swag init` (OpenAPI 3.1). Generated output is committed.
+## Processes
 
-## 4. Domain map (`server/internal/`)
+Two long-running processes share one module and one database.
+
+### API — `server/cmd/api`
+
+Serves the whole HTTP surface: health probes, the Authlier proxy, `/api/v1/*` for users and admins, the OpenAPI document and Scalar reference at `/docs`, and the live-feed SSE endpoint. It never runs scheduled work. The searcher (Ahnlich) is constructed only when both the Gemini API key and the Ahnlich address are configured; otherwise search endpoints answer 503 `search_unavailable`.
+
+### Worker — `server/cmd/worker`
+
+Runs every background pipeline concurrently and shuts all of them down gracefully on SIGTERM:
+
+| Pipeline | Cadence | What it does |
+|---|---|---|
+| Ingestion runner | per-source cadence (news 5m, central banks 15m, calendar/official 30m, market 1m) | Fetch → normalize → deduplicate → map → persist articles and calendar events; wake on configuration changes via PostgreSQL LISTEN/NOTIFY |
+| Enrichment cycle | 30s tick + outbox wake | Batch AI tagging of stored articles (entity/entity-pair/topic/person/institution lists, trimmed and validated) |
+| Hydration cycle | 30s tick + outbox wake | Fetch the full article body for feed teasers (selector → Readability → generic container), store only when longer than what is already there |
+| Indexing cycle | 30s tick + outbox wake | Gemini-embed enriched articles into the Ahnlich vector store |
+| Clustering cycle | 30s tick + outbox wake | Group semantically similar, date-adjacent articles into story clusters |
+| Notification fan-out | outbox wake | Turn followed-pair matches into per-user in-app notifications and Slack/Discord webhook deliveries |
+| Market backfill | on boot + daily | Fill missing candle history (up to five years) for tracked pairs |
+| Live-feed publisher | after each persist pass | XADD a `feed` invalidation signal to Redis Streams for connected SSE clients |
+
+## Domain map
+
+Every package under `server/internal/` and what it owns:
 
 | Package | Responsibility |
 |---|---|
-| `authentication` | Session resolution, `RequireUser` / `RequireAdmin` guards, local account endpoints |
-| `users` | Admin user management (list, promote, demote, suspend, reactivate) |
-| `articles` | Feed listing (latest / relevance sorts), article detail, related stories |
-| `assets` | Watch-list: follow/unfollow entity pairs, pair catalog |
-| `calendar` | Economic calendar queries with scope/from/to/country/importance/watch filters |
-| `market` | Candle queries, timeframe validation, server-side aggregation (5m–1M) |
-| `search` | Semantic search: query embed → vector rank → hydrate in rank order |
-| `clustering` | Related-article computation over shared embeddings/entities |
-| `events` | SSE endpoint; streams feed invalidation signals over Redis pub/sub |
-| `explanation` | One-shot AI explanations of articles and calendar events with macro context |
-| `enrichment` | Tag enrichment of stored articles (never rewrites article bodies) |
-| `indexing` | Embedding writes to `article_embeddings` (Gemini), batch + throttled |
-| `notification` | In-app notification rows for articles/calendar events, outbox-style delivery |
-| `ingestion` | Source scheduling (cadence, due-check, pg_notify wake), adapters (RSS/web/API), candle backfill |
-| `hydration` | Article body extraction: selectors → Readability → generic container |
-| `normalization` | Provider payloads → canonical shapes (candles, calendar, web) |
-| `mapping` | Maps fetched items to entities/pairs (followed pairs only) |
-| `entities` | Entity and entity-pair catalogs |
-| `sources`, `adminconfig` | Source registry and source configuration CRUD |
-| `adminjobs` | Failed-job listing and replay |
-| `ai` | Gemini client: embeddings + generation, retries, throttling |
-| `vector` | Vector storage seam over PostgreSQL (`article_embeddings`) |
+| `config` | Koanf-based environment loading and validation |
+| `telemetry` | OpenTelemetry setup, graceful shutdown wiring |
+| `database` | pgx pool construction, LISTEN/NOTIFY session |
+| `cache` | Redis client (Streams, short-lived cache) |
+| `infra/safehttp` | SSRF-hardened HTTP transport for all outbound fetches |
+| `ingestion` | Source adapters (RSS, API, web selectors), fetcher, retry/backoff, circuit breaker, cadence runner |
+| `normalization` | Feed/web/calendar payloads → canonical article candidates; URL canonicalization and deduplication |
+| `mapping` | Immutable per-pass dictionary; longest-phrase-first word-boundary matching onto entities and pairs |
+| `articles` | Article persistence (idempotent upsert), entity links, unmapped queue, feed queries |
+| `calendar` | Calendar-event persistence, indicator classification, country/entity links |
+| `entities` | Entities, economic indicators, knowledge terms, entity-pair catalog |
+| `sources` | Source and source-configuration CRUD, schedule state |
+| `hydration` | Full-body article extraction (selector → Readability → generic) |
+| `ai` | Gemini client: embeddings, explanations, batch enrichment (behind an `Enricher`/`Embedder` contract) |
+| `enrichment` | Outbox pipeline that batch-tags articles with AI |
+| `vector` | Ahnlich client: store/search article vectors; Gemini embeds, Ahnlich stores and ranks |
+| `indexing` | Outbox pipeline that embeds enriched articles into the vector store |
+| `clustering` | Story-cluster pipeline and related-article queries |
+| `search` | Semantic search endpoint; keyset cursor over vector rank |
+| `market` | Candle storage, timeframe aggregation, provider backfill |
+| `notification` | In-app notifications, per-pair alert preferences, Slack/Discord webhook channels and delivery |
+| `events` | SSE live-feed endpoint (Redis Streams → browser) |
+| `explanation` | One-shot AI explanations for articles and calendar events |
+| `assets` | User watch list (follow/unfollow pairs) with alert sync |
+| `users` / `authentication` | User records; Authlier proxy, session cookie, role gates |
+| `adminconfig` / `adminjobs` | Admin: source/indicator/entity configuration; failed-job inspection and replay |
 | `health` | Liveness and readiness probes |
+| `openapi` | Generated OpenAPI document (swag annotations; CI fails on drift) |
 
-## 5. Worker architecture
+## Data flow
 
-One process, ten goroutines sharing one root context, each with `Run(ctx)` + `Wake()` (one-slot coalescing channel). Shutdown drains all results gracefully.
+### Ingestion
 
-| Goroutine | What it does |
+1. The cadence runner lists due source configurations (cadence compared against `last_run_at`, persisted so a restart never refetches work that just ran). Configuration changes wake it through LISTEN/NOTIFY; the minute tick is the recovery path.
+2. The matching adapter (RSS, API, or web selectors) fetches through the SSRF-hardened transport: browser user-agent for web article pages, retries with backoff and `Retry-After`, a per-host circuit breaker so one failing provider never blocks the rest of the pass.
+3. Normalization turns the payload into canonical candidates: tracking parameters stripped, relative links resolved, in-batch duplicates collapsed, invalid and homepage-only URLs rejected.
+4. Mapping runs a single immutable dictionary per pass (entities + knowledge terms + pairs; case-insensitive, word-boundary, longest-phrase-first). Mapped candidates are persisted; unmapped ones go to a queue without blocking the pass.
+5. Persistence is idempotent: a refetch is a no-op on identity, refreshes metadata, and keeps the original publication date.
+
+Calendar sources parse through the same normalize/deduplicate path, classify rows by indicator, and store events idempotently on `(source, indicator, scheduled_at)`; non-calendar rows (speeches, reports, holidays) flow to news only with a valid deep link.
+
+### Hydration
+
+Feed entries arrive as teasers. The hydration job re-fetches the article page and extracts the body in layers — the source's configured content selector first, then Readability, then a generic densest-container heuristic — storing only when the new body is longer than what is already stored, so a paywall or consent wall can never destroy a good body.
+
+### Enrichment and indexing
+
+A stored article with no enrichment is discovered by the enrichment cycle, claimed with skip-locked semantics, and sent to Gemini in batches of up to ten. Only known entity codes are kept; every list is trimmed, deduplicated, and capped. AI never writes links or touches the unmapped queue.
+
+Once enrichment is stored, the indexing cycle embeds the article (title + body, truncated to the model's window) with Gemini and writes the vector into the Ahnlich store with `article_id` and `published_at` predicates. A stale vector for the same article is deleted before the new one is stored, so a rebuild can never duplicate. Index-loss recovery (`task reindex`) reopens completed and failed jobs.
+
+### Search, related articles, and relevance
+
+`GET /api/v1/search/articles` embeds the query with the same Gemini model, asks Ahnlich for the nearest vectors (cosine), and hydrates authoritative rows from PostgreSQL in vector-rank order. The cursor is an opaque rank offset — keyset semantics over a similarity ranking, never offset pagination over SQL. Related articles work the same way, excluding the source article. The home feed's "Relevant" sort embeds the user's followed pair symbols as the query; with no pairs it falls back to latest.
+
+### Notifications
+
+Following a pair subscribes the user to `new_article` and `new_calendar_event` alerts on every connected channel. The in-app rows are the source of truth; Slack/Discord channel rows mirror them and are re-synced on every toggle. A stored article or calendar event that matches a followed pair fans out per-user notifications and enqueues webhook deliveries on the shared outbox. Webhook URLs are validated against a host allowlist, encrypted at rest (AES-256-GCM), and never returned to the client — only a `host/…last4` hint. The worker decrypts and POSTs on delivery: 2xx completes, 429/5xx backs off, other 4xx fails permanently.
+
+### Live feed
+
+After a persist pass that stored anything, the worker XADDs a `{"type":"feed"}` signal to a Redis Stream. The SSE endpoint reads it per-connection and pushes an invalidation event; the client shows a "N new articles" pill and refetches its current query on click. No consumer groups — every instance sees every event. No article payloads, no persistence. The same stream carries `{"type":"notification"}` for the bell.
+
+### Market data
+
+Candles are stored at `1min` and `1day` resolution from OANDA (FX, commodities, indices) and Binance (crypto). Larger timeframes (5min–4h, 1week, 1month) are aggregated server-side from stored candles in bounded windowed scans — no provider calls, no schema change. A backfill job fills missing history (up to five years) on every boot and daily thereafter.
+
+## Authentication and authorization
+
+Authlier issues an HttpOnly session cookie. The API proxies `/auth/*` and `/account/*` to Authlier unchanged; the only local account endpoints are `GET/PATCH /api/v1/account`. Roles are `user`, `admin`, and `super_admin`; admin routes accept either elevated role, and only a super admin can change another super admin's role.
+
+## Data model
+
+Twenty-plus tables; the core graph:
+
+- **sources** and **source_configurations** — providers, their fetch configuration (URL, type, selectors), cadence, and last-run state
+- **articles** — identity `(source_id, url)`, title, body (teaser upgraded by hydration), publication date, image
+- **article_entities**, **unmapped_articles** — mapping outcomes and the review queue
+- **calendar_events** — indicator, schedule, actual/forecast/previous values, country/entity links
+- **entities**, **entity_pairs**, **economic_indicators**, **knowledge_terms** — the information graph
+- **article_enrichments** — AI tags per article (unique per article; a replay can never store twice)
+- **story_clusters**, **article_story_clusters** — semantic grouping
+- **market_candles** — `(pair, timeframe, open_time)` unique
+- **users**, **user_assets**, **user_alerts**, **user_notifications**, **user_notification_channels** — accounts, watch list, alert preferences, notification inbox, webhook channels
+- **outbox** — the single durable job queue (types: enrichment, hydration, index, cluster, notification, webhook delivery); skip-locked claims, exponential backoff, permanent failure, reclaim of abandoned rows
+
+Migrations are forward-and-back Tern files; every migration is verified up and down before it lands.
+
+## API conventions
+
+Everything app-facing is under `/api/v1`; health probes are at `/health/live` and `/health/ready`. Pagination is keyset-only — `limit` and an opaque `cursor`, never offset. Errors are `{"error":{"code":"…","message":"…"}}`. The machine-readable contract is the generated OpenAPI document (swag annotations; CI fails on drift); [API.md](API.md) is the human-readable map.
+
+## Frontend
+
+Single-page React app. TanStack Query owns all server state; the only imperative data path is the SSE hook, which never carries rows — it invalidates and the client refetches. The shell is a fixed sidebar plus header; dark mode is class-toggled with a localStorage preference and a pre-paint script to avoid a flash. Charts are TradingView lightweight-charts.
+
+## Observability
+
+OpenTelemetry traces and metrics flow to the collector and onward to New Relic; no vendor SDK is embedded in the services. Every pipeline logs structured events (`ingestion.fetch.succeeded`, `hydration.completed`, `indexing.cycle`, and so on) with counts and failure reasons. Health endpoints are process- and database-liveness only — they never make outbound calls.
+
+## Configuration
+
+Koanf loads `.env` first and lets process environment override. The important keys:
+
+| Key | Purpose |
 |---|---|
-| `ingestion-runner` | Fetches due sources on cadence; due-check reads persisted `last_run_at`; batch is marked *before* fetch so a slow provider cannot become due early |
-| `schedule-listener` | `LISTEN` on source-config changes → wakes the runner (~1s reaction; lost notifications cost at most one tick) |
-| `outbox-listener` | `LISTEN` on outbox inserts → wakes consumer jobs immediately |
-| `backfill-job` | Fills gaps in stored candles within the retention window (see §6.2) |
-| `hydration-job` | Extracts article bodies from stored URLs (outbox-driven, claim with reclaim) |
-| `enrichment-job` | Batches articles for AI tagging (per-run cap, fails as a unit) |
-| `indexing-job` | Computes Gemini embeddings, writes `article_embeddings`, throttled (batches per 30s tick) |
-| `clustering-job` | Maintains related-article links |
-| `notification-job` | Enqueues in-app notifications for new articles/calendar events (30s cycle) |
-| `email-delivery-job` | Sends templated **transactional** email via Resend (verification + password reset only) |
+| `MACRO_TERMINAL_DATABASE_*` | PostgreSQL connection; separate API/worker pool caps |
+| `MACRO_TERMINAL_REDIS_URL` | Redis |
+| `MACRO_TERMINAL_AHNLICH_DB_ADDR` | Ahnlich DB gRPC address |
+| `MACRO_TERMINAL_AUTH_*` | Authlier base URL, client URL, trusted origins/proxies, OTP HMAC secret |
+| `MACRO_TERMINAL_AI_API_KEY` | Gemini key; vector work is skipped entirely without it |
+| `MACRO_TERMINAL_AI_MODEL` / `_EXPLANATION_MODEL` / `_EMBEDDING_MODEL` | Model overrides |
+| `MACRO_TERMINAL_RESEND_*` | Transactional email (verification, password reset) |
+| `MACRO_TERMINAL_BACKFILL_*` | Market backfill windows |
+| `MACRO_TERMINAL_CLIENT_BASE_URL` | Public client origin for links in notifications |
 
-Outbox pattern everywhere: work is written as a row, claimed with `FOR UPDATE SKIP LOCKED`, retried with backoff, reclaimed after a visibility timeout. Failed attempts land in a failed-jobs table replayable from the admin UI.
+`.env.example` documents every key; `.env` is never committed.
 
-## 6. Data flows
+## Development workflow
 
-### 6.1 Content pipeline
-
-```
-sources (news / official / calendar / candles)
-   │  scheduled by cadence (runner)          adapters: rss, web (HTML+selectors), api
-   ▼
-raw fetch → normalization → dedupe → articles / calendar_events rows
-   │
-   ├─► outbox(article_content)  → hydration → body (selector → Readability → generic)
-   ├─► enrichment (tags only; batched; never touches bodies)
-   ├─► indexing → Gemini embed → article_embeddings (cosine over pgvector)
-   ├─► clustering → related links
-   └─► notification → in-app rows → SSE wakes clients
+```sh
+cp .env.example .env
+task up          # postgres, redis, ahnlich-db, otel-collector, migrations, api, worker
+task check       # openapi generate, formatting, tests, lint, build
+cd client && bun run check
+task down
 ```
 
-Rules: hydrated content is written only when `content IS NULL` (never overwrite); enrichment is tags only; followed-pairs gating applies to mapping, not enrichment.
+Integration tests run against real PostgreSQL in Docker (`task test-integration`). After changing migrations or route annotations, `task generate` refreshes sqlc output and the OpenAPI document; `task check` fails on any drift.
 
-### 6.2 Market data
+## Invariants
 
-- Providers: **Binance** (crypto: BTC, ETH, SOL, BNB) and **Biquote** (FX, indices, commodities — 25 pairs); calendar providers Biquote/FinanceCalendar/Xoomar.
-- Stored granularities: `1min` (live + rolling 30-day backfill window) and `1day` (5-year backfill window). Both are env-configurable: `MACRO_TERMINAL_BACKFILL_MINUTE_DAYS` (default 30, max 365), `MACRO_TERMINAL_BACKFILL_DAILY_DAYS` (default 1825, max 3650).
-- API serves `1min 5min 15min 1h 4h 1day 1week 1month`. 5m/15m/1h/4h are aggregated from stored 1min candles; 1W/1M from stored 1day — bucket-aligned (epoch boundaries, ISO weeks, first-of-month), no provider calls, no extra tables.
-- Candles live in `market_candles` with `UNIQUE(source_id, entity_pair_id, timeframe, timestamp)`; dedupe is upsert-based.
-
-### 6.3 Live feed (SSE)
-
-```
-PostgreSQL change → Redis pub/sub → GET /api/v1/events → `event: feed`
-                                                     → client refetches current view
-```
-
-The SSE payload is an invalidation signal (`{"type":"feed"}`), not the data itself; the client refetches its current query so the displayed sort/filter stays authoritative.
-
-## 7. Authentication and authorization
-
-- **Authlier** is the identity provider. `/auth/*` (sign-up, sign-in, verify-email, resend-verification, forgot-password, reset-password, sign-out) and `/account/*` are reverse-proxied to it; only `GET/PATCH /api/v1/account` are local.
-- Session = HttpOnly cookie issued by Authlier; guards resolve it per request.
-- Roles: `user` → `admin` → `super admin`. `RequireUser` gates `/api/v1` user routes; `RequireAdmin` gates `/api/v1/admin` (super admin satisfies admin checks).
-- Transactional email (verification code, password reset) via Resend templates; **product notifications are in-app only**.
-
-## 8. Data model highlights
-
-| Table | Purpose |
-|---|---|
-| `articles`, `article_contents`/outbox | Feed items and their hydrated bodies |
-| `article_enrichments`, `article_embeddings` | AI tags; Gemini vectors (cosine search) |
-| `calendar_events` (+ entities links) | Economic calendar with `country_code` (ISO-2) |
-| `entities`, `entity_pairs`, `watch_list` | The information graph and user follows |
-| `market_candles` | OHLCV with source/pair/timeframe/timestamp uniqueness |
-| `sources`, `source_configurations` | Registry + per-source config (cadence, selectors, keys) with `last_run_at` |
-| `outbox` (typed payloads), failed jobs | Reliable async work + admin replay |
-| `users` | Local account state (role, status) mirroring Authlier identity |
-
-Migrations are append-only Tern files in `db/migrations/`.
-
-## 9. API conventions
-
-Full reference in `api.md`. Invariants:
-
-- Everything app-facing under `/api/v1`; health probes at `/health/live`, `/health/ready`.
-- **Keyset cursor pagination only** — `limit` + opaque `cursor`, never offset.
-- Every failure is `{"error":{"code":"...","message":"..."}}` with the route's documented code.
-- Spec-first surface: Swagger JSON generated from route annotations (`task generate`), served at `/openapi.json`.
-
-## 10. Frontend
-
-```
-client/src/
-├── routes/        # route modules: home, search, watchlist, calendar, market,
-│                  # article detail, auth flows, admin/*
-├── components/    # app shell (sidebar/topbar), theme, chart, domain widgets
-├── ui/            # primitives (Button, Skeleton, Select, …)
-└── lib/           # api client, query hooks, auth, market/timeframe helpers
-```
-
-- Routing with React Router; server state with TanStack Query (keyset pagination via `useInfiniteQuery`).
-- Styling: Tailwind v4 tokens (`bg-card`, `text-muted-foreground`, brand `#087CEC`); typography Onest + Bricolage Grotesque.
-- Theme: system preference by default; explicit light/dark once chosen; pre-hydration script in `index.html` prevents flash; chart re-themes via MutationObserver.
-- Market chart: TradingView lightweight-charts (candles, crosshair OHLC legend, autoSize).
-- Live behavior: SSE pill counts new items for the *current* tab and clears on tab switch.
-
-## 11. Observability
-
-- `slog` JSON logs with stable `event` names (`ingestion.backfill.persisted`, `hydration.*`, …) plus `operation`, `source`, `duration_ms` fields — greppable, consistent across api and worker.
-- OpenTelemetry traces/metrics from the API → `otel-collector` → New Relic.
-- Liveness/readiness probes separate process health from database health.
-
-## 12. Configuration
-
-- One `config.Config` parsed from environment in `server/internal/config`; every variable has a default, validation, and an entry in the root `.env.example` (`.env` mirrors it for non-secrets).
-- Key knobs: backfill windows (§6.2), Gemini API key (AI features degrade gracefully when absent), Authlier address, Redis address, telemetry endpoints.
-
-## 13. Development workflow
-
-Taskfile is the entry point for everything:
-
-| Task | Purpose |
-|---|---|
-| `task up` / `task down` / `task logs` | Compose stack lifecycle |
-| `task run-api` / `task run-worker` | Local runs outside containers |
-| `task generate` | `sqlc generate` + `swag init` (committed output) |
-| `task migrate` / `task seed` | Schema + seed data |
-| `task test` / `task test-integration` | Go unit / integration (real Postgres) |
-| `task lint` / `task check` | golangci-lint + format + tests + spec diff gates |
-| `task client-check` / `task client-build` | Biome + tsc, production bundle |
-
-Verification bar for any change: `go test ./...`, `go build ./...`, `golangci-lint run ./...`, `gofmt` clean, `bun run check`, `bun run build`.
-
-## 14. Invariants (do not break without a spec change)
-
-1. Keyset cursors everywhere — never introduce offset pagination.
-2. Hydrated article bodies are written once (`content IS NULL` guard); enrichment never rewrites bodies.
-3. AI calls are batched, capped, and throttled; the Gemini key gates all AI features.
-4. Every async job is outbox-based: claim → attempt → backoff → failed-jobs (replayable), never fire-and-forget.
-5. Errors always use the shared envelope; success shapes come from the Swagger spec.
-6. Product notifications are in-app; email is transactional only (verification, password reset).
-7. `.env.example` and `.env` move together for non-secret variables.
-8. Generated code (sqlc, swagger) is regenerated and committed in the same change.
+- Pagination is keyset everywhere. Offset pagination does not exist.
+- The outbox is the only path for background work. Nothing important is fire-and-forget.
+- Hydration never overwrites stored content with something shorter.
+- AI never writes links, never touches the unmapped queue, and never runs on a user's hot path — explanations are one-shot requests, tagging and embedding are background jobs.
+- Webhook URLs are encrypted at rest and never leave the server in plaintext.
+- Ahnlich is the vector layer. Embeddings are computed by Gemini and stored in Ahnlich; PostgreSQL holds no vectors.
+- Every outbound fetch goes through the SSRF-hardened transport.
+- Refetching a source is always idempotent — identity is stable, publication dates never move.

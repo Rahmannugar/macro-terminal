@@ -65,7 +65,7 @@ func (job *Job) Wake() {
 func (job *Job) Run(ctx context.Context) error {
 	if !job.enabled {
 		job.logger.InfoContext(ctx,
-			"Article indexing disabled until the AI API key is configured",
+			"Article indexing disabled until the AI API key and Ahnlich address are configured",
 			"event", "indexing.skipped",
 			"reason", "missing_config",
 		)

@@ -30,6 +30,22 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  ahnlich-db:
+    image: ghcr.io/deven96/ahnlich-db:latest
+    command: >
+      "ahnlich-db run --host 0.0.0.0 --enable-persistence
+      --persist-location /root/.ahnlich/data/db.dat
+      --persistence-interval 300"
+    ports:
+      - "1369:1369"
+    volumes:
+      - ahnlich-db-data:/root/.ahnlich/data
+    healthcheck:
+      test: ["CMD-SHELL", "echo 'PING' | ahnlich-cli ahnlich --agent db --host 127.0.0.1 --port 1369 --no-interactive"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
       start_period: 5s
 
   otel-collector:
@@ -79,6 +95,7 @@ services:
       MACRO_TERMINAL_DATABASE_HOST: postgres
       MACRO_TERMINAL_DATABASE_PORT: 5432
       MACRO_TERMINAL_REDIS_URL: redis://redis:6379/0
+      MACRO_TERMINAL_AHNLICH_DB_ADDR: ahnlich-db:1369
       MACRO_TERMINAL_AUTH_BASE_URL: http://localhost:8081
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
@@ -92,6 +109,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      ahnlich-db:
         condition: service_healthy
       otel-collector:
         condition: service_started
@@ -113,6 +132,7 @@ services:
       MACRO_TERMINAL_DATABASE_HOST: postgres
       MACRO_TERMINAL_DATABASE_PORT: 5432
       MACRO_TERMINAL_REDIS_URL: redis://redis:6379/0
+      MACRO_TERMINAL_AHNLICH_DB_ADDR: ahnlich-db:1369
       MACRO_TERMINAL_AUTH_BASE_URL: http://localhost:8081
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
       GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
@@ -125,6 +145,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      ahnlich-db:
+        condition: service_healthy
       otel-collector:
         condition: service_started
     init: true
@@ -133,5 +155,6 @@ services:
 volumes:
   postgres-data:
   redis-data:
+  ahnlich-db-data:
   go-modules:
   go-build-cache:

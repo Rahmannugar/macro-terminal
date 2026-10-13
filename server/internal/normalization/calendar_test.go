@@ -226,8 +226,8 @@ func TestCalendarEventsParsesXoomarShape(t *testing.T) {
 	if first.Name != "CPI (Consumer Price Index)" {
 		t.Errorf("name = %q, want the eventName field", first.Name)
 	}
-	if first.CountryCode != "US" || first.Currency != "USD" {
-		t.Errorf("country/currency = %q/%q, want US/USD defaults", first.CountryCode, first.Currency)
+	if first.CountryCode != "" || first.Currency != "" {
+		t.Errorf("country/currency = %q/%q, want empty until the runner derives them", first.CountryCode, first.Currency)
 	}
 	if first.Importance != "high" {
 		t.Errorf("importance = %q, want high", first.Importance)

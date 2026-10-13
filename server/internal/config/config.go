@@ -42,6 +42,7 @@ type Config struct {
 	Redis       Redis
 	Auth        Auth
 	AI          AI
+	Ahnlich     Ahnlich
 	Resend      Resend
 	Backfill    Backfill
 }
@@ -84,6 +85,10 @@ type AI struct {
 	Model            string
 	ExplanationModel string
 	EmbeddingModel   string
+}
+
+type Ahnlich struct {
+	DBAddr string
 }
 
 type Backfill struct {
@@ -167,6 +172,7 @@ func Load() (Config, error) {
 		cfg.Database.WorkerPoolMax = int32(value)
 	}
 	cfg.Redis.URL = k.String("redis.url")
+	cfg.Ahnlich.DBAddr = strings.TrimSpace(k.String("ahnlich.db_addr"))
 	cfg.Auth.BaseURL = k.String("auth.base_url")
 	cfg.Auth.ClientBaseURL = k.String("auth.client_base_url")
 	cfg.Auth.TrustedOrigins = commaSeparated(k.String("auth.trusted_origins"))

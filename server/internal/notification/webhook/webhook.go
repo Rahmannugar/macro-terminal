@@ -112,17 +112,21 @@ func Message(channel string, alertType string, title string, pairSymbol string, 
 	switch channel {
 	case ChannelSlack:
 		attachment := map[string]any{
-			"color":      brandColor,
-			"title":      title,
-			"title_link": pageURL,
-			"text":       context,
-			"footer":     "Macro Terminal",
+			"color":  brandColor,
+			"text":   context,
+			"footer": "Macro Terminal",
 		}
 		if imageURL != "" {
 			attachment["image_url"] = imageURL
 		}
+		// The top-level text is what push notifications render, so it carries
+		// the title; Slack link syntax keeps it tappable in the channel.
+		preview := title
+		if pageURL != "" {
+			preview = fmt.Sprintf("<%s|%s>", pageURL, title)
+		}
 		return json.Marshal(map[string]any{
-			"text":        fmt.Sprintf("Macro Terminal · %s", context),
+			"text":        preview,
 			"attachments": []map[string]any{attachment},
 		})
 	case ChannelDiscord:

@@ -151,13 +151,16 @@ func run() (runError error) {
 		logger,
 	)
 
-	vectorEnabled := cfg.AI.APIKey != ""
+	vectorEnabled := cfg.AI.APIKey != "" && cfg.Ahnlich.DBAddr != ""
 	var articleVectors vector.Client
 	if vectorEnabled {
-		articleVectors = vector.NewClient(
-			databasePool,
+		articleVectors, err = vector.NewClient(
+			cfg.Ahnlich.DBAddr,
 			ai.NewEmbedder(telemetry.NewHTTPClient(providerFetchTimeout), cfg.AI.APIKey, cfg.AI.EmbeddingModel),
 		)
+		if err != nil {
+			return fmt.Errorf("configure article vectors: %w", err)
+		}
 	}
 	indexingJob := indexing.NewJob(
 		indexingrepositories.NewOutboxRepository(databasePool),

@@ -60,6 +60,10 @@ type Dictionary struct {
 	currency map[string]uuid.UUID
 	country  map[string]uuid.UUID
 
+	// countryCodes lets a calendar row without a provider country inherit
+	// the classified indicator's home country.
+	countryCodes map[uuid.UUID]string
+
 	indicator indicatorIndex
 }
 
@@ -84,9 +88,10 @@ func Build(
 	indicatorTerms []models.IndicatorTerm,
 ) Dictionary {
 	dictionary := Dictionary{
-		codes:    map[uuid.UUID]string{},
-		currency: map[string]uuid.UUID{},
-		country:  map[string]uuid.UUID{},
+		codes:        map[uuid.UUID]string{},
+		currency:     map[string]uuid.UUID{},
+		country:      map[string]uuid.UUID{},
+		countryCodes: map[uuid.UUID]string{},
 	}
 	seen := map[string]bool{}
 	add := func(text string, entityID uuid.UUID) {
@@ -105,6 +110,7 @@ func Build(
 		}
 		if entity.Type == "country" {
 			dictionary.country[strings.ToUpper(entity.Code)] = entity.ID
+			dictionary.countryCodes[entity.ID] = strings.ToUpper(entity.Code)
 		}
 		add(entity.Code, entity.ID)
 		add(entity.Name, entity.ID)
@@ -156,6 +162,14 @@ func (dictionary Dictionary) EntityForCurrency(code string) (uuid.UUID, bool) {
 func (dictionary Dictionary) EntityForCountry(code string) (uuid.UUID, bool) {
 	id, ok := dictionary.country[strings.ToUpper(strings.TrimSpace(code))]
 	return id, ok
+}
+
+// CountryForEntity resolves an entity to its country code when the entity
+// is a country, so calendar rows without a provider country inherit the
+// classified indicator's home country.
+func (dictionary Dictionary) CountryForEntity(id uuid.UUID) (string, bool) {
+	code, ok := dictionary.countryCodes[id]
+	return code, ok
 }
 
 // indicatorIndex classifies calendar event names to economic indicators.

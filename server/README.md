@@ -16,8 +16,8 @@ migration workflow for the initial schema.
 - PostgreSQL with pgx
 - Tern
 - Redis
-- Ahnlich
-- Gemini
+- Ahnlich — vector search index
+- Gemini — embeddings, explanations, enrichment tagging
 - Authlier
 - OpenTelemetry
 - Task
@@ -36,7 +36,7 @@ Start the complete local environment with Docker:
 task up
 ```
 
-This starts PostgreSQL, Redis, and the OpenTelemetry Collector with persistent
+This starts PostgreSQL, Redis, Ahnlich DB, and the OpenTelemetry Collector with persistent
 local volumes, applies pending Tern migrations, then starts the API and
 worker. Follow the logs with `task logs`, and stop everything without
 deleting its data with `task down`.
@@ -45,7 +45,7 @@ To run the API directly on the host instead, start the containers, apply
 migrations, and run the process:
 
 ```bash
-docker compose up -d --wait postgres redis otel-collector
+docker compose up -d --wait postgres redis ahnlich-db otel-collector
 task migrate
 task run-api
 ```

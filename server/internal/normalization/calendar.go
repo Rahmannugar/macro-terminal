@@ -148,12 +148,9 @@ func parseCalendarRow(row map[string]any) (CalendarEvent, bool) {
 	if event.Name == "" || event.ScheduledAt.IsZero() {
 		return CalendarEvent{}, false
 	}
-	if event.CountryCode == "" {
-		event.CountryCode = "US"
-	}
-	if event.Currency == "" {
-		event.Currency = "USD"
-	}
+	// Country and currency stay empty when the provider sent nothing: the
+	// calendar runner derives them from the classified indicator before
+	// defaulting
 	return event, true
 }
 

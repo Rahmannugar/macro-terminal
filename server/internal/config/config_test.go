@@ -27,6 +27,7 @@ func TestLoadAppliesAIDefaultsAndOverrides(t *testing.T) {
 	t.Setenv("MACRO_TERMINAL_AI_MODEL", "other-model")
 	t.Setenv("MACRO_TERMINAL_AI_EXPLANATION_MODEL", "other-explain-model")
 	t.Setenv("MACRO_TERMINAL_AI_EMBEDDING_MODEL", "other-embed-model")
+	t.Setenv("MACRO_TERMINAL_AHNLICH_DB_ADDR", " ahnlich-db:1369 ")
 
 	cfg, err = Load()
 	if err != nil {
@@ -43,6 +44,9 @@ func TestLoadAppliesAIDefaultsAndOverrides(t *testing.T) {
 	}
 	if cfg.AI.EmbeddingModel != "other-embed-model" {
 		t.Errorf("embedding model = %q, want the override", cfg.AI.EmbeddingModel)
+	}
+	if cfg.Ahnlich.DBAddr != "ahnlich-db:1369" {
+		t.Errorf("ahnlich db addr = %q, want the trimmed override", cfg.Ahnlich.DBAddr)
 	}
 }
 

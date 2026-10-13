@@ -83,11 +83,15 @@ func newRouter(
 	adminjobs.RegisterRoutes(adminGroup, adminjobsrepositories.NewJobRepository(database))
 
 	var searcher vector.Searcher
-	if cfg.AI.APIKey != "" {
-		searcher = vector.NewSearcher(
-			database,
+	if cfg.AI.APIKey != "" && cfg.Ahnlich.DBAddr != "" {
+		var err error
+		searcher, err = vector.NewSearcher(
+			cfg.Ahnlich.DBAddr,
 			ai.NewEmbedder(telemetry.NewHTTPClient(aiHTTPTimeout), cfg.AI.APIKey, cfg.AI.EmbeddingModel),
 		)
+		if err != nil {
+			return nil, err
+		}
 	}
 	resourceStore := cache.NewJSONStore(redisClient)
 	adminconfig.RegisterAdminConfigRoutes(

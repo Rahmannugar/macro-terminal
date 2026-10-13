@@ -676,6 +676,50 @@ func TestRunnerCalendarClassifiesAndStoresEvents(t *testing.T) {
 	}
 }
 
+func TestRunnerCalendarDerivesCountryFromIndicator(t *testing.T) {
+	cnID := uuid.New()
+	chinaCPI := uuid.New()
+	financeCalendar := configuration(uuid.New(), "FinanceCalendar", "calendar", "api")
+	source := &fakeConfigurationSource{
+		configurations: []models.SourceConfigurationWithSource{financeCalendar},
+	}
+	fetcher := &fakeSourceFetcher{byID: map[uuid.UUID]fakeFetchResult{
+		financeCalendar.ID: {result: Result{
+			StatusCode: 200,
+			Attempts:   1,
+			Body: []byte(`{"events": [
+				{"date": "2026-10-13", "time_utc": "2026-10-14T01:30:00Z",
+				 "name": "China CPI", "category": "economic-indicators",
+				 "consensus": null, "prior": "0.5% YoY", "actual": null}
+			]}`),
+		}},
+	}}
+	loader := &fakeDictionaryLoader{dict: mapping.Build(
+		[]entitymodels.Entity{{ID: cnID, Code: "CN", Name: "China", Type: "country"}},
+		nil,
+		nil,
+		[]entitymodels.Indicator{{ID: chinaCPI, Name: "China CPI", EntityID: cnID, Type: "inflation"}},
+		[]entitymodels.IndicatorTerm{{Name: "china cpi", IndicatorID: chinaCPI}},
+	)}
+	runner, _ := newTestRunner(source, fetcher, loader)
+
+	runner.runDue(context.Background())
+
+	batches := testEventStore(runner).stored()
+	if len(batches) != 1 || len(batches[0]) != 1 {
+		t.Fatalf("event batches = %v, want one batch with one entry", batches)
+	}
+	entry := batches[0][0]
+	if entry.CountryCode != "CN" || entry.Currency != "CNY" {
+		t.Errorf("country/currency = %q/%q, want CN/CNY from the indicator's home country",
+			entry.CountryCode, entry.Currency)
+	}
+	if entry.EntityID != cnID || entry.IndicatorID != chinaCPI {
+		t.Errorf("entity/indicator = %s/%s, want %s/%s",
+			entry.EntityID, entry.IndicatorID, cnID, chinaCPI)
+	}
+}
+
 func TestRunnerCalendarSkipsUnknownIndicatorNames(t *testing.T) {
 	calendar := configuration(uuid.New(), "Biquote", "calendar", "api")
 	source := &fakeConfigurationSource{

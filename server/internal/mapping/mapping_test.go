@@ -406,6 +406,12 @@ func TestEntityForCountryAndCurrencyResolveTypedEntities(t *testing.T) {
 	if _, ok := dictionary.EntityForCountry("US"); ok {
 		t.Error("EntityForCountry(US) resolved, but no US country entity exists")
 	}
+	if code, ok := dictionary.CountryForEntity(cnID); !ok || code != "CN" {
+		t.Errorf("CountryForEntity(cn) = %q/%v, want CN/true", code, ok)
+	}
+	if _, ok := dictionary.CountryForEntity(usdID); ok {
+		t.Error("CountryForEntity(usd) resolved, but the USD entity is a currency")
+	}
 	if id, ok := dictionary.EntityForCurrency("usd"); !ok || id != usdID {
 		t.Errorf("EntityForCurrency(usd) = %v/%v, want %v/true", id, ok, usdID)
 	}

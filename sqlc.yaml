@@ -223,23 +223,3 @@ sql:
             go_type:
               import: github.com/google/uuid
               type: UUID
-  - name: vector
-    engine: postgresql
-    schema: db/migrations
-    queries: server/internal/vector/queries
-    gen:
-      go:
-        package: vectordb
-        out: server/internal/vector/repositories/generated
-        sql_package: pgx/v5
-        emit_pointers_for_null_types: true
-        omit_unused_structs: true
-        overrides:
-          - db_type: uuid
-            go_type:
-              import: github.com/google/uuid
-              type: UUID
-          - db_type: real[]
-            go_type:
-              slice: true
-              type: float32

@@ -4,7 +4,9 @@ Macro Terminal is a macroeconomic intelligence terminal that connects economic d
 
 It continuously ingests information from official economic institutions, financial news sources, market-data providers, and economic-calendar providers; normalizes and deduplicates that information; maps it to relevant entities and asset relationships; and enriches it with structured AI-generated context.
 
-Users configure the assets and economic relationships they care about, and Macro Terminal surfaces the relevant information for those assets. Users can search the information semantically, discover related stories, view economic-calendar data, and request one-shot AI explanations of individual articles or calendar events using the surrounding macro context. It is not a trading execution platform, does not generate buy/sell signals, and does not make directional trading recommendations. Its purpose is to help users understand what is happening in the macro environment, how pieces of information are connected, and why a particular piece of information matters in context.
+Users configure the assets and economic relationships they care about, and Macro Terminal surfaces the relevant information for those assets. Users can search the information semantically, discover related stories, view economic-calendar data, request one-shot AI explanations of individual articles or calendar events using the surrounding macro context, and receive alerts for followed pairs in-app or over Slack and Discord webhooks. It is not a trading execution platform, does not generate buy/sell signals, and does not make directional trading recommendations. Its purpose is to help users understand what is happening in the macro environment, how pieces of information are connected, and why a particular piece of information matters in context.
+
+Full system documentation lives in [ARCHITECTURE.md](ARCHITECTURE.md); the HTTP surface is mapped in [API.md](API.md).
 
 https://excalidraw.com/#json=gNTtu36lxwijy3kd2t7Uo,SkG-HvFr6X2ghNG1eyBWyg
 
@@ -14,8 +16,8 @@ https://excalidraw.com/#json=gNTtu36lxwijy3kd2t7Uo,SkG-HvFr6X2ghNG1eyBWyg
 - React 19, Vite, TypeScript
 - PostgreSQL
 - Redis
-- Ahnlich — vector search and semantic retrieval
-- Gemini
+- Ahnlich — vector search index
+- Gemini — embeddings, explanations, enrichment tagging
 - Authlier — authentication
 - Caddy — reverse proxy and static serving
 - OpenTelemetry → New Relic
@@ -30,7 +32,7 @@ Two sources are scraped from web pages using HTML selectors: **People's Bank of 
 ```
 macro-terminal/
 ├── Taskfile.yml        # all development tasks
-├── compose.yaml        # local postgres, redis, otel-collector, api, worker
+├── compose.yaml        # local postgres, redis, ahnlich-db, otel-collector, api, worker
 ├── go.mod              # module github.com/Rahmannugar/macro-terminal
 ├── client/             # React SPA (see client/README.md)
 ├── server/             # Go API and worker (see server/README.md)

@@ -482,6 +482,16 @@ var (
 		"US": true, "EU": true, "GB": true, "JP": true, "CN": true,
 		"CA": true, "AU": true, "CH": true, "NZ": true,
 	}
+
+	// US is the fallback only after the provider country and the classified
+	// indicator's home country both say nothing.
+	defaultCalendarCountry  = "US"
+	defaultCalendarCurrency = "USD"
+
+	calendarCurrencyForCountry = map[string]string{
+		"US": "USD", "EU": "EUR", "GB": "GBP", "JP": "JPY", "CN": "CNY",
+		"CA": "CAD", "AU": "AUD", "CH": "CHF", "NZ": "NZD",
+	}
 )
 
 // fetchCalendar parses a calendar payload, classifies each indicator row,
@@ -502,7 +512,7 @@ func (runner *Runner) fetchCalendar(
 	foreign := 0
 	unmappedNames := make([]string, 0, mappingLogTitleLimit)
 	for _, event := range events {
-		if !allowedCalendarCountries[event.CountryCode] {
+		if event.CountryCode != "" && !allowedCalendarCountries[event.CountryCode] {
 			foreign++
 			continue
 		}
@@ -518,10 +528,32 @@ func (runner *Runner) fetchCalendar(
 			}
 			continue
 		}
+		countryCode := event.CountryCode
+		currency := event.Currency
+		// A provider row without a country inherits the indicator's home
+		// country, so "China CPI" never stores as US.
+		if countryCode == "" {
+			if code, known := dictionary.CountryForEntity(match.EntityID); known {
+				countryCode = code
+			}
+		}
+		if currency == "" && countryCode != "" {
+			currency = calendarCurrencyForCountry[countryCode]
+		}
+		if countryCode == "" {
+			countryCode = defaultCalendarCountry
+		}
+		if currency == "" {
+			currency = defaultCalendarCurrency
+		}
+		if !allowedCalendarCountries[countryCode] {
+			foreign++
+			continue
+		}
 		entityID := match.EntityID
-		if countryID, known := dictionary.EntityForCountry(event.CountryCode); known {
+		if countryID, known := dictionary.EntityForCountry(countryCode); known {
 			entityID = countryID
-		} else if currencyID, known := dictionary.EntityForCurrency(event.Currency); known {
+		} else if currencyID, known := dictionary.EntityForCurrency(currency); known {
 			entityID = currencyID
 		}
 		entry := calendarmodels.PersistEntry{
@@ -533,8 +565,8 @@ func (runner *Runner) fetchCalendar(
 			Previous:    event.Previous,
 			Consensus:   event.Consensus,
 			Actual:      event.Actual,
-			CountryCode: event.CountryCode,
-			Currency:    event.Currency,
+			CountryCode: countryCode,
+			Currency:    currency,
 			Importance:  event.Importance,
 		}
 		if event.Actual != nil {

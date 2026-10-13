@@ -84,8 +84,8 @@ func TestMessageRendersPerChannel(t *testing.T) {
 		t.Fatalf("slack message: %v", err)
 	}
 	body := string(slack)
-	if !strings.Contains(body, `"title_link":"`+pageURL+`"`) {
-		t.Errorf("slack body = %s, want the title linking to the article page", body)
+	if !strings.Contains(body, pageURL+"|Fed holds rates steady") {
+		t.Errorf("slack body = %s, want the push text to be the linkified title", body)
 	}
 	if !strings.Contains(body, `"image_url":"`+imageURL+`"`) {
 		t.Errorf("slack body = %s, want the lead image", body)

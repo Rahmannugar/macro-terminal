@@ -80,7 +80,9 @@ SELECT gen_random_uuid(),
        'article_content',
        jsonb_build_object('article_id', article.id::text)
 FROM articles AS article
-WHERE (article.content IS NULL OR btrim(article.content) = '')
+WHERE (article.content IS NULL
+       OR btrim(article.content) = ''
+       OR length(btrim(article.content)) < 500)
   AND EXISTS (
         SELECT 1
         FROM source_configurations AS configuration
@@ -224,7 +226,9 @@ UPDATE articles
 SET content    = $2,
     updated_at = now()
 WHERE id = $1
-  AND (content IS NULL OR btrim(content) = '')
+  AND (content IS NULL
+       OR btrim(content) = ''
+       OR length(btrim(content)) < length(btrim($2)))
 `
 
 type StoreArticleContentParams struct {
@@ -232,8 +236,9 @@ type StoreArticleContentParams struct {
 	Content *string
 }
 
-// Stored content never overwrites text a feed or an earlier fetch already
-// delivered.
+// A stored body is never replaced by something shorter: feed teasers
+// upgrade to the extracted article, and a thin or failed extraction
+// cannot downgrade text that is already there.
 func (q *Queries) StoreArticleContent(ctx context.Context, arg StoreArticleContentParams) (int64, error) {
 	result, err := q.db.Exec(ctx, storeArticleContent, arg.ID, arg.Content)
 	if err != nil {
