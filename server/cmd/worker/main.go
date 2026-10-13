@@ -180,6 +180,7 @@ func run() (runError error) {
 		logger,
 		telemetry.NewHTTPClient(providerFetchTimeout),
 		notificationCipher,
+		cfg.Auth.ClientBaseURL,
 	)
 	hydrationJob := hydration.NewJob(
 		hydrationrepositories.NewRepository(databasePool, resourceStore),

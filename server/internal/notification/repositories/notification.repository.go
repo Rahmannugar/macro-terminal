@@ -378,11 +378,14 @@ func (repository *Repository) GetWebhookDelivery(ctx context.Context, notificati
 		return models.WebhookDelivery{}, fmt.Errorf("get webhook delivery: %w", err)
 	}
 	return models.WebhookDelivery{
-		Title:      row.Title,
-		AlertType:  row.Type,
-		PairSymbol: row.PairSymbol,
-		Channel:    row.Channel,
-		Nonce:      row.WebhookUrlNonce,
-		Ciphertext: row.WebhookUrlEncrypted,
+		Title:       row.Title,
+		AlertType:   row.Type,
+		PairSymbol:  row.PairSymbol,
+		SubjectType: row.SubjectType,
+		SubjectID:   row.SubjectID,
+		ImageURL:    row.ImageUrl,
+		Channel:     row.Channel,
+		Nonce:       row.WebhookUrlNonce,
+		Ciphertext:  row.WebhookUrlEncrypted,
 	}, nil
 }

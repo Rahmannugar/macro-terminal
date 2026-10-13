@@ -41,10 +41,13 @@ type WebhookClaim struct {
 }
 
 type WebhookDelivery struct {
-	Title      string
-	AlertType  string
-	PairSymbol string
-	Channel    *string
-	Nonce      []byte
-	Ciphertext []byte
+	Title       string
+	AlertType   string
+	PairSymbol  string
+	SubjectType string
+	SubjectID   uuid.UUID
+	ImageURL    *string
+	Channel     *string
+	Nonce       []byte
+	Ciphertext  []byte
 }

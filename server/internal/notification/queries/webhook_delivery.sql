@@ -86,11 +86,17 @@ WHERE id = $1
 SELECT n.title,
        n.type,
        p.symbol AS pair_symbol,
+       n.subject_type,
+       n.subject_id,
+       a.image_url,
        c.channel,
        c.webhook_url_nonce,
        c.webhook_url_encrypted
 FROM notifications AS n
 JOIN entity_pairs AS p ON p.id = n.entity_pair_id
+LEFT JOIN articles AS a
+    ON n.subject_type = 'article'
+   AND a.id = n.subject_id
 LEFT JOIN user_notification_channels AS c
     ON c.user_id = n.user_id
    AND c.channel = n.channel

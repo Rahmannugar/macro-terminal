@@ -54,23 +54,34 @@ type Repository interface {
 }
 
 type Job struct {
-	repository Repository
-	logger     *slog.Logger
-	httpClient *http.Client
-	cipher     *webhook.Cipher
-	wake       chan struct{}
+	repository    Repository
+	logger        *slog.Logger
+	httpClient    *http.Client
+	cipher        *webhook.Cipher
+	clientBaseURL string
+	wake          chan struct{}
 }
 
 // NewJob builds the notification job. A nil cipher (or nil httpClient)
 // disables the webhook delivery phase; in-app fan-out keeps working.
-func NewJob(repository Repository, logger *slog.Logger, httpClient *http.Client, cipher *webhook.Cipher) *Job {
+func NewJob(repository Repository, logger *slog.Logger, httpClient *http.Client, cipher *webhook.Cipher, clientBaseURL string) *Job {
 	return &Job{
-		repository: repository,
-		logger:     logger,
-		httpClient: httpClient,
-		cipher:     cipher,
-		wake:       make(chan struct{}, 1),
+		repository:    repository,
+		logger:        logger,
+		httpClient:    httpClient,
+		cipher:        cipher,
+		clientBaseURL: strings.TrimRight(clientBaseURL, "/"),
+		wake:          make(chan struct{}, 1),
 	}
+}
+
+// pageURL is the Macro Terminal link a webhook message points at: the
+// article page for articles, the calendar for events.
+func (job *Job) pageURL(delivery models.WebhookDelivery) string {
+	if delivery.SubjectType == subjectArticle {
+		return job.clientBaseURL + "/articles/" + delivery.SubjectID.String()
+	}
+	return job.clientBaseURL + "/calendar"
 }
 
 func (job *Job) Wake() {
@@ -261,7 +272,11 @@ func (job *Job) deliverWebhook(
 		return job.repository.FailWebhookJobPermanently(ctx, work.ID,
 			truncate(err.Error(), maxCauseLength))
 	}
-	body, err := webhook.Message(*delivery.Channel, delivery.AlertType, delivery.Title, delivery.PairSymbol)
+	imageURL := ""
+	if delivery.ImageURL != nil {
+		imageURL = *delivery.ImageURL
+	}
+	body, err := webhook.Message(*delivery.Channel, delivery.AlertType, delivery.Title, delivery.PairSymbol, job.pageURL(delivery), imageURL)
 	if err != nil {
 		stats.webhookFailedPermanent++
 		return job.repository.FailWebhookJobPermanently(ctx, work.ID,

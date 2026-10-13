@@ -3,6 +3,7 @@ import { ArticleImage } from "../components/article-image";
 import { ArticleList } from "../components/article-list";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { Skeleton } from "../components/ui/skeleton";
 import { adminErrorMessage } from "../lib/admin";
 import { formatTimestamp, toParagraphs } from "../lib/format";
 import { useArticle, useExplainArticle, useRelatedArticles } from "../lib/terminal";
@@ -20,8 +21,21 @@ export function ArticleRoute() {
 
   if (article.isPending) {
     return (
-      <div className="rounded-xl border border-border bg-card px-4 py-10 text-center text-sm text-muted-foreground">
-        Loading…
+      <div>
+        <Skeleton className="h-4 w-16" />
+        <Skeleton className="mt-4 h-8 w-3/4 max-w-[760px]" />
+        <div className="mt-3 flex items-center gap-2">
+          <Skeleton className="h-5 w-20 rounded-full" />
+          <Skeleton className="h-4 w-28" />
+        </div>
+        <Skeleton className="mt-6 aspect-video w-full max-w-[680px] rounded-xl" />
+        <div className="mt-6 max-w-[680px] space-y-3">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-11/12" />
+          <Skeleton className="h-4 w-10/12" />
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-9/12" />
+        </div>
       </div>
     );
   }

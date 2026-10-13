@@ -96,9 +96,10 @@ func (c *Cipher) Decrypt(nonce []byte, ciphertext []byte) (string, error) {
 	return string(plain), nil
 }
 
-// Message renders the JSON body posted to the channel endpoint. alertType is
-// the stored alert type (new_article or new_calendar_event).
-func Message(channel string, alertType string, title string, pairSymbol string) ([]byte, error) {
+// Message renders the JSON body posted to the channel endpoint. The title
+// links back to the Macro Terminal page for the subject, and articles carry
+// their lead image when one is known.
+func Message(channel string, alertType string, title string, pairSymbol string, pageURL string, imageURL string) ([]byte, error) {
 	label := "Notification"
 	switch alertType {
 	case "new_article":
@@ -106,12 +107,36 @@ func Message(channel string, alertType string, title string, pairSymbol string) 
 	case "new_calendar_event":
 		label = "Calendar event"
 	}
-	text := fmt.Sprintf("Macro Terminal · %s · %s\n%s", label, pairSymbol, title)
+	context := fmt.Sprintf("%s · %s", label, pairSymbol)
+	const brandColor = "#087CEC"
 	switch channel {
 	case ChannelSlack:
-		return json.Marshal(map[string]string{"text": text})
+		attachment := map[string]any{
+			"color":      brandColor,
+			"title":      title,
+			"title_link": pageURL,
+			"text":       context,
+			"footer":     "Macro Terminal",
+		}
+		if imageURL != "" {
+			attachment["image_url"] = imageURL
+		}
+		return json.Marshal(map[string]any{
+			"text":        fmt.Sprintf("Macro Terminal · %s", context),
+			"attachments": []map[string]any{attachment},
+		})
 	case ChannelDiscord:
-		return json.Marshal(map[string]string{"content": text})
+		embed := map[string]any{
+			"title":       title,
+			"url":         pageURL,
+			"description": context,
+			"color":       0x087CEC,
+			"footer":      map[string]string{"text": "Macro Terminal"},
+		}
+		if imageURL != "" {
+			embed["image"] = map[string]string{"url": imageURL}
+		}
+		return json.Marshal(map[string]any{"embeds": []map[string]any{embed}})
 	default:
 		return nil, fmt.Errorf("unknown webhook channel %q", channel)
 	}

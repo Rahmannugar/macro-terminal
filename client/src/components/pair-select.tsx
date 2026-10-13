@@ -79,7 +79,13 @@ export function PairSelect({
         className="flex h-11 w-full items-center justify-between gap-2 rounded-lg border border-border bg-card px-3.5 pr-3 text-sm text-foreground outline-none transition focus-visible:border-primary focus-visible:ring-4 focus-visible:ring-primary/15 disabled:opacity-60"
       >
         <span className="truncate font-medium">
-          {selected ? selected.symbol : loading ? "Loading…" : "No pairs available"}
+          {selected ? (
+            selected.symbol
+          ) : loading ? (
+            <Skeleton className="h-4 w-20" />
+          ) : (
+            "No pairs available"
+          )}
         </span>
         <CaretDownIcon
           aria-hidden="true"

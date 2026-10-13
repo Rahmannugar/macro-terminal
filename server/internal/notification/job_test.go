@@ -169,7 +169,7 @@ func TestCycleFansOutClaimedArticle(t *testing.T) {
 		fanOutArticle: 2,
 	}
 
-	if err := NewJob(repository, testLogger(), nil, nil).cycle(t.Context()); err != nil {
+	if err := NewJob(repository, testLogger(), nil, nil, "http://localhost:5173").cycle(t.Context()); err != nil {
 		t.Fatalf("cycle: %v", err)
 	}
 
@@ -195,7 +195,7 @@ func TestCycleFansOutClaimedCalendarEvent(t *testing.T) {
 		fanOutEvent: 1,
 	}
 
-	if err := NewJob(repository, testLogger(), nil, nil).cycle(t.Context()); err != nil {
+	if err := NewJob(repository, testLogger(), nil, nil, "http://localhost:5173").cycle(t.Context()); err != nil {
 		t.Fatalf("cycle: %v", err)
 	}
 
@@ -215,7 +215,7 @@ func TestCyclePermanentlyFailsMissingSubject(t *testing.T) {
 		subjectErr: fmt.Errorf("article %s: %w", articleID, pgx.ErrNoRows),
 	}
 
-	if err := NewJob(repository, testLogger(), nil, nil).cycle(t.Context()); err != nil {
+	if err := NewJob(repository, testLogger(), nil, nil, "http://localhost:5173").cycle(t.Context()); err != nil {
 		t.Fatalf("cycle: %v", err)
 	}
 
@@ -244,7 +244,7 @@ func TestCycleSendsFanOutFailureBackWithBackoff(t *testing.T) {
 		fanOutErr: errors.New("connection refused"),
 	}
 
-	if err := NewJob(repository, testLogger(), nil, nil).cycle(t.Context()); err == nil {
+	if err := NewJob(repository, testLogger(), nil, nil, "http://localhost:5173").cycle(t.Context()); err == nil {
 		t.Fatal("cycle succeeded, want the fan-out error reported")
 	}
 
@@ -269,7 +269,7 @@ func TestCycleFailsUnknownSubjectTypePermanently(t *testing.T) {
 		claimed: []models.ClaimedJob{{ID: workID, SubjectType: "price_alert", SubjectID: uuid.New(), Attempts: 1}},
 	}
 
-	if err := NewJob(repository, testLogger(), nil, nil).cycle(t.Context()); err != nil {
+	if err := NewJob(repository, testLogger(), nil, nil, "http://localhost:5173").cycle(t.Context()); err != nil {
 		t.Fatalf("cycle: %v", err)
 	}
 
@@ -285,7 +285,7 @@ func TestCycleFailsUnknownSubjectTypePermanently(t *testing.T) {
 }
 
 func TestWakeNeverBlocksWhenACycleIsAlreadyPending(t *testing.T) {
-	job := NewJob(&fakeRepository{}, testLogger(), nil, nil)
+	job := NewJob(&fakeRepository{}, testLogger(), nil, nil, "http://localhost:5173")
 	job.Wake()
 	job.Wake()
 	if len(job.wake) != 1 {
@@ -294,7 +294,7 @@ func TestWakeNeverBlocksWhenACycleIsAlreadyPending(t *testing.T) {
 }
 
 func TestRunStopsAfterCancellation(t *testing.T) {
-	job := NewJob(&fakeRepository{claimed: []models.ClaimedJob{{ID: uuid.New(), SubjectType: "article", SubjectID: uuid.New()}}}, testLogger(), nil, nil)
+	job := NewJob(&fakeRepository{claimed: []models.ClaimedJob{{ID: uuid.New(), SubjectType: "article", SubjectID: uuid.New()}}}, testLogger(), nil, nil, "http://localhost:5173")
 
 	ctx, cancel := context.WithCancel(t.Context())
 	result := make(chan error, 1)
@@ -328,12 +328,14 @@ func webhookDeliveryFixture(t *testing.T, cipher *webhook.Cipher, endpoint, chan
 		t.Fatalf("encrypt endpoint: %v", err)
 	}
 	return models.WebhookDelivery{
-		Title:      "Fed holds rates steady",
-		AlertType:  "new_article",
-		PairSymbol: "BTC/USD",
-		Channel:    &channel,
-		Nonce:      nonce,
-		Ciphertext: ciphertext,
+		Title:       "Fed holds rates steady",
+		AlertType:   "new_article",
+		PairSymbol:  "BTC/USD",
+		SubjectType: "article",
+		SubjectID:   uuid.New(),
+		Channel:     &channel,
+		Nonce:       nonce,
+		Ciphertext:  ciphertext,
 	}
 }
 
@@ -356,7 +358,7 @@ func TestCycleDeliversWebhook(t *testing.T) {
 		},
 	}
 
-	if err := NewJob(repository, testLogger(), server.Client(), cipher).cycle(t.Context()); err != nil {
+	if err := NewJob(repository, testLogger(), server.Client(), cipher, "http://localhost:5173").cycle(t.Context()); err != nil {
 		t.Fatalf("cycle: %v", err)
 	}
 
@@ -367,6 +369,9 @@ func TestCycleDeliversWebhook(t *testing.T) {
 		}
 		if !strings.Contains(body, "BTC/USD") {
 			t.Errorf("posted body = %q, want the pair symbol", body)
+		}
+		if !strings.Contains(body, "http://localhost:5173/articles/") {
+			t.Errorf("posted body = %q, want the link back to the article page", body)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no webhook request reached the endpoint")
@@ -399,7 +404,7 @@ func TestCycleCompletesWebhookWhenChannelDisconnected(t *testing.T) {
 		},
 	}
 
-	if err := NewJob(repository, testLogger(), server.Client(), cipher).cycle(t.Context()); err != nil {
+	if err := NewJob(repository, testLogger(), server.Client(), cipher, "http://localhost:5173").cycle(t.Context()); err != nil {
 		t.Fatalf("cycle: %v", err)
 	}
 
@@ -427,7 +432,7 @@ func TestCycleRetriesWebhookOnServerError(t *testing.T) {
 		},
 	}
 
-	if err := NewJob(repository, testLogger(), server.Client(), cipher).cycle(t.Context()); err == nil {
+	if err := NewJob(repository, testLogger(), server.Client(), cipher, "http://localhost:5173").cycle(t.Context()); err == nil {
 		t.Fatal("cycle succeeded, want the webhook error reported")
 	}
 
@@ -462,7 +467,7 @@ func TestCycleFailsWebhookPermanentlyOnRejection(t *testing.T) {
 		},
 	}
 
-	if err := NewJob(repository, testLogger(), server.Client(), cipher).cycle(t.Context()); err != nil {
+	if err := NewJob(repository, testLogger(), server.Client(), cipher, "http://localhost:5173").cycle(t.Context()); err != nil {
 		t.Fatalf("cycle: %v, a rejected webhook is handled as a permanent failure", err)
 	}
 
@@ -482,7 +487,7 @@ func TestCycleFailsWebhookPermanentlyWhenNotificationMissing(t *testing.T) {
 		webhookDeliveryErr: pgx.ErrNoRows,
 	}
 
-	if err := NewJob(repository, testLogger(), http.DefaultClient, cipher).cycle(t.Context()); err != nil {
+	if err := NewJob(repository, testLogger(), http.DefaultClient, cipher, "http://localhost:5173").cycle(t.Context()); err != nil {
 		t.Fatalf("cycle: %v", err)
 	}
 
@@ -499,7 +504,7 @@ func TestCycleSkipsWebhookPhaseWithoutCipher(t *testing.T) {
 		webhookClaimed: []models.WebhookClaim{{ID: uuid.New(), NotificationID: uuid.New(), Attempts: 1}},
 	}
 
-	if err := NewJob(repository, testLogger(), nil, nil).cycle(t.Context()); err != nil {
+	if err := NewJob(repository, testLogger(), nil, nil, "http://localhost:5173").cycle(t.Context()); err != nil {
 		t.Fatalf("cycle: %v", err)
 	}
 

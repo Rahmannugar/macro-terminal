@@ -76,23 +76,40 @@ func TestNewCipherRequiresKeyMaterial(t *testing.T) {
 }
 
 func TestMessageRendersPerChannel(t *testing.T) {
-	slack, err := Message(ChannelSlack, "new_article", "Fed holds rates steady", "BTC/USD")
+	pageURL := "http://localhost:5173/articles/abc"
+	imageURL := "https://cdn.example.test/lead.jpg"
+
+	slack, err := Message(ChannelSlack, "new_article", "Fed holds rates steady", "BTC/USD", pageURL, imageURL)
 	if err != nil {
 		t.Fatalf("slack message: %v", err)
 	}
-	if !strings.Contains(string(slack), `"text"`) || !strings.Contains(string(slack), "BTC/USD") {
-		t.Errorf("slack body = %s, want text payload with the pair", slack)
+	body := string(slack)
+	if !strings.Contains(body, `"title_link":"`+pageURL+`"`) {
+		t.Errorf("slack body = %s, want the title linking to the article page", body)
+	}
+	if !strings.Contains(body, `"image_url":"`+imageURL+`"`) {
+		t.Errorf("slack body = %s, want the lead image", body)
+	}
+	if !strings.Contains(body, "BTC/USD") {
+		t.Errorf("slack body = %s, want the pair symbol", body)
 	}
 
-	discord, err := Message(ChannelDiscord, "new_calendar_event", "CPI", "EUR/USD")
+	discord, err := Message(ChannelDiscord, "new_calendar_event", "CPI", "EUR/USD", "http://localhost:5173/calendar", "")
 	if err != nil {
 		t.Fatalf("discord message: %v", err)
 	}
-	if !strings.Contains(string(discord), `"content"`) || !strings.Contains(string(discord), "Calendar event") {
-		t.Errorf("discord body = %s, want content payload with the label", discord)
+	body = string(discord)
+	if !strings.Contains(body, `"url":"http://localhost:5173/calendar"`) {
+		t.Errorf("discord body = %s, want the embed url", body)
+	}
+	if !strings.Contains(body, "Calendar event") {
+		t.Errorf("discord body = %s, want the label", body)
+	}
+	if strings.Contains(body, `"image"`) {
+		t.Errorf("discord body = %s, want no image block without a lead image", body)
 	}
 
-	if _, err := Message("email", "new_article", "t", "BTC/USD"); err == nil {
+	if _, err := Message("email", "new_article", "t", "BTC/USD", pageURL, ""); err == nil {
 		t.Error("unknown channel accepted, want failure")
 	}
 }
