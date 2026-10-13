@@ -22,6 +22,22 @@ WHERE entity_pair_id = sqlc.arg('entity_pair_id')
 ORDER BY timestamp DESC, id DESC
 LIMIT sqlc.arg('page_size');
 
+-- name: ListCandlesWindow :many
+SELECT id, entity_pair_id, timeframe, timestamp, open, high, low, close
+FROM market_candles
+WHERE entity_pair_id = sqlc.arg('entity_pair_id')
+  AND timeframe = sqlc.arg('timeframe')
+  AND (
+    sqlc.narg('cursor_timestamp')::timestamptz IS NULL
+    OR timestamp < sqlc.narg('cursor_timestamp')::timestamptz
+  )
+  AND (
+    sqlc.narg('window_start')::timestamptz IS NULL
+    OR timestamp >= sqlc.narg('window_start')::timestamptz
+  )
+ORDER BY timestamp DESC
+LIMIT sqlc.arg('scan_limit');
+
 -- name: CandleGaps :many
 WITH series AS (
   SELECT timestamp

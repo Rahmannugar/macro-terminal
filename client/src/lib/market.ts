@@ -1,7 +1,7 @@
 import { type QueryKey, useInfiniteQuery } from "@tanstack/react-query";
 import { APIError, apiRequest } from "./api";
 
-export type Timeframe = "1min" | "1day";
+export type Timeframe = "1min" | "5min" | "15min" | "1h" | "4h" | "1day" | "1week" | "1month";
 
 export type Candle = {
   id: string;
@@ -16,7 +16,42 @@ export type Candle = {
 
 export type CandlePage = { candles: Candle[]; nextCursor: string | null };
 
-export const timeframes: Timeframe[] = ["1min", "1day"];
+export const timeframes: Timeframe[] = [
+  "1min",
+  "5min",
+  "15min",
+  "1h",
+  "4h",
+  "1day",
+  "1week",
+  "1month",
+];
+
+export const timeframeLabels: Record<Timeframe, string> = {
+  "1min": "1 minute",
+  "5min": "5 minutes",
+  "15min": "15 minutes",
+  "1h": "1 hour",
+  "4h": "4 hours",
+  "1day": "1 day",
+  "1week": "1 week",
+  "1month": "1 month",
+};
+
+// Compact marks shown on the interval switcher, in TradingView order.
+export const timeframeMarks: Record<Timeframe, string> = {
+  "1min": "1m",
+  "5min": "5m",
+  "15min": "15m",
+  "1h": "1h",
+  "4h": "4h",
+  "1day": "D",
+  "1week": "W",
+  "1month": "M",
+};
+
+// Intraday timeframes show clock times on the chart axis; longer ones show dates.
+export const intradayTimeframes = new Set<Timeframe>(["1min", "5min", "15min", "1h", "4h"]);
 
 export function candlesKey(pairId: string, timeframe: Timeframe): QueryKey {
   return ["candles", pairId, timeframe];

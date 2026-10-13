@@ -3990,7 +3990,7 @@
                         }
                     },
                     {
-                        "description": "1min or 1day.",
+                        "description": "One of 1min, 5min, 15min, 1h, 4h, 1day, 1week, 1month. Aggregated timeframes are built from stored minute or daily candles.",
                         "in": "query",
                         "name": "timeframe",
                         "required": true,

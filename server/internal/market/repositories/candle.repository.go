@@ -84,6 +84,9 @@ func (repository *CandleRepository) CandlesPage(
 	cursor *paging.Cursor,
 	limit int32,
 ) ([]marketmodels.StoredCandle, *paging.Cursor, error) {
+	if aggregation, ok := candleAggregations[timeframe]; ok {
+		return repository.aggregatedCandlesPage(ctx, entityPairID, timeframe, aggregation, cursor, limit)
+	}
 	params := marketdb.ListCandlesPageParams{
 		EntityPairID: entityPairID,
 		Timeframe:    timeframe,

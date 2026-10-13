@@ -73,7 +73,7 @@ func TestCandlesRejectsBadParameters(t *testing.T) {
 		t.Errorf("missing pair → status/code = %d/%q, want 400 invalid_entity_pair", recorder.Code, candlesDecodeError(t, recorder).Error.Code)
 	}
 
-	recorder = candlesPerform(router, "/api/v1/candles?entityPairId="+uuid.NewString()+"&timeframe=1week")
+	recorder = candlesPerform(router, "/api/v1/candles?entityPairId="+uuid.NewString()+"&timeframe=2weeks")
 	if recorder.Code != http.StatusBadRequest || candlesDecodeError(t, recorder).Error.Code != "invalid_timeframe" {
 		t.Errorf("bad timeframe → status/code = %d/%q, want 400 invalid_timeframe", recorder.Code, candlesDecodeError(t, recorder).Error.Code)
 	}

@@ -1,12 +1,18 @@
 import { useState } from "react";
 import { AdminScreen } from "../components/admin/admin-screen";
 import { type ChartCandle, MarketChart } from "../components/market-chart";
+import { PairSelect } from "../components/pair-select";
 import { Button } from "../components/ui/button";
-import { Select } from "../components/ui/select";
 import { Skeleton } from "../components/ui/skeleton";
-import { Tabs } from "../components/ui/tabs";
 import { adminErrorMessage, adminRows } from "../lib/admin";
-import { candlesAscending, type Timeframe, timeframes, useCandles } from "../lib/market";
+import {
+  candlesAscending,
+  type Timeframe,
+  timeframeLabels,
+  timeframeMarks,
+  timeframes,
+  useCandles,
+} from "../lib/market";
 import { usePairCatalog } from "../lib/watchlist";
 
 export function MarketRoute() {
@@ -32,35 +38,39 @@ export function MarketRoute() {
       title="Market"
       description="Price history for the pairs Macro Terminal tracks, updated continuously from live market data."
     >
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
         <div className="w-full max-w-[280px]">
-          <label className="text-sm font-medium" htmlFor="market-pair">
-            Pair
-          </label>
-          <Select
-            id="market-pair"
-            className="mt-1.5"
-            value={activePairId ?? ""}
-            disabled={catalog.isPending || pairs.length === 0}
-            onChange={(event) => setPairId(event.target.value)}
-          >
-            {pairs.length === 0 ? <option value="">No pairs available</option> : null}
-            {pairs.map((pair) => (
-              <option key={pair.id} value={pair.id}>
-                {pair.symbol}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div>
-          <span className="text-sm font-medium">Interval</span>
+          <span className="text-sm font-medium">Pair</span>
           <div className="mt-1.5">
-            <Tabs
-              value={timeframe}
-              options={timeframes}
-              onChange={setTimeframe}
-              label={(option) => (option === "1min" ? "1 minute" : "1 day")}
+            <PairSelect
+              label="Pair"
+              value={activePairId}
+              options={pairs}
+              onChange={setPairId}
+              loading={catalog.isPending}
+              error={catalog.isError ? catalog.error : undefined}
             />
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm font-medium">Interval</span>
+          <div className="inline-flex items-center rounded-lg border border-border bg-card p-1">
+            {timeframes.map((option) => (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={timeframe === option}
+                aria-label={timeframeLabels[option]}
+                className={`h-9 min-w-9 rounded-md px-2.5 text-xs font-semibold transition-colors ${
+                  timeframe === option
+                    ? "bg-primary text-white"
+                    : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                }`}
+                onClick={() => setTimeframe(option)}
+              >
+                {timeframeMarks[option]}
+              </button>
+            ))}
           </div>
         </div>
       </div>
@@ -86,7 +96,7 @@ export function MarketRoute() {
         ) : chartData.length === 0 ? (
           <p className="py-16 text-center text-sm text-muted-foreground">
             {activePair
-              ? `No ${timeframe === "1min" ? "minute" : "daily"} candles are stored for ${activePair.symbol} yet.`
+              ? `No ${timeframeLabels[timeframe].toLowerCase()} candles are stored for ${activePair.symbol} yet.`
               : "Pick a pair to see its price history."}
           </p>
         ) : (

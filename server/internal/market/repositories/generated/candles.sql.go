@@ -212,6 +212,77 @@ func (q *Queries) ListCandlesPage(ctx context.Context, arg ListCandlesPageParams
 	return items, nil
 }
 
+const listCandlesWindow = `-- name: ListCandlesWindow :many
+SELECT id, entity_pair_id, timeframe, timestamp, open, high, low, close
+FROM market_candles
+WHERE entity_pair_id = $1
+  AND timeframe = $2
+  AND (
+    $3::timestamptz IS NULL
+    OR timestamp < $3::timestamptz
+  )
+  AND (
+    $4::timestamptz IS NULL
+    OR timestamp >= $4::timestamptz
+  )
+ORDER BY timestamp DESC
+LIMIT $5
+`
+
+type ListCandlesWindowParams struct {
+	EntityPairID    uuid.UUID
+	Timeframe       string
+	CursorTimestamp pgtype.Timestamptz
+	WindowStart     pgtype.Timestamptz
+	ScanLimit       int32
+}
+
+type ListCandlesWindowRow struct {
+	ID           uuid.UUID
+	EntityPairID uuid.UUID
+	Timeframe    string
+	Timestamp    pgtype.Timestamptz
+	Open         pgtype.Numeric
+	High         pgtype.Numeric
+	Low          pgtype.Numeric
+	Close        pgtype.Numeric
+}
+
+func (q *Queries) ListCandlesWindow(ctx context.Context, arg ListCandlesWindowParams) ([]ListCandlesWindowRow, error) {
+	rows, err := q.db.Query(ctx, listCandlesWindow,
+		arg.EntityPairID,
+		arg.Timeframe,
+		arg.CursorTimestamp,
+		arg.WindowStart,
+		arg.ScanLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCandlesWindowRow
+	for rows.Next() {
+		var i ListCandlesWindowRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.EntityPairID,
+			&i.Timeframe,
+			&i.Timestamp,
+			&i.Open,
+			&i.High,
+			&i.Low,
+			&i.Close,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const recordBackfillCheck = `-- name: RecordBackfillCheck :exec
 INSERT INTO market_backfill_checks (id, entity_pair_id, timeframe, checked_from, checked_to)
 VALUES ($1, $2, $3, $4, $5)

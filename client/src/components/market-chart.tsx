@@ -6,6 +6,7 @@ import {
   type UTCTimestamp,
 } from "lightweight-charts";
 import { useEffect, useRef, useState } from "react";
+import { intradayTimeframes, type Timeframe } from "../lib/market";
 
 export type ChartCandle = {
   time: UTCTimestamp;
@@ -45,7 +46,7 @@ function chartOptions(theme: Theme) {
       horzLines: { color: colors.grid },
     },
     rightPriceScale: { borderColor: colors.border },
-    timeScale: { borderColor: colors.crosshair },
+    timeScale: { borderColor: colors.border },
     crosshair: {
       vertLine: { color: colors.crosshair, labelBackgroundColor: colors.border },
       horzLine: { color: colors.crosshair, labelBackgroundColor: colors.border },
@@ -105,6 +106,15 @@ export function MarketChart({
   }, []);
 
   useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    // Intraday charts show clock times on the bottom axis; daily and longer
+    // show dates only.
+    const intraday = intradayTimeframes.has(timeframe as Timeframe);
+    chart.applyOptions({ timeScale: { timeVisible: intraday, secondsVisible: false } });
+  }, [timeframe]);
+
+  useEffect(() => {
     const series = seriesRef.current;
     if (!series) return;
     if (candles.length === 0) {
@@ -137,7 +147,7 @@ function formatPrice(value: number): string {
 
 function formatHoverTime(unixSeconds: UTCTimestamp, timeframe: string): string {
   const date = new Date(unixSeconds * 1000);
-  if (timeframe === "1day") {
+  if (!intradayTimeframes.has(timeframe as Timeframe)) {
     return date.toLocaleDateString(undefined, {
       month: "short",
       day: "numeric",

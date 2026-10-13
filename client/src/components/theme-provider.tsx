@@ -6,6 +6,7 @@ const storageKey = "macro-terminal.theme";
 
 type ThemeContextValue = {
   theme: Theme;
+  isDark: boolean;
   setTheme: (theme: Theme) => void;
 };
 
@@ -33,19 +34,18 @@ function loadTheme(): Theme {
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(loadTheme);
+  const [isDark, setIsDark] = useState<boolean>(() => resolvedIsDark(theme));
 
   useEffect(() => {
-    document.documentElement.classList.toggle("dark", resolvedIsDark(theme));
-    document.documentElement.style.colorScheme = resolvedIsDark(theme) ? "dark" : "light";
-  }, [theme]);
-
-  useEffect(() => {
+    const apply = (dark: boolean) => {
+      document.documentElement.classList.toggle("dark", dark);
+      document.documentElement.style.colorScheme = dark ? "dark" : "light";
+      setIsDark(dark);
+    };
+    apply(resolvedIsDark(theme));
     if (theme !== "system") return;
     const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const onChange = () => {
-      document.documentElement.classList.toggle("dark", media.matches);
-      document.documentElement.style.colorScheme = media.matches ? "dark" : "light";
-    };
+    const onChange = () => apply(media.matches);
     media.addEventListener("change", onChange);
     return () => media.removeEventListener("change", onChange);
   }, [theme]);
@@ -59,7 +59,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  return <ThemeContext.Provider value={{ theme, setTheme }}>{children}</ThemeContext.Provider>;
+  const value = { theme, isDark, setTheme };
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
 export function useTheme(): ThemeContextValue {

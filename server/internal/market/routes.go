@@ -18,7 +18,10 @@ const (
 	maximumPageSize = 100
 )
 
-var allowedTimeframes = map[string]bool{"1min": true, "1day": true}
+var allowedTimeframes = map[string]bool{
+	"1min": true, "5min": true, "15min": true, "1h": true,
+	"4h": true, "1day": true, "1week": true, "1month": true,
+}
 
 type Candles interface {
 	CandlesPage(
@@ -54,7 +57,7 @@ type candleListResponse struct {
 // @Description Returns candles for one entity pair and timeframe, newest first. Pass the returned nextCursor to fetch the next page.
 // @Tags market
 // @Param entityPairId query string true "Entity pair id."
-// @Param timeframe query string true "1min or 1day."
+// @Param timeframe query string true "One of 1min, 5min, 15min, 1h, 4h, 1day, 1week, 1month. Aggregated timeframes are built from stored minute or daily candles."
 // @Param limit query int false "Page size between 1 and 100. Defaults to 25."
 // @Param cursor query string false "Opaque cursor returned as nextCursor by the previous page."
 // @Success 200 {object} candleListResponse "The candles and the cursor for the next page, if any."
@@ -70,7 +73,7 @@ func listCandles(candles Candles) gin.HandlerFunc {
 		}
 		timeframe := ctx.Query("timeframe")
 		if !allowedTimeframes[timeframe] {
-			writeFailure(ctx, http.StatusBadRequest, "invalid_timeframe", "timeframe must be 1min or 1day.")
+			writeFailure(ctx, http.StatusBadRequest, "invalid_timeframe", "timeframe must be 1min, 5min, 15min, 1h, 4h, 1day, 1week, or 1month.")
 			return
 		}
 		limit := int32(defaultPageSize)
