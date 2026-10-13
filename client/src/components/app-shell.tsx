@@ -1,4 +1,5 @@
 import {
+  BellIcon,
   BookOpenIcon,
   CalendarIcon,
   ClipboardTextIcon,
@@ -22,6 +23,8 @@ import { type ComponentType, type ReactNode, useState } from "react";
 import { Link, NavLink, useLocation, useNavigate } from "react-router";
 import { useAccount, useSignOut, useUpdateUsername } from "../hooks/use-account";
 import type { Account } from "../lib/auth";
+import { NotificationBell } from "./notifications/notification-bell";
+import { NotificationSettingsDialog } from "./notifications/notification-settings-dialog";
 import { ThemeToggle } from "./theme-toggle";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
@@ -168,6 +171,7 @@ export function AppShell({ account, children }: { account: Account; children: Re
             </span>
           </Link>
           <div className="flex-1" />
+          <NotificationBell />
           <ThemeToggle />
           <AccountMenu />
         </header>
@@ -267,6 +271,7 @@ function SidebarBody({
 function AccountMenu() {
   const [open, setOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const account = useAccount();
   const signOut = useSignOut();
   const navigate = useNavigate();
@@ -310,13 +315,24 @@ function AccountMenu() {
               <div className="my-1 h-px bg-border" />
               <button
                 type="button"
-                className="w-full rounded-lg px-2.5 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                 onClick={() => {
                   setOpen(false);
                   setProfileOpen(true);
                 }}
               >
                 Edit profile
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                onClick={() => {
+                  setOpen(false);
+                  setNotificationsOpen(true);
+                }}
+              >
+                <BellIcon aria-hidden="true" className="size-4" />
+                Notification settings
               </button>
               <div className="my-1 h-px bg-border" />
               <button
@@ -342,6 +358,10 @@ function AccountMenu() {
         onClose={() => setProfileOpen(false)}
         initialUsername={data.account.username ?? ""}
         email={data.account.email}
+      />
+      <NotificationSettingsDialog
+        open={notificationsOpen}
+        onClose={() => setNotificationsOpen(false)}
       />
     </>
   );

@@ -28,6 +28,9 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/telemetry"
 	"github.com/Rahmannugar/macro-terminal/server/internal/market"
 	marketrepositories "github.com/Rahmannugar/macro-terminal/server/internal/market/repositories"
+	"github.com/Rahmannugar/macro-terminal/server/internal/notification"
+	notificationrepositories "github.com/Rahmannugar/macro-terminal/server/internal/notification/repositories"
+	"github.com/Rahmannugar/macro-terminal/server/internal/notification/webhook"
 	"github.com/Rahmannugar/macro-terminal/server/internal/openapi"
 	"github.com/Rahmannugar/macro-terminal/server/internal/search"
 	sourcerepositories "github.com/Rahmannugar/macro-terminal/server/internal/sources/repositories"
@@ -103,9 +106,20 @@ func newRouter(
 	entityRepository := entityrepositories.NewEntityRepository(database)
 	assets.RegisterCatalogRoutes(router, entityRepository)
 	userAssetService := entityservices.NewUserAssetService(entityRepository)
+
+	notificationCipher, err := webhook.NewCipher(cfg.Auth.OTPHMACSecret)
+	if err != nil {
+		return nil, fmt.Errorf("configure notification webhooks: %w", err)
+	}
+	notificationService := notification.NewService(
+		notificationrepositories.NewRepository(database),
+		notificationCipher,
+	)
+
 	userGroup := router.Group("/api/v1")
 	userGroup.Use(authentication.RequireUser(authComponents.service))
-	assets.RegisterWatchListRoutes(userGroup, userAssetService)
+	assets.RegisterWatchListRoutes(userGroup, assets.WithAlertSync(userAssetService, notificationService))
+	notification.RegisterRoutes(userGroup, notificationService)
 	articles.RegisterFeedRoutes(userGroup, articles.NewFeedService(articleRepository, articleRepository, userAssetService, searcher))
 	calendar.RegisterRoutes(userGroup, calendarrepositories.NewEventRepository(database, resourceStore))
 	events.RegisterEventsRoutes(userGroup, redisClient)

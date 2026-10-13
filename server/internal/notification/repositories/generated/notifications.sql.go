@@ -209,7 +209,7 @@ JOIN user_notification_channels AS configured
   ON configured.user_id = alert.user_id
  AND configured.channel = alert.channel
 WHERE alert.type = 'new_article'
-  AND alert.channel = 'in-app'
+  AND alert.channel IN ('in-app', 'discord', 'slack')
   AND alert.entity_pair_id IN (SELECT id FROM affected)
 ON CONFLICT DO NOTHING
 `
@@ -219,7 +219,7 @@ type FanOutArticleNotificationsParams struct {
 	Title     string
 }
 
-// Fan-out targets only in-app alert opt-ins whose channel is enabled.
+// Fan-out targets alert opt-ins whose channel is enabled.
 func (q *Queries) FanOutArticleNotifications(ctx context.Context, arg FanOutArticleNotificationsParams) (int64, error) {
 	result, err := q.db.Exec(ctx, fanOutArticleNotifications, arg.SubjectID, arg.Title)
 	if err != nil {
@@ -249,7 +249,7 @@ JOIN user_notification_channels AS configured
   ON configured.user_id = alert.user_id
  AND configured.channel = alert.channel
 WHERE alert.type = 'new_calendar_event'
-  AND alert.channel = 'in-app'
+  AND alert.channel IN ('in-app', 'discord', 'slack')
   AND alert.entity_pair_id IN (SELECT id FROM affected)
 ON CONFLICT DO NOTHING
 `

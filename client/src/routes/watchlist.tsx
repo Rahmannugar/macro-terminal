@@ -1,16 +1,19 @@
-import { CheckIcon, PlusIcon } from "@phosphor-icons/react";
+import { BellIcon, CheckIcon, PlusIcon } from "@phosphor-icons/react";
 import { useState } from "react";
 import { AdminScreen } from "../components/admin/admin-screen";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Skeleton } from "../components/ui/skeleton";
 import { adminErrorMessage, adminRows } from "../lib/admin";
+import { useNotificationSettings, useSetPairAlert } from "../lib/notifications";
 import { useFollowedPairs, usePairCatalog, useToggleFollow } from "../lib/watchlist";
 
 export function WatchListRoute() {
   const followed = useFollowedPairs();
   const catalog = usePairCatalog();
   const toggle = useToggleFollow();
+  const alertSettings = useNotificationSettings();
+  const setAlert = useSetPairAlert();
   const [query, setQuery] = useState("");
 
   const followedIds = new Set(adminRows(followed).map((pair) => pair.id));
@@ -56,30 +59,56 @@ export function WatchListRoute() {
             {catalogRows.map((pair) => {
               const following = followedIds.has(pair.id);
               const pending = toggle.isPending && toggle.variables?.pairId === pair.id;
+              const alertsOn = alertSettings.data?.alertPairIds.includes(pair.id) ?? false;
+              const alertPending = setAlert.isPending && setAlert.variables?.pairId === pair.id;
               return (
                 <li
                   key={pair.id}
                   className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-2.5"
                 >
                   <span className="text-sm font-medium">{pair.symbol}</span>
-                  <Button
-                    variant={following ? "secondary" : "primary"}
-                    className="h-8! min-w-24 justify-center gap-1.5 px-3! text-xs"
-                    disabled={pending}
-                    onClick={() => toggle.mutate({ pairId: pair.id, following: !following })}
-                  >
+                  <div className="flex items-center gap-2">
                     {following ? (
-                      <>
-                        <CheckIcon aria-hidden="true" className="size-3.5" />
-                        Following
-                      </>
-                    ) : (
-                      <>
-                        <PlusIcon aria-hidden="true" className="size-3.5" />
-                        Follow
-                      </>
-                    )}
-                  </Button>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={alertsOn}
+                        aria-label={`Alerts for ${pair.symbol}`}
+                        title={alertsOn ? "Alerts on" : "Alerts off"}
+                        disabled={alertPending}
+                        className={`grid size-8 place-items-center rounded-lg transition-colors ${
+                          alertsOn
+                            ? "bg-primary/10 text-primary"
+                            : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                        }`}
+                        onClick={() => setAlert.mutate({ pairId: pair.id, enabled: !alertsOn })}
+                      >
+                        <BellIcon
+                          aria-hidden="true"
+                          weight={alertsOn ? "fill" : "regular"}
+                          className="size-4"
+                        />
+                      </button>
+                    ) : null}
+                    <Button
+                      variant={following ? "secondary" : "primary"}
+                      className="h-8! min-w-24 justify-center gap-1.5 px-3! text-xs"
+                      disabled={pending}
+                      onClick={() => toggle.mutate({ pairId: pair.id, following: !following })}
+                    >
+                      {following ? (
+                        <>
+                          <CheckIcon aria-hidden="true" className="size-3.5" />
+                          Following
+                        </>
+                      ) : (
+                        <>
+                          <PlusIcon aria-hidden="true" className="size-3.5" />
+                          Follow
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </li>
               );
             })}

@@ -34,6 +34,7 @@ import (
 	marketrepositories "github.com/Rahmannugar/macro-terminal/server/internal/market/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/notification"
 	notificationrepositories "github.com/Rahmannugar/macro-terminal/server/internal/notification/repositories"
+	"github.com/Rahmannugar/macro-terminal/server/internal/notification/webhook"
 	sourcesrepositories "github.com/Rahmannugar/macro-terminal/server/internal/sources/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/vector"
 )
@@ -170,9 +171,15 @@ func run() (runError error) {
 		vectorEnabled,
 		logger,
 	)
+	notificationCipher, err := webhook.NewCipher(cfg.Auth.OTPHMACSecret)
+	if err != nil {
+		return fmt.Errorf("configure notification webhooks: %w", err)
+	}
 	notificationJob := notification.NewJob(
 		notificationrepositories.NewRepository(databasePool),
 		logger,
+		telemetry.NewHTTPClient(providerFetchTimeout),
+		notificationCipher,
 	)
 	hydrationJob := hydration.NewJob(
 		hydrationrepositories.NewRepository(databasePool, resourceStore),

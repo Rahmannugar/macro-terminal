@@ -1360,6 +1360,128 @@
                 ],
                 "type": "object"
             },
+            "notification.ChannelSetting": {
+                "properties": {
+                    "channel": {
+                        "example": "slack",
+                        "type": "string"
+                    },
+                    "endpoint": {
+                        "example": "hooks.slack.com/…ab12",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "channel",
+                    "endpoint"
+                ],
+                "type": "object"
+            },
+            "notification.Settings": {
+                "properties": {
+                    "alertPairIds": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "channels": {
+                        "items": {
+                            "$ref": "#/components/schemas/notification.ChannelSetting"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "inApp": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "alertPairIds",
+                    "channels",
+                    "inApp"
+                ],
+                "type": "object"
+            },
+            "notification.notificationJSON": {
+                "properties": {
+                    "createdAt": {
+                        "example": "2026-10-13T09:00:00Z",
+                        "type": "string"
+                    },
+                    "id": {
+                        "example": "3f9a1d4e-7b2c-4f6a-8d1e-2b5c9a7f0e31",
+                        "type": "string"
+                    },
+                    "pairSymbol": {
+                        "example": "BTCUSD",
+                        "type": "string"
+                    },
+                    "readAt": {
+                        "example": "2026-10-13T09:30:00Z",
+                        "type": "string"
+                    },
+                    "subjectId": {
+                        "example": "9d1e4a63-8f6d-4b9c-1f4e-7a553f8b2a60",
+                        "type": "string"
+                    },
+                    "subjectType": {
+                        "example": "article",
+                        "type": "string"
+                    },
+                    "title": {
+                        "example": "Fed holds rates steady",
+                        "type": "string"
+                    },
+                    "type": {
+                        "example": "new_article",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "createdAt",
+                    "id",
+                    "pairSymbol",
+                    "readAt",
+                    "subjectId",
+                    "subjectType",
+                    "title",
+                    "type"
+                ],
+                "type": "object"
+            },
+            "notification.notificationListResponse": {
+                "properties": {
+                    "nextCursor": {
+                        "type": "string"
+                    },
+                    "notifications": {
+                        "items": {
+                            "$ref": "#/components/schemas/notification.notificationJSON"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "required": [
+                    "nextCursor",
+                    "notifications"
+                ],
+                "type": "object"
+            },
+            "notification.unreadCountResponse": {
+                "properties": {
+                    "count": {
+                        "example": 3,
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "count"
+                ],
+                "type": "object"
+            },
             "openapi.Error": {
                 "properties": {
                     "error": {
@@ -4140,6 +4262,543 @@
                 "summary": "Stream live feed invalidation signals.",
                 "tags": [
                     "events"
+                ]
+            }
+        },
+        "/api/v1/notification-alerts": {
+            "put": {
+                "description": "Subscribes or mutes the pair for the signed-in account on every configured channel. This is the per-pair toggle on the watch list.",
+                "responses": {
+                    "204": {
+                        "description": "The preference is saved."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request body is invalid."
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "No valid session exists."
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The account is suspended."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Set a pair's alert preference.",
+                "tags": [
+                    "notifications"
+                ]
+            }
+        },
+        "/api/v1/notification-channels": {
+            "post": {
+                "description": "Stores an encrypted Slack or Discord channel webhook URL and subscribes it to every pair that already has alerts. The URL is never returned again; only a masked endpoint is shown.",
+                "responses": {
+                    "204": {
+                        "description": "The channel is connected."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The channel or webhook URL is invalid."
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "No valid session exists."
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The account is suspended."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "Webhook channels are not configured on this deployment."
+                    }
+                },
+                "summary": "Connect a webhook channel.",
+                "tags": [
+                    "notifications"
+                ]
+            }
+        },
+        "/api/v1/notification-channels/in-app": {
+            "put": {
+                "description": "Enables or disables in-app delivery globally. Per-pair subscriptions are kept either way.",
+                "responses": {
+                    "204": {
+                        "description": "The switch is saved."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request body is invalid."
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "No valid session exists."
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The account is suspended."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Set the in-app channel switch.",
+                "tags": [
+                    "notifications"
+                ]
+            }
+        },
+        "/api/v1/notification-channels/{channel}": {
+            "delete": {
+                "description": "Removes the channel and its alerts. Pending webhook deliveries for it are dropped by the worker.",
+                "parameters": [
+                    {
+                        "description": "The channel: in-app, slack, or discord.",
+                        "in": "path",
+                        "name": "channel",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "The channel is disconnected."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The channel is not valid."
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "No valid session exists."
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The account is suspended."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Disconnect a notification channel.",
+                "tags": [
+                    "notifications"
+                ]
+            }
+        },
+        "/api/v1/notification-settings": {
+            "get": {
+                "description": "Returns the in-app kill switch, connected webhook channels with masked endpoints, and the pair ids with alerts enabled.",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/notification.Settings"
+                                }
+                            }
+                        },
+                        "description": "The current settings."
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "No valid session exists."
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The account is suspended."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Get notification settings.",
+                "tags": [
+                    "notifications"
+                ]
+            }
+        },
+        "/api/v1/notifications": {
+            "get": {
+                "description": "Returns the signed-in account's in-app notifications newest first with the pair symbol for context. Pass the returned nextCursor to fetch the next page.",
+                "parameters": [
+                    {
+                        "description": "Page size between 1 and 100. Defaults to 25.",
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "description": "Opaque cursor returned as nextCursor by the previous page.",
+                        "in": "query",
+                        "name": "cursor",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/notification.notificationListResponse"
+                                }
+                            }
+                        },
+                        "description": "The notifications and the cursor for the next page, if any."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The limit or cursor is invalid."
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "No valid session exists."
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The account is suspended."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "List notifications.",
+                "tags": [
+                    "notifications"
+                ]
+            }
+        },
+        "/api/v1/notifications/read-all": {
+            "post": {
+                "description": "Marks every unread in-app notification of the signed-in account as read.",
+                "responses": {
+                    "204": {
+                        "description": "All notifications are read."
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "No valid session exists."
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The account is suspended."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Mark all notifications read.",
+                "tags": [
+                    "notifications"
+                ]
+            }
+        },
+        "/api/v1/notifications/unread-count": {
+            "get": {
+                "description": "Returns how many in-app notifications the signed-in account has not read yet.",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/notification.unreadCountResponse"
+                                }
+                            }
+                        },
+                        "description": "The unread count."
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "No valid session exists."
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The account is suspended."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Count unread notifications.",
+                "tags": [
+                    "notifications"
+                ]
+            }
+        },
+        "/api/v1/notifications/{id}/read": {
+            "post": {
+                "description": "Marks a single in-app notification as read. Notifications owned by other accounts answer 404.",
+                "parameters": [
+                    {
+                        "description": "The notification id (UUID).",
+                        "in": "path",
+                        "name": "id",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "The notification is read."
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The id is not a UUID."
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "No valid session exists."
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The account is suspended."
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The notification does not exist."
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/openapi.Error"
+                                }
+                            }
+                        },
+                        "description": "The request could not be completed."
+                    }
+                },
+                "summary": "Mark one notification read.",
+                "tags": [
+                    "notifications"
                 ]
             }
         },

@@ -114,7 +114,7 @@ FROM calendar_events AS event
 JOIN economic_indicators AS indicator ON indicator.id = event.indicator_id
 WHERE event.id = $1;
 
--- Fan-out targets only in-app alert opt-ins whose channel is enabled.
+-- Fan-out targets alert opt-ins whose channel is enabled.
 
 -- name: FanOutArticleNotifications :execrows
 WITH affected AS (
@@ -137,7 +137,7 @@ JOIN user_notification_channels AS configured
   ON configured.user_id = alert.user_id
  AND configured.channel = alert.channel
 WHERE alert.type = 'new_article'
-  AND alert.channel = 'in-app'
+  AND alert.channel IN ('in-app', 'discord', 'slack')
   AND alert.entity_pair_id IN (SELECT id FROM affected)
 ON CONFLICT DO NOTHING;
 
@@ -162,6 +162,6 @@ JOIN user_notification_channels AS configured
   ON configured.user_id = alert.user_id
  AND configured.channel = alert.channel
 WHERE alert.type = 'new_calendar_event'
-  AND alert.channel = 'in-app'
+  AND alert.channel IN ('in-app', 'discord', 'slack')
   AND alert.entity_pair_id IN (SELECT id FROM affected)
 ON CONFLICT DO NOTHING;

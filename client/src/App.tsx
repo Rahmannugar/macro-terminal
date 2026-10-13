@@ -16,6 +16,7 @@ import { CalendarRoute } from "./routes/calendar";
 import { ForgotPasswordRoute } from "./routes/forgot-password";
 import { HomeRoute } from "./routes/home";
 import { MarketRoute } from "./routes/market";
+import { NotificationsRoute } from "./routes/notifications";
 import { ResetPasswordRoute } from "./routes/reset-password";
 import { SearchRoute } from "./routes/search";
 import { SignInRoute } from "./routes/sign-in";
@@ -55,6 +56,7 @@ export default function App() {
             <Route path="/search" element={<SearchRoute />} />
             <Route path="/watchlist" element={<WatchListRoute />} />
             <Route path="/calendar" element={<CalendarRoute />} />
+            <Route path="/notifications" element={<NotificationsRoute />} />
             <Route path="/market" element={<MarketRoute />} />
             <Route path="/articles/:id" element={<ArticleRoute />} />
             <Route path="/admin" element={<AdminGuard />}>
