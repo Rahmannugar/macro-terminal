@@ -231,6 +231,12 @@ func canonicalURL(raw, base string) (string, bool) {
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return "", false
 	}
+	// A site root is not an article: calendar rows and broken feeds point
+	// at homepages when the real page is missing, and a homepage link can
+	// only ever become chrome-junk content.
+	if parsed.Path == "" || parsed.Path == "/" {
+		return "", false
+	}
 	parsed.Scheme = strings.ToLower(parsed.Scheme)
 	parsed.Host = strings.ToLower(parsed.Host)
 	parsed.Fragment = ""

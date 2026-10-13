@@ -96,14 +96,17 @@ func TestArticlesDropsInvalidEntries(t *testing.T) {
 			{Title: "   ", URL: "https://example.com/a"},
 			{Title: "No URL at all", URL: "not a url"},
 			{Title: "Fine", URL: "ftp://example.com/file"},
+			{Title: "Homepage with slash", URL: "https://www.iea.org/"},
+			{Title: "Homepage without slash", URL: "https://www.iea.org"},
+			{Title: "Schemeless host", URL: "publicholidays.es"},
 		},
 	})
 
 	if len(candidates) != 0 {
 		t.Fatalf("candidates = %d, want 0", len(candidates))
 	}
-	if stats.Invalid != 3 || stats.Candidates != 0 || stats.Duplicates != 0 {
-		t.Errorf("stats = %+v, want 0/0/3", stats)
+	if stats.Invalid != 6 || stats.Candidates != 0 || stats.Duplicates != 0 {
+		t.Errorf("stats = %+v, want 0/0/6", stats)
 	}
 }
 
