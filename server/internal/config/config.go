@@ -26,6 +26,10 @@ const (
 	defaultEmbeddingModel     = "gemini-embedding-001"
 	defaultBackfillDailyDays  = 1825
 	defaultBackfillMinuteDays = 30
+	// Retention keeps six months of articles by default; older articles and
+	// their dependents are flushed so the vector store stays memory-bound.
+	defaultRetentionArticleDays = 183
+	minimumRetentionArticleDays = 30
 )
 
 type Environment string
@@ -45,6 +49,7 @@ type Config struct {
 	Ahnlich     Ahnlich
 	Resend      Resend
 	Backfill    Backfill
+	Retention   Retention
 }
 
 type HTTP struct {
@@ -94,6 +99,11 @@ type Ahnlich struct {
 type Backfill struct {
 	DailyDays  int
 	MinuteDays int
+}
+
+// Retention bounds how long articles live before the flush pass removes them.
+type Retention struct {
+	ArticleDays int
 }
 
 func Load() (Config, error) {
@@ -215,6 +225,14 @@ func Load() (Config, error) {
 		}
 		cfg.Backfill.MinuteDays = value
 	}
+	cfg.Retention.ArticleDays = defaultRetentionArticleDays
+	if days := strings.TrimSpace(k.String("retention.article_days")); days != "" {
+		value, err := strconv.Atoi(days)
+		if err != nil {
+			return Config{}, fmt.Errorf("MACRO_TERMINAL_RETENTION_ARTICLE_DAYS must be an integer: %w", err)
+		}
+		cfg.Retention.ArticleDays = value
+	}
 
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -284,6 +302,9 @@ func (cfg Config) Validate() error {
 	}
 	if cfg.Backfill.MinuteDays < 1 || cfg.Backfill.MinuteDays > 365 {
 		return fmt.Errorf("MACRO_TERMINAL_BACKFILL_MINUTE_DAYS must be between 1 and 365")
+	}
+	if cfg.Retention.ArticleDays < minimumRetentionArticleDays || cfg.Retention.ArticleDays > 3650 {
+		return fmt.Errorf("MACRO_TERMINAL_RETENTION_ARTICLE_DAYS must be between %d and 3650", minimumRetentionArticleDays)
 	}
 	return nil
 }

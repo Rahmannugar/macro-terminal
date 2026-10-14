@@ -127,6 +127,26 @@ func (store *ahnlichStore) ensureStore(ctx context.Context, dimension uint32) er
 	return nil
 }
 
+// DeleteArticles removes each article's vector by its article_id predicate. A missing
+// article is a no-op so retention never fails on a vector that was already removed.
+func (store *ahnlichStore) DeleteArticles(ctx context.Context, ids []uuid.UUID) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, requestWindow)
+	defer cancel()
+
+	for _, id := range ids {
+		if _, err := store.client.DelPred(ctx, &dbquery.DelPred{
+			Store:     articleStore,
+			Condition: articleCondition(id),
+		}); err != nil {
+			return fmt.Errorf("delete article vector %s: %w", id, err)
+		}
+	}
+	return nil
+}
+
 func (store *ahnlichStore) SearchArticles(ctx context.Context, text string, limit int) ([]uuid.UUID, error) {
 	vector, err := store.embedder.Embed(ctx, text)
 	if err != nil {

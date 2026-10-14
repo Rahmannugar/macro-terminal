@@ -16,6 +16,8 @@ type Article struct {
 
 type Indexer interface {
 	StoreArticle(ctx context.Context, article Article) error
+	// DeleteArticles removes each article's vector by its predicate; missing articles are a no-op.
+	DeleteArticles(ctx context.Context, ids []uuid.UUID) error
 }
 
 // Searcher returns article ids ordered closest-first for the query text; callers hydrate authoritative rows themselves.

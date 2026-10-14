@@ -35,6 +35,8 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/notification"
 	notificationrepositories "github.com/Rahmannugar/macro-terminal/server/internal/notification/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/notification/webhook"
+	"github.com/Rahmannugar/macro-terminal/server/internal/retention"
+	retentionrepositories "github.com/Rahmannugar/macro-terminal/server/internal/retention/repositories"
 	sourcesrepositories "github.com/Rahmannugar/macro-terminal/server/internal/sources/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/vector"
 )
@@ -217,6 +219,18 @@ func run() (runError error) {
 		cfg.Backfill.MinuteDays,
 		logger,
 	)
+	// Retention only touches the vector index when it is configured; the
+	// relational rows are flushed either way.
+	var retentionVectors retention.VectorStore
+	if vectorEnabled {
+		retentionVectors = articleVectors
+	}
+	retentionJob := retention.NewJob(
+		retentionrepositories.NewRepository(databasePool),
+		retentionVectors,
+		cfg.Retention.ArticleDays,
+		logger,
+	)
 
 	results := make(chan workerResult, 10)
 	go func() {
@@ -268,7 +282,10 @@ func run() (runError error) {
 	go func() {
 		results <- workerResult{name: "backfill-job", err: backfillJob.Run(workerContext)}
 	}()
-	logger.Info("worker started", "jobs", 10)
+	go func() {
+		results <- workerResult{name: "retention-job", err: retentionJob.Run(workerContext)}
+	}()
+	logger.Info("worker started", "jobs", 11)
 
 	<-workerContext.Done()
 	stopWorkers()

@@ -88,6 +88,10 @@ func (indexer *fakeIndexer) StoreArticle(_ context.Context, article vector.Artic
 	return indexer.err
 }
 
+func (indexer *fakeIndexer) DeleteArticles(_ context.Context, _ []uuid.UUID) error {
+	return nil
+}
+
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
 }

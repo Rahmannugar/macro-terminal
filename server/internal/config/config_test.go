@@ -68,6 +68,46 @@ func setRequiredEnvironment(t *testing.T) {
 	t.Setenv("MACRO_TERMINAL_RESEND_NOREPLY_FROM", "Macro Terminal <noreply@example.com>")
 }
 
+func TestLoadAppliesRetentionDefaultsAndOverrides(t *testing.T) {
+	setRequiredEnvironment(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load with defaults: %v", err)
+	}
+	if cfg.Retention.ArticleDays != 183 {
+		t.Errorf("article retention = %d, want the shipped default", cfg.Retention.ArticleDays)
+	}
+
+	t.Setenv("MACRO_TERMINAL_RETENTION_ARTICLE_DAYS", "90")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatalf("Load with retention override: %v", err)
+	}
+	if cfg.Retention.ArticleDays != 90 {
+		t.Errorf("article retention = %d, want the override", cfg.Retention.ArticleDays)
+	}
+}
+
+func TestValidateRequiresRetentionWindow(t *testing.T) {
+	setRequiredEnvironment(t)
+	base, err := Load()
+	if err != nil {
+		t.Fatalf("Load with required environment: %v", err)
+	}
+
+	tooShort := base
+	tooShort.Retention.ArticleDays = 7
+	if err := tooShort.Validate(); err == nil ||
+		!strings.Contains(err.Error(), "MACRO_TERMINAL_RETENTION_ARTICLE_DAYS") {
+		t.Errorf("short retention error = %v, want the setting named", err)
+	}
+
+	if err := base.Validate(); err != nil {
+		t.Errorf("Validate with required configuration: %v", err)
+	}
+}
+
 func TestValidateRequiresOTPAndResendConfiguration(t *testing.T) {
 	setRequiredEnvironment(t)
 	base, err := Load()
