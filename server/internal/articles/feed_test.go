@@ -3,6 +3,7 @@ package articles
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -86,12 +87,13 @@ func (fake *fakeFeedAssets) PairsForUser(context.Context, uuid.UUID) ([]entitymo
 
 type fakeFeedSearcher struct {
 	ids      []uuid.UUID
+	err      error
 	gotQuery string
 }
 
 func (fake *fakeFeedSearcher) SearchArticles(_ context.Context, query string, _ int) ([]uuid.UUID, error) {
 	fake.gotQuery = query
-	return fake.ids, nil
+	return fake.ids, fake.err
 }
 
 type reverseHydrator struct {
@@ -274,6 +276,36 @@ func TestFeedRelevanceSortFallsBackToLatestWithoutPairs(t *testing.T) {
 	}
 	if len(repo.gotEntityIDs) != 0 {
 		t.Errorf("entityIDs = %v, want the latest-feed fallback path", repo.gotEntityIDs)
+	}
+}
+
+func TestFeedRelevanceSearchFailureReportsUnavailable(t *testing.T) {
+	repo := &fakeFeedRepo{refs: []models.RecentArticleRef{{ID: uuid.New()}}}
+	assets := &fakeFeedAssets{
+		pairs: []entitymodels.EntityPair{{Symbol: "EURUSD"}},
+	}
+	searcher := &fakeFeedSearcher{err: errors.New("embedding provider returned 429")}
+	feed := NewFeedService(repo, reverseHydrator{articles: map[uuid.UUID]models.StoredArticle{}}, assets, searcher)
+	router := feedRouter(t, feed)
+
+	recorder := performFeed(router, "/api/v1/articles?sort=relevance")
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d body = %s, want 503", recorder.Code, recorder.Body.String())
+	}
+	var failure struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &failure); err != nil {
+		t.Fatalf("decode body %q: %v", recorder.Body.String(), err)
+	}
+	if failure.Error.Code != "relevance_unavailable" {
+		t.Errorf("code = %q, want relevance_unavailable", failure.Error.Code)
+	}
+	if len(repo.gotEntityIDs) != 0 {
+		t.Errorf("entityIDs = %v, want no silent latest-feed fallback on search failure", repo.gotEntityIDs)
 	}
 }
 

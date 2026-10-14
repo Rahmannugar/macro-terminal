@@ -2,7 +2,9 @@ package articles
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -20,6 +22,12 @@ const (
 	feedMaximumPageSize = 100
 	feedRelevanceWindow = 200
 )
+
+// ErrRelevanceUnavailable marks a relevance search that failed because the
+// vector layer could not serve the query (for example an exhausted embedding
+// quota); the handler reports it as temporarily unavailable rather than a
+// generic failure, and never silently falls back to the latest feed.
+var ErrRelevanceUnavailable = errors.New("relevance feed unavailable")
 
 type FeedRepository interface {
 	RecentArticleIDsPage(
@@ -126,7 +134,12 @@ func (service *FeedService) relevanceFeed(
 	query := strings.Join(symbols, " ")
 	ids, err := service.searcher.SearchArticles(ctx, query, feedRelevanceWindow)
 	if err != nil {
-		return nil, nil, fmt.Errorf("relevance search: %w", err)
+		slog.Default().ErrorContext(ctx,
+			"relevance search failed",
+			"error", err,
+			"pairs", len(pairs),
+		)
+		return nil, nil, fmt.Errorf("%w: %w", ErrRelevanceUnavailable, err)
 	}
 	if len(ids) == 0 {
 		return []models.StoredArticle{}, nil, nil
@@ -202,6 +215,12 @@ func listFeed(feed *FeedService) gin.HandlerFunc {
 		}
 		articles, next, err := feed.Feed(ctx.Request.Context(), account.User.ID, cursor, limit, sort)
 		if err != nil {
+			if errors.Is(err, ErrRelevanceUnavailable) {
+				writeFailure(ctx, http.StatusServiceUnavailable, "relevance_unavailable",
+					"The relevant feed is temporarily unavailable. Try again shortly or switch to Latest.")
+				return
+			}
+			slog.Default().ErrorContext(ctx.Request.Context(), "article feed failed", "error", err)
 			writeFailure(ctx, http.StatusInternalServerError, "internal_error", "The request could not be completed.")
 			return
 		}
