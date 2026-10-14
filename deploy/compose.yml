@@ -1,0 +1,158 @@
+# Production stack. Deployed as-is; the server pulls the two images built by
+# .github/workflows/main.yaml. Plain restart policy everywhere — no rolling
+# updates. One api instance, one worker instance.
+#
+# PgBouncer is intentionally absent: with a single api (pool 20) and single
+# worker (pool 10) the real connection count is already hard-bounded in code.
+# Revisit only if PostgreSQL is shared with another application.
+
+name: macro-terminal-prod
+
+x-app-environment: &app-environment
+  MACRO_TERMINAL_ENVIRONMENT: ${MACRO_TERMINAL_ENVIRONMENT:-production}
+  MACRO_TERMINAL_HTTP_PORT: "8080"
+  MACRO_TERMINAL_DATABASE_HOST: postgres
+  MACRO_TERMINAL_DATABASE_PORT: "5432"
+  MACRO_TERMINAL_DATABASE_NAME: ${MACRO_TERMINAL_DATABASE_NAME:-macro_terminal}
+  MACRO_TERMINAL_DATABASE_USER: ${MACRO_TERMINAL_DATABASE_USER:-macro_terminal}
+  MACRO_TERMINAL_DATABASE_PASSWORD: ${MACRO_TERMINAL_DATABASE_PASSWORD:?set MACRO_TERMINAL_DATABASE_PASSWORD in the environment before starting}
+  MACRO_TERMINAL_DATABASE_SSL_MODE: ${MACRO_TERMINAL_DATABASE_SSL_MODE:-disable}
+  MACRO_TERMINAL_DATABASE_API_POOL_MAX: "20"
+  MACRO_TERMINAL_DATABASE_WORKER_POOL_MAX: "10"
+  MACRO_TERMINAL_REDIS_URL: redis://redis:6379/0
+  MACRO_TERMINAL_AHNLICH_DB_ADDR: ahnlich-db:1369
+  MACRO_TERMINAL_AUTH_BASE_URL: ${MACRO_TERMINAL_AUTH_BASE_URL:-}
+  MACRO_TERMINAL_AUTH_CLIENT_BASE_URL: ${MACRO_TERMINAL_AUTH_CLIENT_BASE_URL:-}
+  MACRO_TERMINAL_AUTH_TRUSTED_ORIGINS: ${MACRO_TERMINAL_AUTH_TRUSTED_ORIGINS:-}
+  MACRO_TERMINAL_AUTH_TRUSTED_PROXIES: ${MACRO_TERMINAL_AUTH_TRUSTED_PROXIES:-}
+  MACRO_TERMINAL_AUTH_OTP_HMAC_SECRET: ${MACRO_TERMINAL_AUTH_OTP_HMAC_SECRET:-}
+  MACRO_TERMINAL_AI_API_KEY: ${MACRO_TERMINAL_AI_API_KEY:-}
+  MACRO_TERMINAL_AI_MODEL: ${MACRO_TERMINAL_AI_MODEL:-gemini-3.1-flash-lite}
+  MACRO_TERMINAL_AI_EXPLANATION_MODEL: ${MACRO_TERMINAL_AI_EXPLANATION_MODEL:-gemini-3.5-flash-lite}
+  MACRO_TERMINAL_AI_EMBEDDING_MODEL: ${MACRO_TERMINAL_AI_EMBEDDING_MODEL:-gemini-embedding-001}
+  MACRO_TERMINAL_RESEND_API_KEY: ${MACRO_TERMINAL_RESEND_API_KEY:-}
+  MACRO_TERMINAL_RESEND_NOREPLY_FROM: ${MACRO_TERMINAL_RESEND_NOREPLY_FROM:-}
+  MACRO_TERMINAL_SECRETS_ARN: ${MACRO_TERMINAL_SECRETS_ARN:-}
+  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+  AWS_REGION: ${AWS_REGION:-eu-central-1}
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${MACRO_TERMINAL_DATABASE_NAME:-macro_terminal}
+      POSTGRES_USER: ${MACRO_TERMINAL_DATABASE_USER:-macro_terminal}
+      POSTGRES_PASSWORD: ${MACRO_TERMINAL_DATABASE_PASSWORD:?set MACRO_TERMINAL_DATABASE_PASSWORD in the environment before starting}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready --username=$$POSTGRES_USER --dbname=$$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:8.2-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  ahnlich-db:
+    image: ghcr.io/deven96/ahnlich-db:latest
+    command: >
+      "ahnlich-db run --host 0.0.0.0 --enable-persistence
+      --persist-location /root/.ahnlich/data/db.dat
+      --persistence-interval 300"
+    volumes:
+      - ahnlich-db-data:/root/.ahnlich/data
+    healthcheck:
+      test: ["CMD-SHELL", "echo 'PING' | ahnlich-cli ahnlich --agent db --host 127.0.0.1 --port 1369 --no-interactive"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector:0.161.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ../otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    restart: unless-stopped
+
+  migrate:
+    image: ghcr.io/rahmannugar/macroterminal:main
+    entrypoint: ["/bin/sh", "/app/entrypoint.sh"]
+    command:
+      - tern
+      - migrate
+      - --config
+      - server/internal/infra/database/tern.conf
+      - --migrations
+      - db/migrations
+    environment: *app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    healthcheck:
+      disable: true
+
+  api:
+    image: ghcr.io/rahmannugar/macroterminal:main
+    command: ["/usr/local/bin/api"]
+    environment: *app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ahnlich-db:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  worker:
+    image: ghcr.io/rahmannugar/macroterminal:main
+    command: ["/usr/local/bin/worker"]
+    environment: *app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ahnlich-db:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      disable: true
+
+  client:
+    image: ghcr.io/rahmannugar/macroterminal-client:main
+    ports:
+      - "80:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  redis-data:
+  ahnlich-db-data:

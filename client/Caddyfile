@@ -1,0 +1,43 @@
+{
+	admin off
+}
+
+:80 {
+	handle /healthz {
+		respond "ok" 200
+	}
+
+	handle /api/* {
+		reverse_proxy api:8080
+	}
+
+	handle /auth/* {
+		reverse_proxy api:8080
+	}
+
+	handle /account/* {
+		reverse_proxy api:8080
+	}
+
+	handle /health/* {
+		reverse_proxy api:8080
+	}
+
+	handle /openapi.json {
+		reverse_proxy api:8080
+	}
+
+	handle /docs {
+		reverse_proxy api:8080
+	}
+
+	handle /docs/* {
+		reverse_proxy api:8080
+	}
+
+	handle {
+		root * /usr/share/caddy
+		try_files {path} /index.html
+		file_server
+	}
+}
