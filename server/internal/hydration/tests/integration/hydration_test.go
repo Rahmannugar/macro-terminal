@@ -39,8 +39,8 @@ func TestContentEnqueueGuards(t *testing.T) {
 	if err != nil {
 		t.Fatalf("enqueue content jobs: %v", err)
 	}
-	if queued != 3 {
-		t.Fatalf("first enqueue = %d, want 3 (every empty article whose source has a configuration)", queued)
+	if queued != 4 {
+		t.Fatalf("first enqueue = %d, want 4 (a missing body or a body under the length floor, when the source has a configuration)", queued)
 	}
 	queued, err = repository.EnqueueMissingContentJobs(t.Context(), 16)
 	if err != nil {
@@ -95,12 +95,19 @@ func TestContentClaimStoreComplete(t *testing.T) {
 	if stored != 1 {
 		t.Fatalf("stored = %d, want 1", stored)
 	}
-	stored, err = repository.StoreContent(t.Context(), work.ArticleID, "<p>Should not overwrite.</p>")
+	stored, err = repository.StoreContent(t.Context(), work.ArticleID, "<p>Short.</p>")
 	if err != nil {
 		t.Fatalf("second store content: %v", err)
 	}
 	if stored != 0 {
-		t.Fatalf("second stored = %d, want 0 (existing content is never overwritten)", stored)
+		t.Fatalf("second stored = %d, want 0 (a shorter body never replaces what is stored)", stored)
+	}
+	stored, err = repository.StoreContent(t.Context(), work.ArticleID, "<p>Hydrated body with considerably more text than before.</p>")
+	if err != nil {
+		t.Fatalf("longer store content: %v", err)
+	}
+	if stored != 1 {
+		t.Fatalf("longer stored = %d, want 1 (a longer body replaces a shorter one)", stored)
 	}
 
 	if err := repository.Complete(t.Context(), work.ID); err != nil {
