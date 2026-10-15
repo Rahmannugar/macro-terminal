@@ -71,3 +71,7 @@ cd client && bun run check   # biome, typescript
 ```
 
 `task check` requires the golangci-lint version pinned in `.golangci-lint-version`. PostgreSQL integration tests run with `task test-integration` (Docker required).
+
+## License
+
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE).
