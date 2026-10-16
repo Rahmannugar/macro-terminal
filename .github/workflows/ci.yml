@@ -71,3 +71,17 @@ jobs:
         run: cp .env.example .env
       - name: Integration tests
         run: task test-integration
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [go, client, integration]
+    if: github.event_name == 'push'
+    steps:
+      - name: Deploy to the production server
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          eval "$(ssh-agent -s)"
+          printf '%s\n' "$SSH_KEY" | ssh-add -
+          ssh-keyscan -H 169.58.72.130 >> ~/.ssh/known_hosts
+          ssh root@169.58.72.130 'bash /opt/macro-terminal/deploy/deploy.sh'
