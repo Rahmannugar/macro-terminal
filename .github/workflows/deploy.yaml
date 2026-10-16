@@ -18,5 +18,4 @@ jobs:
         run: |
           eval "$(ssh-agent -s)"
           printf '%s\n' "$SSH_KEY" | ssh-add -
-          ssh-keyscan -H 169.58.72.130 >> ~/.ssh/known_hosts
-          ssh root@169.58.72.130 'bash /opt/macro-terminal/deploy/deploy.sh'
+          ssh -o StrictHostKeyChecking=accept-new root@169.58.72.130 'bash /opt/macro-terminal/deploy/deploy.sh'
