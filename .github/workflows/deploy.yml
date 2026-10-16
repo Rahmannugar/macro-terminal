@@ -1,0 +1,22 @@
+name: deploy
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to the production server
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          eval "$(ssh-agent -s)"
+          printf '%s\n' "$SSH_KEY" | ssh-add -
+          ssh-keyscan -H 169.58.72.130 >> ~/.ssh/known_hosts
+          ssh root@169.58.72.130 'bash /opt/macro-terminal/deploy/deploy.sh'
