@@ -639,7 +639,7 @@ func TestRunnerCalendarClassifiesAndStoresEvents(t *testing.T) {
 		[]entitymodels.Indicator{{ID: indicatorID, Name: "US CPI", EntityID: entityID, Type: "inflation"}},
 		[]entitymodels.IndicatorTerm{{Name: "cpi", IndicatorID: indicatorID}},
 	)}
-	runner, now := newTestRunner(source, fetcher, loader)
+	runner, _ := newTestRunner(source, fetcher, loader)
 
 	runner.runDue(context.Background())
 
@@ -668,8 +668,8 @@ func TestRunnerCalendarClassifiesAndStoresEvents(t *testing.T) {
 	if entry.Previous == nil || *entry.Previous != 3.0 {
 		t.Errorf("Previous = %v, want 3.0", entry.Previous)
 	}
-	if entry.ReleasedAt == nil || !entry.ReleasedAt.Equal(*now) {
-		t.Errorf("ReleasedAt = %v, want pass time %v", entry.ReleasedAt, *now)
+	if entry.ReleasedAt == nil || !entry.ReleasedAt.Equal(wantScheduled) {
+		t.Errorf("ReleasedAt = %v, want scheduled time %v", entry.ReleasedAt, wantScheduled)
 	}
 	if articleBatches := testArticleStore(runner).stored(); len(articleBatches) != 0 {
 		t.Fatalf("article batches = %d, want 0 (indicator rows stay out of news)", len(articleBatches))

@@ -85,11 +85,15 @@ services:
     restart: unless-stopped
 
   otel-collector:
-    image: otel/opentelemetry-collector:0.161.0
+    image: otel/opentelemetry-collector-contrib:0.161.0
+    user: "0:0"
     command: ["--config=/etc/otelcol/config.yaml"]
     configs:
       - source: otel-collector-config
         target: /etc/otelcol/config.yaml
+    volumes:
+      - /:/hostfs:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     restart: unless-stopped
 
   migrate:
@@ -170,6 +174,27 @@ configs:
               endpoint: 0.0.0.0:4317
             http:
               endpoint: 0.0.0.0:4318
+        hostmetrics:
+          root_path: /hostfs
+          collection:
+            interval: 15s
+          scrapers:
+            cpu:
+            load:
+            memory:
+            disk:
+            filesystem:
+            network:
+        docker_stats:
+          endpoint: unix:///var/run/docker.sock
+          collection_interval: 15s
+          metrics:
+            container.cpu.utilization:
+              enabled: true
+            container.memory.usage:
+              enabled: true
+            container.memory.utilization:
+              enabled: true
 
       processors:
         batch:
@@ -189,7 +214,7 @@ configs:
             processors: [batch]
             exporters: [otlphttp/newrelic]
           metrics:
-            receivers: [otlp]
+            receivers: [otlp, hostmetrics, docker_stats]
             processors: [batch]
             exporters: [otlphttp/newrelic]
           logs:

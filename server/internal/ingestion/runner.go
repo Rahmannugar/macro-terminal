@@ -570,7 +570,8 @@ func (runner *Runner) fetchCalendar(
 			Importance:  event.Importance,
 		}
 		if event.Actual != nil {
-			released := runner.now()
+			// The scheduled time is when the release happened; first-seen time is not.
+			released := event.ScheduledAt
 			entry.ReleasedAt = &released
 		}
 		entries = append(entries, entry)

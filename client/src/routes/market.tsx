@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AdminScreen } from "../components/admin/admin-screen";
 import { type ChartCandle, MarketChart } from "../components/market-chart";
 import { PairSelect } from "../components/pair-select";
@@ -19,6 +19,12 @@ export function MarketRoute() {
   const catalog = usePairCatalog();
   const [pairId, setPairId] = useState<string | null>(null);
   const [timeframe, setTimeframe] = useState<Timeframe>("1min");
+
+  useEffect(() => {
+    if (catalog.hasNextPage && !catalog.isFetchingNextPage && !catalog.isError) {
+      void catalog.fetchNextPage();
+    }
+  }, [catalog.hasNextPage, catalog.isFetchingNextPage, catalog.isError, catalog]);
 
   const pairs = adminRows(catalog).toSorted((a, b) => a.symbol.localeCompare(b.symbol));
   const activePairId = pairId ?? pairs[0]?.id ?? null;
