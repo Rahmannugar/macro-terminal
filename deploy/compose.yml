@@ -175,7 +175,7 @@ configs:
         batch:
 
       exporters:
-        otlp/newrelic:
+        otlphttp/newrelic:
           endpoint: ${MACRO_TERMINAL_NEWRELIC_OTLP_ENDPOINT:-https://otlp.newrelic.com}
           headers:
             api-key: ${MACRO_TERMINAL_NEWRELIC_LICENSE_KEY:?set MACRO_TERMINAL_NEWRELIC_LICENSE_KEY in the deploy environment}
@@ -187,12 +187,12 @@ configs:
           traces:
             receivers: [otlp]
             processors: [batch]
-            exporters: [otlp/newrelic]
+            exporters: [otlphttp/newrelic]
           metrics:
             receivers: [otlp]
             processors: [batch]
-            exporters: [otlp/newrelic]
+            exporters: [otlphttp/newrelic]
           logs:
             receivers: [otlp]
             processors: [batch]
-            exporters: [otlp/newrelic]
+            exporters: [otlphttp/newrelic]
