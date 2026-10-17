@@ -1,8 +1,9 @@
 name: deploy
 
 on:
-  push:
-    branches: [main]
+  workflow_run:
+    workflows: [main]
+    types: [completed]
 
 concurrency:
   group: deploy-production
@@ -11,6 +12,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
     steps:
       - name: Deploy to the production server
         env:

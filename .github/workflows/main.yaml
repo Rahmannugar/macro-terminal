@@ -62,5 +62,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: VITE_API_URL=https://api-macroterminal.consumel.com
           cache-from: type=gha,scope=client
           cache-to: type=gha,mode=max,scope=client
