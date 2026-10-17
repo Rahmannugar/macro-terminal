@@ -10,6 +10,7 @@ export function SignUpScreen() {
   const signUp = useSignUp();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
 
@@ -18,8 +19,13 @@ export function SignUpScreen() {
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmedEmail = email.trim();
+    const trimmedUsername = username.trim();
     if (!trimmedEmail?.includes("@")) {
       setLocalError("Enter a valid email address.");
+      return;
+    }
+    if (trimmedUsername.length < 2) {
+      setLocalError("Username must be at least 2 characters.");
       return;
     }
     if (password.length < 8) {
@@ -33,6 +39,7 @@ export function SignUpScreen() {
         onSuccess: () => {
           navigate(`/verify-email?email=${encodeURIComponent(trimmedEmail)}`, {
             replace: true,
+            state: { username: trimmedUsername },
           });
         },
       },
@@ -59,6 +66,15 @@ export function SignUpScreen() {
         </>
       }
     >
+      <AuthField label="Username" htmlFor="sign-up-username">
+        <Input
+          id="sign-up-username"
+          autoComplete="username"
+          placeholder="how you'll appear in the terminal"
+          value={username}
+          onChange={(event) => setUsername(event.target.value)}
+        />
+      </AuthField>
       <AuthField label="Email" htmlFor="sign-up-email">
         <Input
           id="sign-up-email"

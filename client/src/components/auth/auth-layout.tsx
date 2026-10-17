@@ -1,4 +1,5 @@
 import type { FormEvent, ReactNode } from "react";
+import { Button } from "../ui/button";
 
 type AuthLayoutProps = {
   title: string;
@@ -39,13 +40,9 @@ export function AuthLayout({
               {errorMessage}
             </p>
           ) : null}
-          <button
-            type="submit"
-            className="h-11 rounded-lg bg-primary px-4 text-sm font-semibold text-white transition outline-none hover:bg-[#076fd2] focus-visible:ring-4 focus-visible:ring-primary/20 disabled:pointer-events-none disabled:opacity-60"
-            disabled={pending}
-          >
-            {pending ? "Working…" : submitLabel}
-          </button>
+          <Button type="submit" pending={pending} className="w-full">
+            {submitLabel}
+          </Button>
         </form>
         {footer ? (
           <div className="mt-6 text-center text-sm text-muted-foreground">{footer}</div>

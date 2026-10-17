@@ -164,7 +164,7 @@ export function HomeRoute() {
                 error={feed.error}
                 onRetry={() => feed.refetch()}
                 onLoadMore={() => feed.fetchNextPage()}
-                emptyLabel="No articles have been indexed yet."
+                emptyLabel="Nothing here yet — new articles appear as soon as sources publish."
               />
             )}
           </div>

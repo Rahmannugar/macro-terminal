@@ -4,7 +4,6 @@ import { useNavigate } from "react-router";
 import { useAccount, useSignOut } from "../../hooks/use-account";
 import type { Account } from "../../lib/auth";
 import { Button } from "../ui/button";
-import { Skeleton } from "../ui/skeleton";
 
 type RailContext = { user: { role: string } | null };
 
@@ -86,13 +85,12 @@ export function AdminBoundary({ children }: { children: (account: Account) => Re
 
 export function AccountLoading() {
   return (
-    <div className="flex min-h-svh items-center justify-center bg-background">
-      <div className="w-full max-w-[400px] rounded-xl border border-border bg-card p-7">
-        <Skeleton className="h-6 w-2/3" />
-        <Skeleton className="mt-3 h-4 w-full" />
-        <Skeleton className="mt-2 h-4 w-5/6" />
-        <Skeleton className="mt-5 h-10 w-full rounded-lg" />
-      </div>
+    <div className="flex min-h-svh flex-col items-center justify-center gap-4 bg-background">
+      <img src="/macroterminal.png" alt="" width={48} height={48} className="rounded-xl" />
+      <span
+        aria-hidden="true"
+        className="size-5 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-foreground"
+      />
     </div>
   );
 }

@@ -1,19 +1,30 @@
 import { type FormEvent, useState } from "react";
-import { Link, Navigate, useSearchParams } from "react-router";
-import { useAccount, useResendVerification, useVerifyEmail } from "../../hooks/use-account";
+import { Link, Navigate, useLocation, useSearchParams } from "react-router";
+import {
+  useAccount,
+  useResendVerification,
+  useUpdateUsername,
+  useVerifyEmail,
+} from "../../hooks/use-account";
 import { authenticationErrorMessage } from "../../lib/auth";
 import { Input } from "../ui/input";
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "../ui/input-otp";
 import { AuthField, AuthLayout } from "./auth-layout";
 
 export function VerifyEmailScreen() {
   const account = useAccount();
   const verifyEmail = useVerifyEmail();
+  const updateUsername = useUpdateUsername();
   const resend = useResendVerification();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   const [email, setEmail] = useState(searchParams.get("email") ?? "");
   const [code, setCode] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
   const [resendNote, setResendNote] = useState<string | null>(null);
+
+  const pendingUsername =
+    (location.state as { username?: string } | null)?.username?.trim() ?? "";
 
   if (account.isSuccess) return <Navigate to="/" replace />;
 
@@ -30,7 +41,14 @@ export function VerifyEmailScreen() {
     }
     setLocalError(null);
     setResendNote(null);
-    verifyEmail.mutate({ email: trimmedEmail, code: code.trim() });
+    verifyEmail.mutate(
+      { email: trimmedEmail, code: code.trim() },
+      {
+        onSuccess: () => {
+          if (pendingUsername) updateUsername.mutate({ username: pendingUsername });
+        },
+      },
+    );
   }
 
   function resendCode() {
@@ -56,7 +74,7 @@ export function VerifyEmailScreen() {
   return (
     <AuthLayout
       title="Verify your email"
-      subtitle="Enter the one-time code we emailed you. Verification signs you in."
+      subtitle="Enter the 6-digit code we sent you. Verifying signs you in."
       errorMessage={errorMessage}
       pending={verifyEmail.isPending}
       submitLabel="Verify"
@@ -70,7 +88,7 @@ export function VerifyEmailScreen() {
             disabled={resend.isPending}
             className="mt-2 inline text-primary hover:underline disabled:opacity-60"
           >
-            {resend.isPending ? "Sending…" : "Resend the code"}
+            Resend the code
           </button>
           <span className="block">
             Wrong address?{" "}
@@ -91,16 +109,23 @@ export function VerifyEmailScreen() {
           onChange={(event) => setEmail(event.target.value)}
         />
       </AuthField>
-      <AuthField label="One-time code" htmlFor="verify-code">
-        <Input
+      <AuthField label="Verification code" htmlFor="verify-code">
+        <InputOTP
           id="verify-code"
-          inputMode="numeric"
           autoComplete="one-time-code"
           maxLength={6}
-          placeholder="123456"
           value={code}
-          onChange={(event) => setCode(event.target.value)}
-        />
+          onChange={setCode}
+        >
+          <InputOTPGroup>
+            <InputOTPSlot index={0} />
+            <InputOTPSlot index={1} />
+            <InputOTPSlot index={2} />
+            <InputOTPSlot index={3} />
+            <InputOTPSlot index={4} />
+            <InputOTPSlot index={5} />
+          </InputOTPGroup>
+        </InputOTP>
       </AuthField>
     </AuthLayout>
   );
