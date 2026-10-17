@@ -41,6 +41,8 @@ x-app-environment: &app-environment
 services:
   postgres:
     image: postgres:17-alpine
+    ports:
+      - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_DB: ${MACRO_TERMINAL_DATABASE_NAME:-macro_terminal}
       POSTGRES_USER: ${MACRO_TERMINAL_DATABASE_USER:-macro_terminal}

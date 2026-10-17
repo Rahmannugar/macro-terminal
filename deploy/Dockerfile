@@ -10,6 +10,7 @@ FROM deps AS build
 COPY . .
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/api ./server/cmd/api && \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/worker ./server/cmd/worker && \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/seed ./server/cmd/seed && \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/tern github.com/jackc/tern/v2
 
 FROM alpine:3.22
@@ -17,7 +18,7 @@ FROM alpine:3.22
 RUN apk add --no-cache ca-certificates tzdata aws-cli jq && \
     adduser -D -u 10001 app
 
-COPY --from=build /out/api /out/worker /out/tern /usr/local/bin/
+COPY --from=build /out/api /out/worker /out/seed /out/tern /usr/local/bin/
 COPY server/internal/infra/database/tern.conf /app/server/internal/infra/database/tern.conf
 COPY db/migrations /app/db/migrations
 COPY deploy/entrypoint.sh /app/entrypoint.sh
