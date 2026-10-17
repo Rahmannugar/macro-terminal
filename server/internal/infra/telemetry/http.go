@@ -123,6 +123,9 @@ func (runtime *Runtime) HTTPMiddleware() (gin.HandlerFunc, error) {
 		var domainAttributes []slog.Attr
 		if !healthRequest {
 			operation, completions, domainAttributes = requestLogAttributes.snapshot()
+			if operation == "http.request" {
+				operation = fmt.Sprintf("%s %s", ginContext.Request.Method, route)
+			}
 			span.SetName(operation)
 		}
 		span.SetAttributes(
@@ -211,6 +214,9 @@ func (runtime *Runtime) recordReadinessFailure(
 		"duration_ms", float64(duration.Microseconds())/1000,
 		"outcome", "error",
 		"error_category", "dependency_unavailable",
+		"req.method", http.MethodGet,
+		"res.statusCode", status,
+		"responseTime", int(duration.Round(time.Millisecond).Milliseconds()),
 	)
 	span.End(trace.WithTimestamp(startedAt.Add(duration)))
 }
@@ -302,16 +308,38 @@ func logRequestCompletion(
 		slog.Int("status", status),
 		slog.Float64("duration_ms", float64(duration.Microseconds())/1000),
 		slog.String("outcome", outcome),
+		slog.String("req.method", method),
+		slog.Int("res.statusCode", status),
+		slog.Int("responseTime", int(duration.Round(time.Millisecond).Milliseconds())),
 	}
 	if errorCategory != "none" {
 		attributes = append(attributes, slog.String("error_category", errorCategory))
 	}
 	attributes = append(attributes, requestAttributes...)
 	level := slog.LevelInfo
-	if status >= http.StatusInternalServerError {
+	switch {
+	case status >= http.StatusInternalServerError:
 		level = slog.LevelError
+	case status == http.StatusRequestTimeout || status == http.StatusTooManyRequests:
+		level = slog.LevelWarn
 	}
-	logger.LogAttrs(ctx, level, completion.Message, attributes...)
+	message := fmt.Sprintf("%s %s %s", method, route, requestOutcome(status))
+	logger.LogAttrs(ctx, level, message, attributes...)
+}
+
+func requestOutcome(status int) string {
+	switch {
+	case status >= http.StatusInternalServerError:
+		return "failed"
+	case status == http.StatusRequestTimeout:
+		return "timed out"
+	case status == http.StatusTooManyRequests:
+		return "rate limited"
+	case status >= http.StatusBadRequest:
+		return "rejected"
+	default:
+		return "completed"
+	}
 }
 
 func completionForOutcome(completions CompletionDetails, outcome string) Completion {

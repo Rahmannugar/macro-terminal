@@ -12,8 +12,7 @@ type requestIDContextKey struct{}
 type requestLogAttributesContextKey struct{}
 
 type Completion struct {
-	Event   string
-	Message string
+	Event string
 }
 
 type CompletionDetails struct {
@@ -37,16 +36,16 @@ func contextWithRequestLogAttributes(ctx context.Context) (context.Context, *req
 	attributes := &requestLogAttributes{
 		operation: "http.request",
 		completions: CompletionDetails{
-			Success:  Completion{Event: "http.request.completed", Message: "API request completed"},
-			Rejected: Completion{Event: "http.request.rejected", Message: "API request rejected"},
-			Failed:   Completion{Event: "http.request.failed", Message: "API request failed"},
+			Success:  Completion{Event: "http.request.completed"},
+			Rejected: Completion{Event: "http.request.rejected"},
+			Failed:   Completion{Event: "http.request.failed"},
 		},
 	}
 	return context.WithValue(ctx, requestLogAttributesContextKey{}, attributes), attributes
 }
 
 // SetRequestOperation gives the generic request middleware a stable operation
-// and plain completion messages selected by the domain that owns the route.
+// and completion event selected by the domain that owns the route.
 func SetRequestOperation(ctx context.Context, operation string, completions CompletionDetails) {
 	requestAttributes, ok := ctx.Value(requestLogAttributesContextKey{}).(*requestLogAttributes)
 	if !ok {
