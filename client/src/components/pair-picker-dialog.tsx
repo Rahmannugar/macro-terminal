@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { adminErrorMessage, adminRows } from "../lib/admin";
 import { usePairCatalog, useToggleFollow } from "../lib/watchlist";
 import { Button } from "./ui/button";
@@ -37,6 +37,12 @@ export function PairPickerDialog({
           .includes(search),
     )
     .toSorted((a, b) => a.symbol.localeCompare(b.symbol));
+
+  useEffect(() => {
+    if (catalog.hasNextPage && !catalog.isFetchingNextPage && !catalog.isError) {
+      void catalog.fetchNextPage();
+    }
+  }, [catalog.hasNextPage, catalog.isFetchingNextPage, catalog.isError, catalog]);
 
   function togglePair(pairId: string) {
     setSelected((current) => {
@@ -125,18 +131,6 @@ export function PairPickerDialog({
           </ul>
         )}
       </div>
-      {catalog.hasNextPage && !search ? (
-        <div className="mt-2 flex justify-center">
-          <Button
-            variant="quiet"
-            className="h-9! px-3! text-xs"
-            pending={catalog.isFetchingNextPage}
-            onClick={() => catalog.fetchNextPage()}
-          >
-            Load more
-          </Button>
-        </div>
-      ) : null}
       {error ? (
         <p role="alert" className="mt-3 text-sm text-red-600">
           {error}

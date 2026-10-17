@@ -77,15 +77,32 @@ func (repository *fakeRepository) Article(_ context.Context, id uuid.UUID) (mode
 }
 
 type fakeIndexer struct {
-	err   error
-	calls int
-	last  vector.Article
+	err      error
+	itemErrs []error
+	calls    int
+	last     vector.Article
 }
 
 func (indexer *fakeIndexer) StoreArticle(_ context.Context, article vector.Article) error {
 	indexer.calls++
 	indexer.last = article
 	return indexer.err
+}
+
+func (indexer *fakeIndexer) StoreArticles(_ context.Context, articles []vector.Article) ([]error, error) {
+	if indexer.err != nil {
+		return nil, indexer.err
+	}
+	errs := make([]error, len(articles))
+	for index, article := range articles {
+		if index < len(indexer.itemErrs) && indexer.itemErrs[index] != nil {
+			errs[index] = indexer.itemErrs[index]
+			continue
+		}
+		indexer.calls++
+		indexer.last = article
+	}
+	return errs, nil
 }
 
 func (indexer *fakeIndexer) DeleteArticles(_ context.Context, _ []uuid.UUID) error {
@@ -286,6 +303,58 @@ func TestCycleStopsAfterOneBatchEvenWhenQueueStillHasWork(t *testing.T) {
 	}
 	if indexer.calls != batchSize {
 		t.Errorf("store calls = %d, want %d", indexer.calls, batchSize)
+	}
+}
+
+func TestCycleBatchFailureSendsEveryClaimedRowBack(t *testing.T) {
+	articles := map[uuid.UUID]models.Article{}
+	batch := make([]models.ClaimedJob, 0, 3)
+	for i := 0; i < 3; i++ {
+		articleID := uuid.New()
+		batch = append(batch, models.ClaimedJob{ID: uuid.New(), ArticleID: articleID, Attempts: 2})
+		articles[articleID] = models.Article{ID: articleID, Title: "title", Content: "content"}
+	}
+	repository := &fakeRepository{claimed: batch, articles: articles}
+	indexer := &fakeIndexer{err: errors.New("embedding quota exceeded")}
+
+	if err := newTestJob(repository, indexer).cycle(t.Context()); err != nil {
+		t.Fatalf("cycle: %v", err)
+	}
+
+	if len(repository.failures) != 3 {
+		t.Fatalf("failures = %d, want every claimed row sent back", len(repository.failures))
+	}
+	for _, failure := range repository.failures {
+		if failure.cause != "embedding quota exceeded" || failure.maxAttempts != maxAttempts {
+			t.Errorf("failure = %+v, want the batch cause and the attempt budget", failure)
+		}
+	}
+	if len(repository.completed) != 0 || len(repository.permanents) != 0 {
+		t.Errorf("completed = %v permanents = %v, want none", repository.completed, repository.permanents)
+	}
+}
+
+func TestCycleItemFailureOnlyAffectsThatRow(t *testing.T) {
+	articles := map[uuid.UUID]models.Article{}
+	batch := make([]models.ClaimedJob, 0, 3)
+	for i := 0; i < 3; i++ {
+		articleID := uuid.New()
+		batch = append(batch, models.ClaimedJob{ID: uuid.New(), ArticleID: articleID, Attempts: 1})
+		articles[articleID] = models.Article{ID: articleID, Title: "title", Content: "content"}
+	}
+	repository := &fakeRepository{claimed: batch, articles: articles}
+	indexer := &fakeIndexer{itemErrs: []error{nil, errors.New("store unavailable"), nil}}
+
+	if err := newTestJob(repository, indexer).cycle(t.Context()); err != nil {
+		t.Fatalf("cycle: %v", err)
+	}
+
+	if len(repository.completed) != 2 {
+		t.Fatalf("completed = %d, want the two healthy rows", len(repository.completed))
+	}
+	if len(repository.failures) != 1 || repository.failures[0].id != batch[1].ID ||
+		repository.failures[0].cause != "store unavailable" {
+		t.Errorf("failures = %v, want only the failing row with its cause", repository.failures)
 	}
 }
 

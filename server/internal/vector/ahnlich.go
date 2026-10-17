@@ -56,18 +56,47 @@ func NewSearcher(addr string, embedder ai.Embedder) (Searcher, error) {
 }
 
 func (store *ahnlichStore) StoreArticle(ctx context.Context, article Article) error {
-	vector, err := store.embedder.Embed(ctx, embedInput(article))
+	remaining, err := store.StoreArticles(ctx, []Article{article})
 	if err != nil {
-		return fmt.Errorf("embed article: %w", err)
+		return err
+	}
+	if len(remaining) > 0 && remaining[0] != nil {
+		return remaining[0]
+	}
+	return nil
+}
+
+func (store *ahnlichStore) StoreArticles(ctx context.Context, articles []Article) ([]error, error) {
+	if len(articles) == 0 {
+		return nil, nil
+	}
+
+	inputs := make([]string, len(articles))
+	for index, article := range articles {
+		inputs[index] = embedInput(article)
+	}
+	vectors, err := store.embedder.EmbedBatch(ctx, inputs)
+	if err != nil {
+		return nil, fmt.Errorf("embed articles: %w", err)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, requestWindow)
 	defer cancel()
 
-	if err := store.ensureStore(ctx, uint32(len(vector))); err != nil {
-		return err
+	if err := store.ensureStore(ctx, uint32(len(vectors[0]))); err != nil {
+		return nil, err
 	}
 
+	errs := make([]error, len(articles))
+	for index, article := range articles {
+		if err := store.storeVector(ctx, article, vectors[index]); err != nil {
+			errs[index] = err
+		}
+	}
+	return errs, nil
+}
+
+func (store *ahnlichStore) storeVector(ctx context.Context, article Article, vector []float32) error {
 	condition := articleCondition(article.ID)
 	existing, err := store.client.GetPred(ctx, &dbquery.GetPred{
 		Store:     articleStore,

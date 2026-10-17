@@ -175,20 +175,24 @@ configs:
         batch:
 
       exporters:
-        debug:
-          verbosity: basic
+        otlp/newrelic:
+          endpoint: ${MACRO_TERMINAL_NEWRELIC_OTLP_ENDPOINT:-https://otlp.newrelic.com}
+          headers:
+            api-key: ${MACRO_TERMINAL_NEWRELIC_LICENSE_KEY:?set MACRO_TERMINAL_NEWRELIC_LICENSE_KEY in the deploy environment}
+          tls:
+            insecure: false
 
       service:
         pipelines:
           traces:
             receivers: [otlp]
             processors: [batch]
-            exporters: [debug]
+            exporters: [otlp/newrelic]
           metrics:
             receivers: [otlp]
             processors: [batch]
-            exporters: [debug]
+            exporters: [otlp/newrelic]
           logs:
             receivers: [otlp]
             processors: [batch]
-            exporters: [debug]
+            exporters: [otlp/newrelic]

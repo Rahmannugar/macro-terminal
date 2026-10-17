@@ -15,9 +15,10 @@ import (
 const (
 	cycleInterval = 30 * time.Second
 	enqueueLimit  = 16
-	// batchSize stays small because each claim issues one embedding API
-	// call; the free embedding tier allows only a handful per minute.
-	batchSize      = 2
+	// batchSize is embedded in one provider call per cycle; batching keeps a
+	// full day of articles inside the free embedding tier's daily request
+	// budget instead of spending one request per article.
+	batchSize      = 50
 	maxAttempts    = 8
 	maxCauseLength = 500
 )
@@ -100,6 +101,11 @@ type cycleStats struct {
 	failedPermanent int
 }
 
+type claimedArticle struct {
+	claim   models.ClaimedJob
+	article vector.Article
+}
+
 func (job *Job) cycle(ctx context.Context) error {
 	stats := cycleStats{}
 
@@ -135,64 +141,103 @@ func (job *Job) cycle(ctx context.Context) error {
 	}
 
 	var processErr error
+	loaded := make([]claimedArticle, 0, len(claimed))
 	for _, work := range claimed {
-		if err := job.process(ctx, work, &stats); err != nil {
-			job.logger.ErrorContext(ctx,
-				"Article indexing job handling failed",
-				"event", "indexing.job_error",
-				"outbox_id", work.ID,
-				"error", err,
-			)
+		article, err := job.repository.Article(ctx, work.ArticleID)
+		if err != nil {
 			if ctx.Err() != nil {
-				return ctx.Err()
+				processErr = errors.Join(processErr, ctx.Err())
+				break
 			}
-			processErr = err
+			if errors.Is(err, pgx.ErrNoRows) {
+				stats.failedPermanent++
+				job.logger.WarnContext(ctx,
+					"Indexing payload references a missing article",
+					"event", "indexing.failed",
+					"outbox_id", work.ID,
+					"article_id", work.ArticleID,
+					"reason", "article_missing",
+				)
+				processErr = errors.Join(processErr, job.repository.FailPermanently(ctx, work.ID, "article not found"))
+				continue
+			}
+			stats.failedBackoff++
+			processErr = errors.Join(processErr, err, job.repository.Fail(ctx, work.ID, maxAttempts, truncate(err.Error(), maxCauseLength)))
+			continue
 		}
+		loaded = append(loaded, claimedArticle{
+			claim: work,
+			article: vector.Article{
+				ID:          article.ID,
+				PublishedAt: publishedAt(article),
+				Title:       article.Title,
+				Content:     article.Content,
+			},
+		})
 	}
-	job.logCycle(ctx, stats)
-	return processErr
-}
-
-func (job *Job) process(ctx context.Context, work models.ClaimedJob, stats *cycleStats) error {
-	article, err := job.repository.Article(ctx, work.ArticleID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			stats.failedPermanent++
-			job.logger.WarnContext(ctx,
-				"Indexing payload references a missing article",
-				"event", "indexing.failed",
-				"outbox_id", work.ID,
-				"article_id", work.ArticleID,
-				"reason", "article_missing",
-			)
-			return job.repository.FailPermanently(ctx, work.ID, "article not found")
-		}
-		stats.failedBackoff++
-		return errors.Join(err, job.repository.Fail(ctx, work.ID, maxAttempts, truncate(err.Error(), maxCauseLength)))
+	if len(loaded) == 0 {
+		job.logCycle(ctx, stats)
+		return processErr
 	}
 
 	started := time.Now()
-	if err := job.indexer.StoreArticle(ctx, vector.Article{
-		ID:          article.ID,
-		PublishedAt: publishedAt(article),
-		Title:       article.Title,
-		Content:     article.Content,
-	}); err != nil {
-		return job.fail(ctx, work, stats, err)
+	articles := make([]vector.Article, len(loaded))
+	for index, item := range loaded {
+		articles[index] = item.article
 	}
-	if err := job.repository.Complete(ctx, work.ID); err != nil {
-		return err
+	storeErrs, batchErr := job.indexer.StoreArticles(ctx, articles)
+	if batchErr != nil {
+		job.logger.WarnContext(ctx,
+			"Article batch indexing failed",
+			"event", "indexing.batch_failed",
+			"articles", len(loaded),
+			"error", truncate(batchErr.Error(), maxCauseLength),
+		)
+		if ctx.Err() != nil {
+			job.logCycle(ctx, stats)
+			return errors.Join(ctx.Err(), processErr)
+		}
+		for _, item := range loaded {
+			if err := job.repository.Fail(ctx, item.claim.ID, maxAttempts, truncate(batchErr.Error(), maxCauseLength)); err != nil {
+				processErr = errors.Join(processErr, err)
+			}
+			if item.claim.Attempts >= maxAttempts {
+				stats.failedPermanent++
+			} else {
+				stats.failedBackoff++
+			}
+		}
+		job.logCycle(ctx, stats)
+		return processErr
 	}
-	stats.indexed++
 
-	job.logger.InfoContext(ctx,
-		"Article indexed",
-		"event", "indexing.article_indexed",
-		"outbox_id", work.ID,
-		"article_id", article.ID,
-		"duration_ms", time.Since(started).Milliseconds(),
-	)
-	return nil
+	for index, item := range loaded {
+		if ctx.Err() != nil {
+			processErr = errors.Join(processErr, ctx.Err())
+			break
+		}
+		if index < len(storeErrs) && storeErrs[index] != nil {
+			if err := job.fail(ctx, item.claim, &stats, storeErrs[index]); err != nil {
+				processErr = errors.Join(processErr, err)
+			}
+			continue
+		}
+		if err := job.repository.Complete(ctx, item.claim.ID); err != nil {
+			processErr = errors.Join(processErr, err)
+			continue
+		}
+		stats.indexed++
+	}
+	if stats.indexed > 0 {
+		job.logger.InfoContext(ctx,
+			"Articles indexed",
+			"event", "indexing.articles_indexed",
+			"count", stats.indexed,
+			"duration_ms", time.Since(started).Milliseconds(),
+		)
+	}
+	job.logCycle(ctx, stats)
+	return processErr
 }
 
 func (job *Job) fail(ctx context.Context, work models.ClaimedJob, stats *cycleStats, cause error) error {
