@@ -176,7 +176,7 @@ configs:
 
       exporters:
         otlphttp/newrelic:
-          endpoint: ${MACRO_TERMINAL_NEWRELIC_OTLP_ENDPOINT:-https://otlp.newrelic.com}
+          endpoint: ${MACRO_TERMINAL_NEWRELIC_OTLP_ENDPOINT:-https://otlp.nr-data.net}
           headers:
             api-key: ${MACRO_TERMINAL_NEWRELIC_LICENSE_KEY:?set MACRO_TERMINAL_NEWRELIC_LICENSE_KEY in the deploy environment}
           tls:
