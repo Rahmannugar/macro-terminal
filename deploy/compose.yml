@@ -198,10 +198,13 @@ configs:
 
       processors:
         batch:
+          send_batch_size: 512
+          send_batch_max_size: 1024
 
       exporters:
         otlphttp/newrelic:
           endpoint: ${MACRO_TERMINAL_NEWRELIC_OTLP_ENDPOINT:-https://otlp.nr-data.net}
+          compression: gzip
           headers:
             api-key: ${MACRO_TERMINAL_NEWRELIC_LICENSE_KEY:?set MACRO_TERMINAL_NEWRELIC_LICENSE_KEY in the deploy environment}
           tls:
