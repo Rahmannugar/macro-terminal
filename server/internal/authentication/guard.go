@@ -7,6 +7,9 @@ import (
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/users/models"
 	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 // RequireUser resolves the session and lets only active accounts through.
@@ -43,7 +46,31 @@ func RequireAdmin(service *Service) gin.HandlerFunc {
 }
 
 func resolveActiveAccount(ctx *gin.Context, service *Service) (Account, bool) {
-	account, err := service.Resolve(ctx.Request)
+	var account Account
+	var err error
+	if ctx.FullPath() == "/api/v1/events" {
+		account, err = service.Resolve(ctx.Request)
+	} else {
+		originalRequest := ctx.Request
+		requestContext, span := otel.Tracer("github.com/Rahmannugar/macro-terminal/server/internal/authentication").Start(
+			originalRequest.Context(), "auth.session.resolve",
+		)
+		ctx.Request = originalRequest.WithContext(requestContext)
+		account, err = service.Resolve(ctx.Request)
+		ctx.Request = originalRequest
+		outcome := "success"
+		switch {
+		case errors.Is(err, ErrUnauthenticated):
+			outcome = "unauthenticated"
+		case errors.Is(err, ErrSuspended):
+			outcome = "suspended"
+		case err != nil:
+			outcome = "error"
+			span.SetStatus(codes.Error, "session_resolution_failed")
+		}
+		span.SetAttributes(attribute.String("auth.outcome", outcome))
+		span.End()
+	}
 	switch {
 	case errors.Is(err, ErrUnauthenticated):
 		writeFailure(ctx, http.StatusUnauthorized, "unauthenticated", "Sign in to access your Macro Terminal account.")

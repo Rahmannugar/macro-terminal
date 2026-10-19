@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
+	otelruntime "go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
@@ -92,6 +93,12 @@ func New(ctx context.Context, serviceName, environment string) (*Runtime, error)
 		log.WithResource(serviceResource),
 		log.WithProcessor(log.NewBatchProcessor(logExporter)),
 	)
+	if err := otelruntime.Start(otelruntime.WithMeterProvider(meterProvider)); err != nil {
+		_ = loggerProvider.Shutdown(ctx)
+		_ = meterProvider.Shutdown(ctx)
+		_ = tracerProvider.Shutdown(ctx)
+		return nil, fmt.Errorf("start Go runtime metrics: %w", err)
+	}
 
 	propagator := propagation.NewCompositeTextMapPropagator(
 		propagation.TraceContext{},

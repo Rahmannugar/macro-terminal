@@ -28,10 +28,12 @@ const (
 var fallbackRequestID atomic.Uint64
 
 type httpInstruments struct {
-	duration metric.Float64Histogram
-	requests metric.Int64Counter
-	errors   metric.Int64Counter
-	active   metric.Int64UpDownCounter
+	duration         metric.Float64Histogram
+	requests         metric.Int64Counter
+	errors           metric.Int64Counter
+	active           metric.Int64UpDownCounter
+	standardDuration metric.Float64Histogram
+	standardActive   metric.Int64UpDownCounter
 }
 
 func (runtime *Runtime) HTTPMiddleware() (gin.HandlerFunc, error) {
@@ -65,12 +67,31 @@ func (runtime *Runtime) HTTPMiddleware() (gin.HandlerFunc, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create HTTP active-request metric: %w", err)
 	}
+	standardDuration, err := meter.Float64Histogram(
+		"http.server.request.duration",
+		metric.WithDescription("Duration of completed HTTP server requests."),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create standard HTTP duration metric: %w", err)
+	}
+	standardActive, err := meter.Int64UpDownCounter(
+		"http.server.active_requests",
+		metric.WithDescription("Number of active HTTP server requests."),
+		metric.WithUnit("{request}"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("create standard HTTP active-request metric: %w", err)
+	}
 
 	instruments := httpInstruments{
-		duration: duration,
-		requests: requests,
-		errors:   errors,
-		active:   active,
+		duration:         duration,
+		requests:         requests,
+		errors:           errors,
+		active:           active,
+		standardDuration: standardDuration,
+		standardActive:   standardActive,
 	}
 	tracer := runtime.tracerProvider.Tracer(instrumentationName)
 
@@ -84,6 +105,22 @@ func (runtime *Runtime) HTTPMiddleware() (gin.HandlerFunc, error) {
 			route = "unmatched"
 		}
 		healthRequest := strings.HasPrefix(route, "/health/")
+		streamRequest := route == "/api/v1/events"
+		if streamRequest {
+			ginContext.Request = ginContext.Request.WithContext(contextWithRequestID(ginContext.Request.Context(), requestID))
+			ginContext.Next()
+			if status := ginContext.Writer.Status(); status >= http.StatusBadRequest {
+				outcome, errorCategory := classifyHTTPStatus(status)
+				completions := CompletionDetails{
+					Rejected: Completion{Event: "http.request.rejected"},
+					Failed:   Completion{Event: "http.request.failed"},
+				}
+				logRequestCompletion(runtime.logger, ginContext.Request.Context(),
+					fmt.Sprintf("%s %s", ginContext.Request.Method, route), ginContext.Request.Method, route, status,
+					time.Since(startedAt), outcome, errorCategory, completions, nil)
+			}
+			return
+		}
 		operation := "http.request"
 		if healthRequest {
 			operation = healthOperation(route)
@@ -110,8 +147,19 @@ func (runtime *Runtime) HTTPMiddleware() (gin.HandlerFunc, error) {
 		requestContext, requestLogAttributes := contextWithRequestLogAttributes(requestContext)
 		ginContext.Request = ginContext.Request.WithContext(requestContext)
 
+		var activeAttributes metric.AddOption
+		var standardActiveAttributes metric.AddOption
 		if !healthRequest {
-			instruments.active.Add(requestContext, 1)
+			activeAttributes = metric.WithAttributes(
+				attribute.String("method", ginContext.Request.Method),
+				attribute.String("route", route),
+			)
+			standardActiveAttributes = metric.WithAttributes(
+				attribute.String("http.request.method", ginContext.Request.Method),
+				attribute.String("url.scheme", requestScheme(ginContext.Request)),
+			)
+			instruments.active.Add(requestContext, 1, activeAttributes)
+			instruments.standardActive.Add(requestContext, 1, standardActiveAttributes)
 		}
 
 		ginContext.Next()
@@ -159,9 +207,20 @@ func (runtime *Runtime) HTTPMiddleware() (gin.HandlerFunc, error) {
 			attribute.String("outcome", outcome),
 			attribute.String("error_category", errorCategory),
 		)
-		instruments.active.Add(requestContext, -1)
+		instruments.active.Add(requestContext, -1, activeAttributes)
+		instruments.standardActive.Add(requestContext, -1, standardActiveAttributes)
 		instruments.requests.Add(requestContext, 1, metricAttributes)
 		instruments.duration.Record(requestContext, duration.Seconds(), metricAttributes)
+		standardAttributeValues := []attribute.KeyValue{
+			attribute.String("http.request.method", ginContext.Request.Method),
+			attribute.String("http.route", route),
+			attribute.Int("http.response.status_code", status),
+			attribute.String("url.scheme", requestScheme(ginContext.Request)),
+		}
+		if status >= http.StatusInternalServerError {
+			standardAttributeValues = append(standardAttributeValues, attribute.String("error.type", fmt.Sprintf("%d", status)))
+		}
+		instruments.standardDuration.Record(requestContext, duration.Seconds(), metric.WithAttributes(standardAttributeValues...))
 		if status >= http.StatusInternalServerError {
 			instruments.errors.Add(requestContext, 1, metricAttributes)
 		}
@@ -180,6 +239,13 @@ func (runtime *Runtime) HTTPMiddleware() (gin.HandlerFunc, error) {
 			domainAttributes,
 		)
 	}, nil
+}
+
+func requestScheme(request *http.Request) string {
+	if request.TLS != nil {
+		return "https"
+	}
+	return "http"
 }
 
 func (runtime *Runtime) recordReadinessFailure(
