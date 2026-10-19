@@ -100,6 +100,7 @@ type Runner struct {
 	logger         *slog.Logger
 	cadences       Cadences
 	notifier       FeedNotifier
+	articleDays    int
 	tick           time.Duration
 	now            func() time.Time
 	wake           chan struct{}
@@ -119,6 +120,7 @@ func NewRunner(
 	logger *slog.Logger,
 	cadences Cadences,
 	notifier FeedNotifier,
+	articleDays int,
 ) *Runner {
 	return &Runner{
 		configurations: configurations,
@@ -131,6 +133,7 @@ func NewRunner(
 		logger:         logger,
 		cadences:       cadences,
 		notifier:       notifier,
+		articleDays:    articleDays,
 		tick:           runnerTick,
 		now:            time.Now,
 		wake:           make(chan struct{}, 1),
@@ -655,6 +658,8 @@ func (runner *Runner) storeCandidates(
 	}
 
 	entries := make([]articlemodels.PersistEntry, 0, len(candidates))
+	cutoff := runner.now().AddDate(0, 0, -runner.articleDays)
+	var expired int
 	var outcomes []mapping.Outcome
 	var unmappedTitles []string
 	if dictionary != nil {
@@ -662,6 +667,10 @@ func (runner *Runner) storeCandidates(
 		unmappedTitles = make([]string, 0, mappingLogTitleLimit)
 	}
 	for _, candidate := range candidates {
+		if !candidate.PublishedAt.IsZero() && candidate.PublishedAt.Before(cutoff) {
+			expired++
+			continue
+		}
 		entry := articlemodels.PersistEntry{
 			SourceID: candidate.SourceID,
 			Title:    candidate.Title,
@@ -686,6 +695,16 @@ func (runner *Runner) storeCandidates(
 			}
 		}
 		entries = append(entries, entry)
+	}
+	if expired > 0 {
+		runner.logger.InfoContext(ctx, "Expired articles skipped",
+			"event", "ingestion.articles.expired_skipped",
+			"source", configuration.SourceName,
+			"count", expired,
+		)
+	}
+	if len(entries) == 0 {
+		return
 	}
 
 	if dictionary != nil {

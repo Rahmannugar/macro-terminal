@@ -87,7 +87,7 @@ func newRouter(
 		var err error
 		searcher, err = vector.NewSearcher(
 			cfg.Ahnlich.DBAddr,
-			ai.NewEmbedder(telemetry.NewHTTPClient(aiHTTPTimeout), cfg.AI.APIKey, cfg.AI.EmbeddingModel),
+			ai.NewEmbedder(ai.WithBackupKey(telemetry.NewHTTPClient(aiHTTPTimeout), cfg.AI.APIKey, cfg.AI.BackupAPIKey), cfg.AI.APIKey, cfg.AI.EmbeddingModel),
 		)
 		if err != nil {
 			return nil, err
@@ -136,7 +136,7 @@ func newRouter(
 		calendarrepositories.NewEventRepository(database, resourceStore),
 		clusterRepository,
 		relatedService,
-		ai.NewExplainer(telemetry.NewHTTPClient(aiHTTPTimeout), cfg.AI.APIKey, cfg.AI.ExplanationModel),
+		ai.NewExplainer(ai.WithBackupKey(telemetry.NewHTTPClient(aiHTTPTimeout), cfg.AI.APIKey, cfg.AI.BackupAPIKey), cfg.AI.APIKey, cfg.AI.ExplanationModel),
 		cache.NewJSONStoreWithTTL(redisClient, explanation.CacheTTL),
 	))
 	return router, nil

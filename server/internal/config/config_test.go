@@ -24,6 +24,7 @@ func TestLoadAppliesAIDefaultsAndOverrides(t *testing.T) {
 	}
 
 	t.Setenv("MACRO_TERMINAL_AI_API_KEY", " key ")
+	t.Setenv("MACRO_TERMINAL_AI_BACKUP_API_KEY", " backup-key ")
 	t.Setenv("MACRO_TERMINAL_AI_MODEL", "other-model")
 	t.Setenv("MACRO_TERMINAL_AI_EXPLANATION_MODEL", "other-explain-model")
 	t.Setenv("MACRO_TERMINAL_AI_EMBEDDING_MODEL", "other-embed-model")
@@ -35,6 +36,9 @@ func TestLoadAppliesAIDefaultsAndOverrides(t *testing.T) {
 	}
 	if cfg.AI.APIKey != "key" {
 		t.Errorf("api key = %q, want the trimmed override", cfg.AI.APIKey)
+	}
+	if cfg.AI.BackupAPIKey != "backup-key" {
+		t.Errorf("backup key was not loaded and trimmed")
 	}
 	if cfg.AI.Model != "other-model" {
 		t.Errorf("model = %q, want the override", cfg.AI.Model)

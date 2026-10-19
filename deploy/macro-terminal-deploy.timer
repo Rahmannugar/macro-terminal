@@ -1,0 +1,10 @@
+[Unit]
+Description=Check for a successful Macro Terminal deployment every five minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Unit=macro-terminal-deploy.service
+
+[Install]
+WantedBy=timers.target

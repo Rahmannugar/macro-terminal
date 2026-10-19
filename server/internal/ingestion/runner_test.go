@@ -13,6 +13,7 @@ import (
 	entitymodels "github.com/Rahmannugar/macro-terminal/server/internal/entities/models"
 	"github.com/Rahmannugar/macro-terminal/server/internal/mapping"
 	marketmodels "github.com/Rahmannugar/macro-terminal/server/internal/market/models"
+	"github.com/Rahmannugar/macro-terminal/server/internal/normalization"
 	"github.com/Rahmannugar/macro-terminal/server/internal/sources/models"
 	"github.com/google/uuid"
 )
@@ -224,7 +225,7 @@ func newTestRunner(
 	runner := NewRunner(
 		source, fetcher, loader, &fakeArticleStore{}, &fakeEventStore{},
 		&fakeCandleStore{}, &fakePairSource{}, discardLogger(), DefaultCadences(),
-		nil,
+		nil, 183,
 	)
 	runner.now = func() time.Time { return now }
 	return runner, &now
@@ -232,6 +233,20 @@ func newTestRunner(
 
 func testArticleStore(runner *Runner) *fakeArticleStore {
 	return runner.articles.(*fakeArticleStore)
+}
+
+func TestRunnerSkipsExpiredArticlesBeforePersistence(t *testing.T) {
+	runner, now := newTestRunner(&fakeConfigurationSource{}, &fakeSourceFetcher{}, &fakeDictionaryLoader{})
+	source := configuration(uuid.New(), "News", "news", "rss")
+	cutoff := now.AddDate(0, 0, -183)
+	runner.storeCandidates(context.Background(), source, nil, []normalization.Candidate{
+		{SourceID: source.SourceID, Title: "Expired", URL: "https://example.com/old", PublishedAt: cutoff.Add(-time.Second)},
+		{SourceID: source.SourceID, Title: "Current", URL: "https://example.com/new", PublishedAt: cutoff},
+	})
+	batches := testArticleStore(runner).stored()
+	if len(batches) != 1 || len(batches[0]) != 1 || batches[0][0].Title != "Current" {
+		t.Fatalf("stored batches = %+v, want only the article at the cutoff", batches)
+	}
 }
 
 func testEventStore(runner *Runner) *fakeEventStore {

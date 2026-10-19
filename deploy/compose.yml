@@ -27,6 +27,7 @@ x-app-environment: &app-environment
   MACRO_TERMINAL_AUTH_TRUSTED_PROXIES: ${MACRO_TERMINAL_AUTH_TRUSTED_PROXIES:-}
   MACRO_TERMINAL_AUTH_OTP_HMAC_SECRET: ${MACRO_TERMINAL_AUTH_OTP_HMAC_SECRET:-}
   MACRO_TERMINAL_AI_API_KEY: ${MACRO_TERMINAL_AI_API_KEY:-}
+  MACRO_TERMINAL_AI_BACKUP_API_KEY: ${MACRO_TERMINAL_AI_BACKUP_API_KEY:-}
   MACRO_TERMINAL_AI_MODEL: ${MACRO_TERMINAL_AI_MODEL:-gemini-3.1-flash-lite}
   MACRO_TERMINAL_AI_EXPLANATION_MODEL: ${MACRO_TERMINAL_AI_EXPLANATION_MODEL:-gemini-3.5-flash-lite}
   MACRO_TERMINAL_AI_EMBEDDING_MODEL: ${MACRO_TERMINAL_AI_EMBEDDING_MODEL:-gemini-embedding-001}
@@ -97,7 +98,7 @@ services:
     restart: unless-stopped
 
   migrate:
-    image: ghcr.io/rahmannugar/macroterminal:main
+    image: ghcr.io/rahmannugar/macroterminal:${MACRO_TERMINAL_IMAGE_TAG:-main}
     entrypoint: ["/bin/sh", "/app/entrypoint.sh"]
     command:
       - tern
@@ -115,7 +116,7 @@ services:
       disable: true
 
   api:
-    image: ghcr.io/rahmannugar/macroterminal:main
+    image: ghcr.io/rahmannugar/macroterminal:${MACRO_TERMINAL_IMAGE_TAG:-main}
     command: ["/usr/local/bin/api"]
     environment: *app-environment
     depends_on:
@@ -132,7 +133,7 @@ services:
     restart: unless-stopped
 
   worker:
-    image: ghcr.io/rahmannugar/macroterminal:main
+    image: ghcr.io/rahmannugar/macroterminal:${MACRO_TERMINAL_IMAGE_TAG:-main}
     command: ["/usr/local/bin/worker"]
     environment: *app-environment
     depends_on:
@@ -151,7 +152,7 @@ services:
       disable: true
 
   client:
-    image: ghcr.io/rahmannugar/macroterminal-client:main
+    image: ghcr.io/rahmannugar/macroterminal-client:${MACRO_TERMINAL_IMAGE_TAG:-main}
     ports:
       - "80:80"
     depends_on:
@@ -200,6 +201,9 @@ configs:
         batch:
           send_batch_size: 512
           send_batch_max_size: 1024
+        batch/traces:
+          send_batch_size: 64
+          send_batch_max_size: 64
 
       exporters:
         otlphttp/newrelic:
@@ -214,7 +218,7 @@ configs:
         pipelines:
           traces:
             receivers: [otlp]
-            processors: [batch]
+            processors: [batch/traces]
             exporters: [otlphttp/newrelic]
           metrics:
             receivers: [otlp, hostmetrics, docker_stats]

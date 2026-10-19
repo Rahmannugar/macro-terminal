@@ -135,6 +135,7 @@ func run() (runError error) {
 		logger,
 		ingestion.DefaultCadences(),
 		events.NewFeedSignaler(redisClient),
+		cfg.Retention.ArticleDays,
 	)
 
 	signalContext, stopSignals := signal.NotifyContext(
@@ -147,7 +148,7 @@ func run() (runError error) {
 	enrichmentJob := enrichment.NewJob(
 		enrichmentrepositories.NewOutboxRepository(databasePool, resourceStore),
 		entityRepository,
-		ai.NewClient(telemetry.NewHTTPClient(providerFetchTimeout), cfg.AI.APIKey, cfg.AI.Model),
+		ai.NewClient(ai.WithBackupKey(telemetry.NewHTTPClient(providerFetchTimeout), cfg.AI.APIKey, cfg.AI.BackupAPIKey), cfg.AI.APIKey, cfg.AI.Model),
 		cfg.AI.Model,
 		cfg.AI.APIKey != "",
 		logger,
@@ -158,7 +159,7 @@ func run() (runError error) {
 	if vectorEnabled {
 		articleVectors, err = vector.NewClient(
 			cfg.Ahnlich.DBAddr,
-			ai.NewEmbedder(telemetry.NewHTTPClient(providerFetchTimeout), cfg.AI.APIKey, cfg.AI.EmbeddingModel),
+			ai.NewEmbedder(ai.WithBackupKey(telemetry.NewHTTPClient(providerFetchTimeout), cfg.AI.APIKey, cfg.AI.BackupAPIKey), cfg.AI.APIKey, cfg.AI.EmbeddingModel),
 		)
 		if err != nil {
 			return fmt.Errorf("configure article vectors: %w", err)

@@ -87,6 +87,7 @@ type Resend struct {
 
 type AI struct {
 	APIKey           string
+	BackupAPIKey     string
 	Model            string
 	ExplanationModel string
 	EmbeddingModel   string
@@ -197,6 +198,7 @@ func Load() (Config, error) {
 	cfg.Resend.APIKey = strings.TrimSpace(k.String("resend.api_key"))
 	cfg.Resend.NoReplyFrom = strings.TrimSpace(k.String("resend.noreply_from"))
 	cfg.AI.APIKey = strings.TrimSpace(k.String("ai.api_key"))
+	cfg.AI.BackupAPIKey = strings.TrimSpace(k.String("ai.backup_api_key"))
 	cfg.AI.Model = defaultAIModel
 	if model := strings.TrimSpace(k.String("ai.model")); model != "" {
 		cfg.AI.Model = model

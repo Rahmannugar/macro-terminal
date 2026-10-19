@@ -1,0 +1,9 @@
+[Unit]
+Description=Deploy the latest Macro Terminal revision with successful CI
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/macro-terminal
+ExecStart=/bin/sh /opt/macro-terminal/deploy/poll.sh
