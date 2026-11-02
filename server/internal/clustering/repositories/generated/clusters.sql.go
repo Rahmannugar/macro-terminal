@@ -147,16 +147,25 @@ func (q *Queries) LinkArticleToCluster(ctx context.Context, arg LinkArticleToClu
 const membersOfClusterForArticle = `-- name: MembersOfClusterForArticle :many
 SELECT member.article_id
 FROM article_story_clusters AS member
+JOIN articles AS article ON article.id = member.article_id
 WHERE member.story_cluster_id = (
     SELECT cluster.story_cluster_id
     FROM article_story_clusters AS cluster
     WHERE cluster.article_id = $1
     LIMIT 1
 )
+AND member.article_id <> $1
+ORDER BY article.published_at DESC NULLS LAST, article.id DESC
+LIMIT $2
 `
 
-func (q *Queries) MembersOfClusterForArticle(ctx context.Context, articleID uuid.UUID) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, membersOfClusterForArticle, articleID)
+type MembersOfClusterForArticleParams struct {
+	ArticleID uuid.UUID
+	PageSize  int32
+}
+
+func (q *Queries) MembersOfClusterForArticle(ctx context.Context, arg MembersOfClusterForArticleParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, membersOfClusterForArticle, arg.ArticleID, arg.PageSize)
 	if err != nil {
 		return nil, err
 	}

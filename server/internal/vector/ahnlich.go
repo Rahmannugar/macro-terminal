@@ -31,6 +31,8 @@ const (
 	articleIDKey   = "article_id"
 	publishedAtKey = "published_at"
 	requestWindow  = 60 * time.Second
+	// Bound vector payloads to the supported search window and its lookahead.
+	maxSearchNeighbors = 201
 	// Bound UTF-8 bytes as well as batch cost for non-English input.
 	maxEmbedChars = 6000
 )
@@ -263,6 +265,9 @@ func (store *ahnlichStore) FindSimilarArticles(ctx context.Context, article Arti
 func (store *ahnlichStore) closest(ctx context.Context, vector []float32, limit int) ([]*dbserver.GetSimNEntry, error) {
 	if limit < 1 {
 		return nil, nil
+	}
+	if limit > maxSearchNeighbors {
+		return nil, fmt.Errorf("vector search limit %d exceeds maximum %d", limit, maxSearchNeighbors)
 	}
 	ctx, cancel := context.WithTimeout(ctx, requestWindow)
 	defer cancel()

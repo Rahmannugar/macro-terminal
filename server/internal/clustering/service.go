@@ -23,7 +23,7 @@ var (
 )
 
 type ClusterReader interface {
-	MembersOfClusterForArticle(ctx context.Context, articleID uuid.UUID) ([]uuid.UUID, error)
+	MembersOfClusterForArticle(ctx context.Context, articleID uuid.UUID, limit int32) ([]uuid.UUID, error)
 }
 
 type ArticleHydrator interface {
@@ -61,7 +61,7 @@ func (service *Service) Related(
 		return nil
 	})
 	group.Go(func() error {
-		mates, matesErr = service.memberIDs(ctx, articleID)
+		mates, matesErr = service.memberIDs(ctx, articleID, limit)
 		return nil
 	})
 	_ = group.Wait()
@@ -134,8 +134,8 @@ func (service *Service) loadSelf(ctx context.Context, articleID uuid.UUID) (mode
 	return selfs[0], nil
 }
 
-func (service *Service) memberIDs(ctx context.Context, articleID uuid.UUID) ([]uuid.UUID, error) {
-	members, err := service.clusters.MembersOfClusterForArticle(ctx, articleID)
+func (service *Service) memberIDs(ctx context.Context, articleID uuid.UUID, limit int) ([]uuid.UUID, error) {
+	members, err := service.clusters.MembersOfClusterForArticle(ctx, articleID, int32(limit))
 	if err != nil {
 		return nil, fmt.Errorf("load story cluster members: %w", err)
 	}
@@ -154,7 +154,7 @@ func (service *Service) neighborIDs(
 	memberCount int,
 	limit int,
 ) ([]uuid.UUID, error) {
-	if service.searcher == nil {
+	if service.searcher == nil || memberCount >= limit {
 		return nil, nil
 	}
 	neighbors, err := service.searcher.FindSimilarArticles(ctx, vectorArticle(self), limit+memberCount+1)

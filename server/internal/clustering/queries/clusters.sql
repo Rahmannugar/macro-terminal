@@ -29,12 +29,16 @@ WHERE article_id = ANY(sqlc.arg(ids)::uuid[]);
 -- name: MembersOfClusterForArticle :many
 SELECT member.article_id
 FROM article_story_clusters AS member
+JOIN articles AS article ON article.id = member.article_id
 WHERE member.story_cluster_id = (
     SELECT cluster.story_cluster_id
     FROM article_story_clusters AS cluster
-    WHERE cluster.article_id = $1
+    WHERE cluster.article_id = sqlc.arg(article_id)
     LIMIT 1
-);
+)
+AND member.article_id <> sqlc.arg(article_id)
+ORDER BY article.published_at DESC NULLS LAST, article.id DESC
+LIMIT sqlc.arg(page_size);
 
 -- name: TouchStoryCluster :exec
 UPDATE story_clusters

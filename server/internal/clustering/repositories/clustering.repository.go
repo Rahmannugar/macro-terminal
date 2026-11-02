@@ -159,8 +159,9 @@ func (repository *Repository) StoryClusterForArticle(ctx context.Context, articl
 	return models.StoryCluster{ID: row.ID, Title: row.Title}, true, nil
 }
 
-func (repository *Repository) MembersOfClusterForArticle(ctx context.Context, articleID uuid.UUID) ([]uuid.UUID, error) {
-	members, err := repository.queries.MembersOfClusterForArticle(ctx, articleID)
+func (repository *Repository) MembersOfClusterForArticle(ctx context.Context, articleID uuid.UUID, limit int32) ([]uuid.UUID, error) {
+	limit = max(1, min(limit, 100))
+	members, err := repository.queries.MembersOfClusterForArticle(ctx, clusteringdb.MembersOfClusterForArticleParams{ArticleID: articleID, PageSize: limit})
 	if err != nil {
 		return nil, fmt.Errorf("get members of article's cluster: %w", err)
 	}

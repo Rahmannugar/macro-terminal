@@ -5,6 +5,7 @@ package integration_test
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	clusteringmodels "github.com/Rahmannugar/macro-terminal/server/internal/clustering/models"
 	clusteringrepositories "github.com/Rahmannugar/macro-terminal/server/internal/clustering/repositories"
@@ -100,14 +101,14 @@ func TestClusteringDiscoveryAndClusterLinks(t *testing.T) {
 	if memberOf != clusterID {
 		t.Fatalf("cluster = %s, want %s", memberOf, clusterID)
 	}
-	members, err := repository.MembersOfClusterForArticle(t.Context(), indexed)
+	members, err := repository.MembersOfClusterForArticle(t.Context(), indexed, 25)
 	if err != nil {
 		t.Fatalf("members of article's cluster: %v", err)
 	}
-	if len(members) != 1 || members[0] != indexed {
-		t.Fatalf("members = %v, want [%s] (the cluster's only member)", members, indexed)
+	if len(members) != 0 {
+		t.Fatalf("members = %v, want none after excluding the requested article", members)
 	}
-	members, err = repository.MembersOfClusterForArticle(t.Context(), neverIndexed)
+	members, err = repository.MembersOfClusterForArticle(t.Context(), neverIndexed, 25)
 	if err != nil {
 		t.Fatalf("members for unclustered article: %v", err)
 	}
@@ -130,6 +131,21 @@ func TestClusteringDiscoveryAndClusterLinks(t *testing.T) {
 	}
 	if titles[indexed] != "Fed holds rates steady" {
 		t.Errorf("titles = %v, want the seeded headline", titles)
+	}
+	for _, articleID := range []uuid.UUID{neverIndexed, failedIndex} {
+		if _, err := repository.LinkArticleToCluster(t.Context(), articleID, clusterID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := pool.Exec(t.Context(), `UPDATE articles SET published_at=$2 WHERE id=$1`, indexed, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(t.Context(), `UPDATE articles SET published_at=$2 WHERE id=$1`, neverIndexed, time.Now().Add(-48*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	members, err = repository.MembersOfClusterForArticle(t.Context(), indexed, 1)
+	if err != nil || len(members) != 1 || members[0] != failedIndex {
+		t.Fatalf("bounded recent members=%v error=%v, want only the newest other article", members, err)
 	}
 }
 

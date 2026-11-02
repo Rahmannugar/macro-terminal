@@ -16,7 +16,7 @@ type fakeClusterReader struct {
 	err   error
 }
 
-func (reader *fakeClusterReader) MembersOfClusterForArticle(_ context.Context, articleID uuid.UUID) ([]uuid.UUID, error) {
+func (reader *fakeClusterReader) MembersOfClusterForArticle(_ context.Context, articleID uuid.UUID, _ int32) ([]uuid.UUID, error) {
 	if reader.err != nil {
 		return nil, reader.err
 	}
@@ -137,11 +137,10 @@ func TestRelatedHonoursTheLimitBeforeSemanticFill(t *testing.T) {
 	recent := time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC)
 	past := time.Date(2026, 9, 15, 12, 0, 0, 0, time.UTC)
 
+	searcher := &fakeSearcher{err: errors.New("semantic dependency should not be called")}
 	service := NewService(
 		&fakeClusterReader{mates: map[uuid.UUID][]uuid.UUID{self: {self, older, newer}}},
-		&fakeSearcher{neighbors: []vector.Neighbor{
-			{ID: semantic, Score: 0.9, PublishedAt: &past},
-		}},
+		searcher,
 		&fakeHydrator{articles: map[uuid.UUID]models.StoredArticle{
 			self:     storedArticle(self, "Fed holds rates", past),
 			older:    storedArticle(older, "Older mate", past),
@@ -156,6 +155,9 @@ func TestRelatedHonoursTheLimitBeforeSemanticFill(t *testing.T) {
 	}
 	if len(related) != 1 || related[0].ID != newer {
 		t.Fatalf("related = %+v, want the single most recent cluster mate", related)
+	}
+	if searcher.calls != 0 {
+		t.Fatalf("semantic calls=%d, want none for a full cluster page", searcher.calls)
 	}
 }
 

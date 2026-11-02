@@ -184,7 +184,7 @@ Once enrichment is stored, the indexing cycle embeds the article with Gemini and
 
 ### Search, related articles, and relevance
 
-`GET /api/v1/search/articles` embeds the query with the same Gemini model, asks Ahnlich for the nearest vectors (cosine), and hydrates authoritative rows from PostgreSQL in vector-rank order. The cursor is an opaque rank offset — keyset semantics over a similarity ranking, never offset pagination over SQL. Clustering and related lookup retrieve the source article's stored vector by `article_id` and search Ahnlich without calling Gemini. Related lookup returns existing cluster members when the article has not been indexed yet. The home feed's "Relevant" sort embeds the user's followed pair symbols as the query; with no pairs it falls back to latest.
+`GET /api/v1/search/articles` embeds the query with the same Gemini model, asks Ahnlich for the nearest vectors (cosine), and hydrates authoritative rows from PostgreSQL in vector-rank order. The cursor is an opaque rank offset — keyset semantics over a similarity ranking, never offset pagination over SQL. Clustering and related lookup retrieve the source article's stored vector by `article_id` and search Ahnlich without calling Gemini. Cluster members are ordered and limited in PostgreSQL; semantic lookup fills pages only when those members are insufficient. Related lookup returns existing cluster members when the article has not been indexed yet. The home feed's "Relevant" sort embeds the user's followed pair symbols as the query; with no pairs it falls back to latest.
 
 ### Notifications
 

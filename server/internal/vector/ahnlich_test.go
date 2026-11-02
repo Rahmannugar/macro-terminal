@@ -111,3 +111,10 @@ func TestEmbeddingInputBoundsUTF8Bytes(t *testing.T) {
 		t.Fatalf("invalid or oversized UTF-8: %d bytes", len(input))
 	}
 }
+
+func TestOversizedSimilarityLookupIsRejectedBeforeRPC(t *testing.T) {
+	store := &ahnlichStore{}
+	if _, err := store.closest(t.Context(), []float32{0.3}, 10000); err == nil {
+		t.Fatal("oversized similarity lookup was accepted")
+	}
+}
