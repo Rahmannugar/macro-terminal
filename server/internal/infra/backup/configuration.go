@@ -12,12 +12,12 @@ import (
 )
 
 const (
-	Stanza           = "macro-terminal"
+	Stanza            = "macro-terminal"
 	ConfigurationPath = "/etc/pgbackrest/pgbackrest.conf"
-	DataPath         = "/var/lib/postgresql/data"
-	SocketPath       = "/var/run/postgresql"
-	LockPath         = "/var/run/pgbackrest"
-	RetainedFull     = 7
+	DataPath          = "/var/lib/postgresql/data"
+	SocketPath        = "/var/run/postgresql"
+	LockPath          = "/var/run/pgbackrest"
+	RetainedFull      = 7
 )
 
 func Configure(cfg config.Backup) error {
