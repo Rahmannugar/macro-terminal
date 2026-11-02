@@ -76,6 +76,7 @@ func (e *fetchError) Error() string             { return e.cause.Error() }
 func (e *fetchError) Unwrap() error             { return e.cause }
 func (e *fetchError) Retryable() bool           { return e.retryable }
 func (e *fetchError) RetryAfter() time.Duration { return e.retryAfter }
+func (e *fetchError) HTTPStatus() int           { return e.statusCode }
 
 func retryable(err error) bool {
 	var failure Failure

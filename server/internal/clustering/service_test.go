@@ -114,6 +114,21 @@ func TestRelatedServesClusterMatesWithoutAConfiguredSearcher(t *testing.T) {
 	}
 }
 
+func TestRelatedKeepsClusterMembersWhenArticleIsNotIndexed(t *testing.T) {
+	self, mate := uuid.New(), uuid.New()
+	service := NewService(
+		&fakeClusterReader{mates: map[uuid.UUID][]uuid.UUID{self: {mate}}},
+		&fakeSearcher{err: vector.ErrNotIndexed},
+		&fakeHydrator{articles: map[uuid.UUID]models.StoredArticle{
+			self: {ID: self}, mate: {ID: mate},
+		}},
+	)
+	articles, err := service.Related(t.Context(), self, 10)
+	if err != nil || len(articles) != 1 || articles[0].ID != mate {
+		t.Fatalf("related=%v error=%v", articles, err)
+	}
+}
+
 func TestRelatedHonoursTheLimitBeforeSemanticFill(t *testing.T) {
 	self := uuid.New()
 	older := uuid.New()

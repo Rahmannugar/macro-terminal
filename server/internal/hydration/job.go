@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 	"time"
 
@@ -26,6 +27,8 @@ const (
 	maxAttempts    = 8
 	maxCauseLength = 500
 )
+
+var errContentExtraction = errors.New("article content extraction failed")
 
 type Repository interface {
 	EnqueueMissingContentJobs(ctx context.Context, limit int32) (int64, error)
@@ -134,7 +137,7 @@ func (job *Job) cycle(ctx context.Context) error {
 			job.logger.ErrorContext(ctx,
 				"Content hydration job handling failed",
 				"event", "hydration.job_error",
-				"outbox_id", work.ID,
+				"outbox_id", work.ID.String(),
 				"error", err,
 			)
 			if ctx.Err() != nil {
@@ -159,8 +162,8 @@ func (job *Job) process(
 			job.logger.WarnContext(ctx,
 				"Content job references a missing article",
 				"event", "hydration.failed",
-				"outbox_id", work.ID,
-				"article_id", work.ArticleID,
+				"outbox_id", work.ID.String(),
+				"article_id", work.ArticleID.String(),
 				"reason", "article_missing",
 			)
 			return job.repository.FailPermanently(ctx, work.ID,
@@ -180,14 +183,16 @@ func (job *Job) process(
 
 	result, err := job.fetcher.Fetch(ctx, request)
 	if err != nil {
+		err = publisherFailure(target.ArticleURL, err)
 		var failure ingestion.Failure
 		if errors.As(err, &failure) && !failure.Retryable() {
 			stats.failedPermanent++
 			job.logger.WarnContext(ctx,
 				"Article page fetch is not retryable",
 				"event", "hydration.failed",
-				"outbox_id", work.ID,
-				"article_id", work.ArticleID,
+				"reason", hydrationFailureReason(err),
+				"outbox_id", work.ID.String(),
+				"article_id", work.ArticleID.String(),
 				"error", truncate(err.Error(), maxCauseLength),
 			)
 			return job.repository.FailPermanently(ctx, work.ID,
@@ -198,6 +203,7 @@ func (job *Job) process(
 
 	content, err := extractContent(result.Body, selector, target.ArticleURL)
 	if err != nil {
+		err = fmt.Errorf("%w: %w", errContentExtraction, err)
 		if selector == "" {
 			// Generic extraction is a heuristic: a thin or badly marked-up
 			// page may extract better on a later attempt.
@@ -207,8 +213,8 @@ func (job *Job) process(
 		job.logger.WarnContext(ctx,
 			"Article page content could not be extracted",
 			"event", "hydration.failed",
-			"outbox_id", work.ID,
-			"article_id", work.ArticleID,
+			"outbox_id", work.ID.String(),
+			"article_id", work.ArticleID.String(),
 			"selector", selector,
 			"reason", "content_extraction_failed",
 			"error", truncate(err.Error(), maxCauseLength),
@@ -229,8 +235,8 @@ func (job *Job) process(
 	job.logger.InfoContext(ctx,
 		"Article content hydrated",
 		"event", "hydration.completed",
-		"outbox_id", work.ID,
-		"article_id", work.ArticleID,
+		"outbox_id", work.ID.String(),
+		"article_id", work.ArticleID.String(),
 		"stored", stored,
 	)
 	return nil
@@ -246,12 +252,71 @@ func (job *Job) backoff(
 	job.logger.WarnContext(ctx,
 		"Content hydration attempt failed",
 		"event", "hydration.failed",
-		"outbox_id", work.ID,
-		"article_id", work.ArticleID,
+		"reason", hydrationFailureReason(cause),
+		"outbox_id", work.ID.String(),
+		"article_id", work.ArticleID.String(),
 		"attempts", work.Attempts,
 		"error", truncate(cause.Error(), maxCauseLength),
 	)
 	return errors.Join(cause, job.repository.Fail(ctx, work.ID, maxAttempts, truncate(cause.Error(), maxCauseLength)))
+}
+
+type publisherError struct {
+	cause  error
+	host   string
+	status int
+	reason string
+}
+
+func (failure *publisherError) Error() string {
+	action := "returned an HTTP error"
+	switch failure.status {
+	case 401:
+		action = "requires authentication"
+	case 403:
+		action = "denied access"
+	case 429:
+		action = "throttled the request"
+	}
+	return fmt.Sprintf("publisher %s %s (HTTP %d)", failure.host, action, failure.status)
+}
+
+func (failure *publisherError) Unwrap() error { return failure.cause }
+
+func publisherFailure(articleURL string, cause error) error {
+	var status interface{ HTTPStatus() int }
+	if !errors.As(cause, &status) || status.HTTPStatus() == 0 {
+		return cause
+	}
+	reason := "publisher_error"
+	switch status.HTTPStatus() {
+	case 401:
+		reason = "publisher_authentication_required"
+	case 403:
+		reason = "publisher_access_denied"
+	case 429:
+		reason = "publisher_throttled"
+	}
+	parsed, _ := url.Parse(articleURL)
+	host := "unknown"
+	if parsed != nil {
+		host = parsed.Hostname()
+	}
+	return &publisherError{cause: cause, host: host, status: status.HTTPStatus(), reason: reason}
+}
+
+func hydrationFailureReason(err error) string {
+	var publisher *publisherError
+	if errors.As(err, &publisher) {
+		return publisher.reason
+	}
+	if errors.Is(err, ingestion.ErrCircuitOpen) {
+		return "publisher_circuit_open"
+	}
+	if errors.Is(err, errContentExtraction) {
+		return "content_extraction_failed"
+	}
+	return "content_processing_failed"
 }
 
 func (job *Job) logCycle(ctx context.Context, stats cycleStats) {

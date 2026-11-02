@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/Rahmannugar/macro-terminal/server/internal/ai"
 	"github.com/Rahmannugar/macro-terminal/server/internal/indexing/models"
 	"github.com/Rahmannugar/macro-terminal/server/internal/vector"
 	"github.com/google/uuid"
@@ -13,11 +14,8 @@ import (
 )
 
 const (
-	cycleInterval = 30 * time.Second
-	enqueueLimit  = 16
-	// batchSize is embedded in one provider call per cycle; batching keeps a
-	// full day of articles inside the free embedding tier's daily request
-	// budget instead of spending one request per article.
+	cycleInterval  = 30 * time.Second
+	enqueueLimit   = 16
 	batchSize      = 50
 	maxAttempts    = 8
 	maxCauseLength = 500
@@ -29,6 +27,7 @@ type Repository interface {
 	ClaimBatch(ctx context.Context, limit int32) ([]models.ClaimedJob, error)
 	Complete(ctx context.Context, id uuid.UUID) error
 	Fail(ctx context.Context, id uuid.UUID, maxAttempts int32, cause string) error
+	Defer(ctx context.Context, id uuid.UUID, delay time.Duration, cause string) error
 	FailPermanently(ctx context.Context, id uuid.UUID, cause string) error
 	Article(ctx context.Context, id uuid.UUID) (models.Article, error)
 }
@@ -99,6 +98,7 @@ type cycleStats struct {
 	indexed         int
 	failedBackoff   int
 	failedPermanent int
+	deferred        int
 }
 
 type claimedArticle struct {
@@ -154,8 +154,8 @@ func (job *Job) cycle(ctx context.Context) error {
 				job.logger.WarnContext(ctx,
 					"Indexing payload references a missing article",
 					"event", "indexing.failed",
-					"outbox_id", work.ID,
-					"article_id", work.ArticleID,
+					"outbox_id", work.ID.String(),
+					"article_id", work.ArticleID.String(),
 					"reason", "article_missing",
 				)
 				processErr = errors.Join(processErr, job.repository.FailPermanently(ctx, work.ID, "article not found"))
@@ -198,13 +198,8 @@ func (job *Job) cycle(ctx context.Context) error {
 			return errors.Join(ctx.Err(), processErr)
 		}
 		for _, item := range loaded {
-			if err := job.repository.Fail(ctx, item.claim.ID, maxAttempts, truncate(batchErr.Error(), maxCauseLength)); err != nil {
+			if err := job.fail(ctx, item.claim, &stats, batchErr); err != nil {
 				processErr = errors.Join(processErr, err)
-			}
-			if item.claim.Attempts >= maxAttempts {
-				stats.failedPermanent++
-			} else {
-				stats.failedBackoff++
 			}
 		}
 		job.logCycle(ctx, stats)
@@ -241,6 +236,13 @@ func (job *Job) cycle(ctx context.Context) error {
 }
 
 func (job *Job) fail(ctx context.Context, work models.ClaimedJob, stats *cycleStats, cause error) error {
+	if deferred, ok := ai.EmbeddingDeferral(cause); ok {
+		stats.deferred++
+		job.logger.InfoContext(ctx, "Article indexing waiting for embedding allowance", "event", "indexing.deferred",
+			"outbox_id", work.ID.String(), "article_id", work.ArticleID.String(), "reason", deferred.Reason,
+			"retry_after_seconds", deferred.Delay.Seconds())
+		return job.repository.Defer(ctx, work.ID, deferred.Delay, truncate(cause.Error(), maxCauseLength))
+	}
 	if work.Attempts >= maxAttempts {
 		stats.failedPermanent++
 	} else {
@@ -249,8 +251,8 @@ func (job *Job) fail(ctx context.Context, work models.ClaimedJob, stats *cycleSt
 	job.logger.WarnContext(ctx,
 		"Indexing attempt failed",
 		"event", "indexing.failed",
-		"outbox_id", work.ID,
-		"article_id", work.ArticleID,
+		"outbox_id", work.ID.String(),
+		"article_id", work.ArticleID.String(),
 		"attempts", work.Attempts,
 		"error", truncate(cause.Error(), maxCauseLength),
 	)
@@ -267,6 +269,7 @@ func (job *Job) logCycle(ctx context.Context, stats cycleStats) {
 		"indexed", stats.indexed,
 		"failed_backoff", stats.failedBackoff,
 		"failed_permanent", stats.failedPermanent,
+		"deferred", stats.deferred,
 	)
 }
 

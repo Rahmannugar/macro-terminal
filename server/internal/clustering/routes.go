@@ -37,7 +37,7 @@ type relatedResponse struct {
 }
 
 // @Summary Get articles related to one article.
-// @Description Returns story cluster mates first (most recent first), then semantically similar indexed articles, deduplicated and excluding the article itself. When semantic search is not configured only cluster mates are returned.
+// @Description Returns story cluster mates first (most recent first), then semantically similar indexed articles, deduplicated and excluding the article itself. When semantic search is not configured or the article is not indexed yet, only cluster mates are returned.
 // @Tags articles
 // @Param id path string true "Article id (UUID)."
 // @Param limit query int false "Page size between 1 and 100. Defaults to 25."
@@ -66,6 +66,7 @@ func relatedArticles(service *Service) gin.HandlerFunc {
 		case errors.Is(err, ErrNotFound):
 			writeFailure(ctx, http.StatusNotFound, "not_found", "The article does not exist.")
 		case errors.Is(err, ErrUnavailable):
+			slog.Default().ErrorContext(ctx.Request.Context(), "Related article dependency failed", "event", "articles.related_failed", "dependency", "ahnlich", "error", err)
 			writeFailure(ctx, http.StatusServiceUnavailable, "search_unavailable", "Semantic search is not available right now.")
 		case err != nil:
 			slog.Default().ErrorContext(ctx.Request.Context(), "related article lookup failed", "error", err)

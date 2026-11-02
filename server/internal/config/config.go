@@ -108,29 +108,9 @@ type Retention struct {
 }
 
 func Load() (Config, error) {
-	k := koanf.New(".")
-	transform := func(key, value string) (string, any) {
-		key = strings.ToLower(strings.TrimPrefix(key, environmentPrefix))
-		group, setting, grouped := strings.Cut(key, "_")
-		if grouped {
-			key = group + "." + setting
-		}
-		return key, value
-	}
-
-	if err := k.Load(
-		file.Provider(".env"),
-		dotenv.ParserEnvWithValue(environmentPrefix, ".", transform),
-	); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return Config{}, fmt.Errorf("load .env: %w", err)
-	}
-
-	provider := koanfenv.Provider(".", koanfenv.Opt{
-		Prefix:        environmentPrefix,
-		TransformFunc: transform,
-	})
-	if err := k.Load(provider, nil); err != nil {
-		return Config{}, fmt.Errorf("load environment: %w", err)
+	k, err := loadEnvironment()
+	if err != nil {
+		return Config{}, err
 	}
 
 	cfg := Config{
@@ -143,7 +123,6 @@ func Load() (Config, error) {
 			SSLMode: "disable",
 		},
 	}
-
 	if k.Exists("environment") {
 		cfg.Environment = Environment(k.String("environment"))
 	}
@@ -240,6 +219,25 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+func loadEnvironment() (*koanf.Koanf, error) {
+	k := koanf.New(".")
+	transform := func(key, value string) (string, any) {
+		key = strings.ToLower(strings.TrimPrefix(key, environmentPrefix))
+		group, setting, grouped := strings.Cut(key, "_")
+		if grouped {
+			key = group + "." + setting
+		}
+		return key, value
+	}
+	if err := k.Load(file.Provider(".env"), dotenv.ParserEnvWithValue(environmentPrefix, ".", transform)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("load .env: %w", err)
+	}
+	if err := k.Load(koanfenv.Provider(".", koanfenv.Opt{Prefix: environmentPrefix, TransformFunc: transform}), nil); err != nil {
+		return nil, fmt.Errorf("load environment: %w", err)
+	}
+	return k, nil
 }
 
 func (cfg Config) Validate() error {

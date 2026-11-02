@@ -2,8 +2,11 @@ package vector
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/ai"
 	"github.com/deven96/ahnlich/sdk/ahnlich-client-go/grpc/algorithm/algorithms"
@@ -14,17 +17,21 @@ import (
 	"github.com/deven96/ahnlich/sdk/ahnlich-client-go/grpc/predicates"
 	dbsvc "github.com/deven96/ahnlich/sdk/ahnlich-client-go/grpc/services/db_service"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
+
+var ErrNotIndexed = errors.New("article has no stored vector")
 
 const (
 	articleStore   = "articles"
 	articleIDKey   = "article_id"
 	publishedAtKey = "published_at"
 	requestWindow  = 60 * time.Second
-	// maxEmbedChars keeps title+content inside gemini-embedding-001's
-	// 2048-token window; longer bodies are truncated rather than rejected.
+	// Bound UTF-8 bytes as well as batch cost for non-English input.
 	maxEmbedChars = 6000
 )
 
@@ -75,23 +82,35 @@ func (store *ahnlichStore) StoreArticles(ctx context.Context, articles []Article
 	for index, article := range articles {
 		inputs[index] = embedInput(article)
 	}
-	vectors, err := store.embedder.EmbedBatch(ctx, inputs)
-	if err != nil {
-		return nil, fmt.Errorf("embed articles: %w", err)
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, requestWindow)
-	defer cancel()
-
-	if err := store.ensureStore(ctx, uint32(len(vectors[0]))); err != nil {
-		return nil, err
-	}
-
 	errs := make([]error, len(articles))
-	for index, article := range articles {
-		if err := store.storeVector(ctx, article, vectors[index]); err != nil {
-			errs[index] = err
+	for start := 0; start < len(inputs); {
+		end := ai.EmbeddingBatchEnd(inputs, start)
+		started := time.Now()
+		vectors, err := store.embedder.EmbedBatch(ctx, inputs[start:end])
+		tokens := 0
+		for _, input := range inputs[start:end] {
+			tokens += ai.EmbeddingCost(input)
 		}
+		if err != nil {
+			// Keep earlier chunks stored; only unfinished work is retried.
+			for index := start; index < len(errs); index++ {
+				errs[index] = fmt.Errorf("embed articles: %w", err)
+			}
+			return errs, nil
+		}
+		chunkCtx, cancel := context.WithTimeout(ctx, requestWindow)
+		err = store.ensureStore(chunkCtx, uint32(len(vectors[0])))
+		for index := start; index < end; index++ {
+			if err != nil {
+				errs[index] = err
+			} else {
+				errs[index] = store.storeVector(chunkCtx, articles[index], vectors[index-start])
+			}
+		}
+		cancel()
+		slog.InfoContext(ctx, "Embedding batch completed", "event", "embedding.batch_completed", "articles", end-start,
+			"estimated_tokens", tokens, "duration_ms", time.Since(started).Milliseconds())
+		start = end
 	}
 	return errs, nil
 }
@@ -197,14 +216,28 @@ func (store *ahnlichStore) SearchArticles(ctx context.Context, text string, limi
 }
 
 func (store *ahnlichStore) FindSimilarArticles(ctx context.Context, article Article, limit int) ([]Neighbor, error) {
-	vector, err := store.embedder.Embed(ctx, embedInput(article))
+	ctx, span := otel.Tracer("github.com/Rahmannugar/macro-terminal/server/internal/vector").Start(ctx, "vector.article.related")
+	defer span.End()
+	ctx, cancel := context.WithTimeout(ctx, requestWindow)
+	defer cancel()
+	existing, err := store.client.GetPred(ctx, &dbquery.GetPred{Store: articleStore, Condition: articleCondition(article.ID)})
 	if err != nil {
-		return nil, fmt.Errorf("embed article: %w", err)
+		span.SetStatus(codes.Error, "vector_lookup_failed")
+		span.RecordError(err)
+		return nil, fmt.Errorf("load stored article vector: %w", err)
 	}
-	entries, err := store.closest(ctx, vector, limit+1)
+	if len(existing.Entries) == 0 || existing.Entries[0].Key == nil {
+		span.SetAttributes(attribute.String("vector.outcome", "not_indexed"))
+		return nil, ErrNotIndexed
+	}
+	span.SetAttributes(attribute.String("vector.source", "stored"))
+	entries, err := store.closest(ctx, existing.Entries[0].Key.Key, limit+1)
 	if err != nil {
+		span.SetStatus(codes.Error, "vector_search_failed")
+		span.RecordError(err)
 		return nil, err
 	}
+	span.SetAttributes(attribute.String("vector.outcome", "success"))
 	neighbors := make([]Neighbor, 0, len(entries))
 	for _, entry := range entries {
 		id, err := uuid.Parse(storeValueString(entry.Value, articleIDKey))
@@ -278,18 +311,20 @@ func articleCondition(articleID uuid.UUID) *predicates.PredicateCondition {
 
 func embedInput(article Article) string {
 	if article.Content == "" {
-		return truncateRunes(article.Title, maxEmbedChars)
+		return truncateBytes(article.Title, maxEmbedChars)
 	}
 	body := article.Title + "\n\n" + article.Content
-	return truncateRunes(body, maxEmbedChars)
+	return truncateBytes(body, maxEmbedChars)
 }
 
-func truncateRunes(s string, limit int) string {
-	runes := []rune(s)
-	if len(runes) <= limit {
+func truncateBytes(s string, limit int) string {
+	if len(s) <= limit {
 		return s
 	}
-	return string(runes[:limit])
+	for !utf8.RuneStart(s[limit]) {
+		limit--
+	}
+	return s[:limit]
 }
 
 func formatPublishedAt(publishedAt time.Time) string {

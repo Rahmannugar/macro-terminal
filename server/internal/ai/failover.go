@@ -1,7 +1,6 @@
 package ai
 
 import (
-	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -46,7 +45,7 @@ func WithBackupKey(client *http.Client, primary, backup string) *http.Client {
 func (transport *failoverTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	first := transport.available(-1)
 	if first < 0 {
-		return nil, errors.New("gemini projects are cooling down")
+		return nil, &DeferredError{Reason: "provider_cooldown", Delay: quotaCooldown}
 	}
 	response, err := transport.send(request, first, false)
 	if err != nil {

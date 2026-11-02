@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Rahmannugar/macro-terminal/server/internal/ai"
 	"github.com/Rahmannugar/macro-terminal/server/internal/indexing/models"
 	"github.com/Rahmannugar/macro-terminal/server/internal/vector"
 	"github.com/google/uuid"
@@ -21,6 +22,19 @@ type failureRecord struct {
 	cause       string
 }
 
+func TestQuotaDeferralDoesNotExhaustJobAttempts(t *testing.T) {
+	articleID := uuid.New()
+	work := models.ClaimedJob{ID: uuid.New(), ArticleID: articleID, Attempts: maxAttempts}
+	repository := &fakeRepository{claimed: []models.ClaimedJob{work}, articles: map[uuid.UUID]models.Article{articleID: {ID: articleID, Title: "title"}}}
+	indexer := &fakeIndexer{itemErrs: []error{&ai.DeferredError{Reason: "local_budget", Delay: time.Minute}}}
+	if err := newTestJob(repository, indexer).cycle(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(repository.deferred) != 1 || len(repository.failures) != 0 || len(repository.completed) != 0 {
+		t.Fatalf("deferred=%v failures=%v completed=%v", repository.deferred, repository.failures, repository.completed)
+	}
+}
+
 type fakeRepository struct {
 	claimed    []models.ClaimedJob
 	batches    [][]models.ClaimedJob
@@ -30,6 +44,12 @@ type fakeRepository struct {
 	completed  []uuid.UUID
 	failures   []failureRecord
 	permanents []failureRecord
+	deferred   []failureRecord
+}
+
+func (repository *fakeRepository) Defer(_ context.Context, id uuid.UUID, _ time.Duration, cause string) error {
+	repository.deferred = append(repository.deferred, failureRecord{id: id, cause: cause})
+	return nil
 }
 
 func (repository *fakeRepository) EnqueueMissingIndexJobs(context.Context, int32) (int64, error) {

@@ -7,7 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -18,7 +20,7 @@ const (
 	batchEmbeddingTimeout = 60 * time.Second
 	// maxBatchEmbeddingRequests keeps one call inside the provider's batch
 	// size; larger inputs split into sequential calls.
-	maxBatchEmbeddingRequests = 100
+	maxBatchEmbeddingRequests = 80
 	// maxEmbeddingResponseBytes covers the largest batch response
 	// (100 inputs x 3072-dimension values as JSON).
 	maxEmbeddingResponseBytes = 8 << 20
@@ -54,6 +56,9 @@ func (embedder *geminiEmbedder) Embed(ctx context.Context, text string) ([]float
 	if err := embedder.validate(text); err != nil {
 		return nil, err
 	}
+	if err := validateEmbeddingCost([]string{text}); err != nil {
+		return nil, err
+	}
 
 	requestBody := embeddingRequest{
 		Model: "models/" + embedder.model,
@@ -80,13 +85,17 @@ func (embedder *geminiEmbedder) EmbedBatch(ctx context.Context, texts []string) 
 
 	endpoint := fmt.Sprintf("%s/v1beta/models/%s:batchEmbedContents", embedder.baseURL, embedder.model)
 	vectors := make([][]float32, 0, len(texts))
-	for start := 0; start < len(texts); start += maxBatchEmbeddingRequests {
-		end := min(start+maxBatchEmbeddingRequests, len(texts))
+	for start := 0; start < len(texts); {
+		end := EmbeddingBatchEnd(texts, start)
+		if err := validateEmbeddingCost(texts[start:end]); err != nil {
+			return nil, err
+		}
 		chunk, err := embedder.embedChunk(ctx, endpoint, texts[start:end])
 		if err != nil {
 			return nil, err
 		}
 		vectors = append(vectors, chunk...)
+		start = end
 	}
 	return vectors, nil
 }
@@ -169,10 +178,55 @@ func (embedder *geminiEmbedder) postJSON(
 		return fmt.Errorf("read embedding response: %w", err)
 	}
 	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("embedding provider returned %d: %s", response.StatusCode, errorMessage(body))
+		failure := quotaFailure(response.StatusCode, errorMessage(body), time.Now())
+		reason := "provider_error"
+		if deferred, ok := EmbeddingDeferral(failure); ok {
+			reason = deferred.Reason
+			if delay := embeddingRetryAfter(response.Header.Get("Retry-After"), body); delay > deferred.Delay {
+				deferred.Delay = delay
+			}
+		}
+		slog.WarnContext(ctx, "Embedding provider rejected the request", "event", "embedding.provider_failed",
+			"dependency", "gemini", "provider_status", response.StatusCode, "reason", reason, "model", embedder.model)
+		return failure
 	}
 	if err := json.Unmarshal(body, decoded); err != nil {
 		return fmt.Errorf("decode embedding response: %w", err)
+	}
+	return nil
+}
+
+func embeddingRetryAfter(header string, body []byte) time.Duration {
+	var envelope struct {
+		Error struct {
+			Details []struct {
+				RetryDelay string `json:"retryDelay"`
+			} `json:"details"`
+		} `json:"error"`
+	}
+	var delay time.Duration
+	if seconds, err := strconv.Atoi(header); err == nil && seconds > 0 {
+		delay = time.Duration(seconds) * time.Second
+	} else if date, err := http.ParseTime(header); err == nil {
+		delay = time.Until(date)
+	}
+	if json.Unmarshal(body, &envelope) == nil {
+		for _, detail := range envelope.Error.Details {
+			if parsed, err := time.ParseDuration(detail.RetryDelay); err == nil && parsed > delay {
+				delay = parsed
+			}
+		}
+	}
+	return delay
+}
+
+func validateEmbeddingCost(texts []string) error {
+	tokens := 0
+	for _, text := range texts {
+		tokens += EmbeddingCost(text)
+	}
+	if tokens > EmbeddingTokenBudget {
+		return fmt.Errorf("embedding input exceeds token allowance: %d", tokens)
 	}
 	return nil
 }

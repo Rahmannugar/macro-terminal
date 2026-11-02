@@ -55,6 +55,20 @@ func TestIndexingOutboxLifecycle(t *testing.T) {
 	if got := outboxCount(t, pool, "status = 'processing'"); got != 1 {
 		t.Fatalf("processing rows = %d, want 1", got)
 	}
+	if err := repository.Defer(t.Context(), claimed[0].ID, 2*time.Minute, "local budget"); err != nil {
+		t.Fatal(err)
+	}
+	status, attempts, _, availableAt := outboxRow(t, pool, claimed[0].ID)
+	if status != "pending" || attempts != 0 || !availableAt.After(time.Now().Add(110*time.Second)) {
+		t.Fatalf("deferred row=%s attempts=%d available=%s", status, attempts, availableAt)
+	}
+	if _, err := pool.Exec(t.Context(), `UPDATE outbox SET available_at=now() WHERE id=$1`, claimed[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err = repository.ClaimBatch(t.Context(), 16)
+	if err != nil || len(claimed) != 1 || claimed[0].Attempts != 1 {
+		t.Fatalf("reclaim after deferral=%v error=%v", claimed, err)
+	}
 
 	if err := repository.Complete(t.Context(), claimed[0].ID); err != nil {
 		t.Fatalf("complete: %v", err)

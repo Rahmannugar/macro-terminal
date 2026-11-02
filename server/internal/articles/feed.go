@@ -13,8 +13,11 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/authentication"
 	"github.com/Rahmannugar/macro-terminal/server/internal/common/paging"
 	entitymodels "github.com/Rahmannugar/macro-terminal/server/internal/entities/models"
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/telemetry"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -199,6 +202,8 @@ func listFeed(feed *FeedService) gin.HandlerFunc {
 			writeFailure(ctx, http.StatusBadRequest, "invalid_sort", "Sort must be latest or relevance.")
 			return
 		}
+		telemetry.AddRequestLogAttributes(ctx.Request.Context(), slog.String("feed_sort", sort))
+		trace.SpanFromContext(ctx.Request.Context()).SetAttributes(attribute.String("feed.sort", sort))
 		limit := int32(feedDefaultPageSize)
 		if raw := ctx.Query("limit"); raw != "" {
 			parsed, err := strconv.Atoi(raw)

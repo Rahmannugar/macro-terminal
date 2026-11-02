@@ -3620,7 +3620,7 @@
         },
         "/api/v1/articles/{id}/related": {
             "get": {
-                "description": "Returns story cluster mates first (most recent first), then semantically similar indexed articles, deduplicated and excluding the article itself. When semantic search is not configured only cluster mates are returned.",
+                "description": "Returns story cluster mates first (most recent first), then semantically similar indexed articles, deduplicated and excluding the article itself. When semantic search is not configured or the article is not indexed yet, only cluster mates are returned.",
                 "parameters": [
                     {
                         "description": "Article id (UUID).",

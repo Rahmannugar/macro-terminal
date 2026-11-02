@@ -25,6 +25,7 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/health"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cors"
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/ratelimit"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/telemetry"
 	"github.com/Rahmannugar/macro-terminal/server/internal/market"
 	marketrepositories "github.com/Rahmannugar/macro-terminal/server/internal/market/repositories"
@@ -87,7 +88,9 @@ func newRouter(
 		var err error
 		searcher, err = vector.NewSearcher(
 			cfg.Ahnlich.DBAddr,
-			ai.NewEmbedder(ai.WithBackupKey(telemetry.NewHTTPClient(aiHTTPTimeout), cfg.AI.APIKey, cfg.AI.BackupAPIKey), cfg.AI.APIKey, cfg.AI.EmbeddingModel),
+			ai.NewEmbedder(ai.WithBackupKey(ai.WithEmbeddingBudget(telemetry.NewHTTPClient(aiHTTPTimeout),
+				ratelimit.NewEmbeddingBudget(redisClient, cfg.AI.EmbeddingModel, ai.EmbeddingTokenBudget)),
+				cfg.AI.APIKey, cfg.AI.BackupAPIKey), cfg.AI.APIKey, cfg.AI.EmbeddingModel),
 		)
 		if err != nil {
 			return nil, err

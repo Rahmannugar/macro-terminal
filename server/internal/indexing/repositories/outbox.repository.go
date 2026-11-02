@@ -85,6 +85,10 @@ func (repository *OutboxRepository) FailPermanently(ctx context.Context, id uuid
 	return nil
 }
 
+func (repository *OutboxRepository) Defer(ctx context.Context, id uuid.UUID, delay time.Duration, cause string) error {
+	return repository.queries.DeferIndexJob(ctx, indexingdb.DeferIndexJobParams{ID: id, DelaySeconds: delay.Seconds(), Cause: &cause})
+}
+
 func (repository *OutboxRepository) Article(ctx context.Context, id uuid.UUID) (models.Article, error) {
 	row, err := repository.queries.GetArticleForIndexing(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {

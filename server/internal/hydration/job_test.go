@@ -102,6 +102,34 @@ func (fetcher *fakeFetcher) Fetch(_ context.Context, configuration sourcemodels.
 
 type blockedError struct{}
 
+type statusFailure int
+
+func (failure statusFailure) Error() string     { return fmt.Sprintf("status %d", failure) }
+func (failure statusFailure) HTTPStatus() int   { return int(failure) }
+func (failure statusFailure) Retryable() bool   { return failure == 429 }
+func (statusFailure) RetryAfter() time.Duration { return time.Minute }
+
+func TestPublisherErrorsRemainDistinctFromExtractionFailures(t *testing.T) {
+	for _, test := range []struct {
+		status  int
+		reason  string
+		message string
+	}{
+		{401, "publisher_authentication_required", "requires authentication"},
+		{403, "publisher_access_denied", "denied access"},
+		{429, "publisher_throttled", "throttled"},
+	} {
+		err := publisherFailure("https://news.example/article?token=private", statusFailure(test.status))
+		var failure ingestion.Failure
+		if hydrationFailureReason(err) != test.reason || !strings.Contains(err.Error(), test.message) || !strings.Contains(err.Error(), "news.example") || strings.Contains(err.Error(), "private") || !errors.As(err, &failure) || failure.Retryable() != (test.status == 429) {
+			t.Fatalf("publisher error=%v reason=%s", err, hydrationFailureReason(err))
+		}
+	}
+	if reason := hydrationFailureReason(fmt.Errorf("%w: no article text", errContentExtraction)); reason != "content_extraction_failed" {
+		t.Fatalf("reason=%s", reason)
+	}
+}
+
 func (blockedError) Error() string   { return "request blocked" }
 func (blockedError) Retryable() bool { return false }
 func (blockedError) RetryAfter() time.Duration {

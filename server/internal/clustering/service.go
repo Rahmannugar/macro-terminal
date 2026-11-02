@@ -158,6 +158,9 @@ func (service *Service) neighborIDs(
 		return nil, nil
 	}
 	neighbors, err := service.searcher.FindSimilarArticles(ctx, vectorArticle(self), limit+memberCount+1)
+	if errors.Is(err, vector.ErrNotIndexed) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, fmt.Errorf("%w: find related vectors: %w", ErrUnavailable, err)
 	}

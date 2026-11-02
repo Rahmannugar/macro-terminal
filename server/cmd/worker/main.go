@@ -28,6 +28,7 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/database"
 	emaildelivery "github.com/Rahmannugar/macro-terminal/server/internal/infra/emaildelivery"
 	emaildeliveryrepositories "github.com/Rahmannugar/macro-terminal/server/internal/infra/emaildelivery/repositories"
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/ratelimit"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/telemetry"
 	"github.com/Rahmannugar/macro-terminal/server/internal/ingestion"
 	"github.com/Rahmannugar/macro-terminal/server/internal/mapping"
@@ -159,7 +160,9 @@ func run() (runError error) {
 	if vectorEnabled {
 		articleVectors, err = vector.NewClient(
 			cfg.Ahnlich.DBAddr,
-			ai.NewEmbedder(ai.WithBackupKey(telemetry.NewHTTPClient(providerFetchTimeout), cfg.AI.APIKey, cfg.AI.BackupAPIKey), cfg.AI.APIKey, cfg.AI.EmbeddingModel),
+			ai.NewEmbedder(ai.WithBackupKey(ai.WithEmbeddingBudget(telemetry.NewHTTPClient(providerFetchTimeout),
+				ratelimit.NewEmbeddingBudget(redisClient, cfg.AI.EmbeddingModel, ai.EmbeddingTokenBudget)),
+				cfg.AI.APIKey, cfg.AI.BackupAPIKey), cfg.AI.APIKey, cfg.AI.EmbeddingModel),
 		)
 		if err != nil {
 			return fmt.Errorf("configure article vectors: %w", err)

@@ -180,11 +180,11 @@ Feed entries arrive as teasers. The hydration job re-fetches the article page an
 
 A stored article with no enrichment is discovered by the enrichment cycle, claimed with skip-locked semantics, and sent to Gemini in batches of up to ten. Only known entity codes are kept; every list is trimmed, deduplicated, and capped. AI never writes links or touches the unmapped queue.
 
-Once enrichment is stored, the indexing cycle embeds the article (title + body, truncated to the model's window) with Gemini and writes the vector into the Ahnlich store with `article_id` and `published_at` predicates. A stale vector for the same article is deleted before the new one is stored, so a rebuild can never duplicate. Index-loss recovery (`task reindex`) reopens completed and failed jobs.
+Once enrichment is stored, the indexing cycle embeds the article with Gemini and writes the vector into the Ahnlich store with `article_id` and `published_at` predicates. Input is bounded by UTF-8 bytes and batches by a conservative token allowance. API and worker attempts, including backup-key attempts, reserve a shared rolling allowance in Redis before calling Gemini. Quota deferrals reschedule indexing without consuming its failure attempts; completed chunks remain stored. A stale vector for the same article is deleted before the new one is stored, so a rebuild can never duplicate. Index-loss recovery (`task reindex`) reopens completed and failed jobs.
 
 ### Search, related articles, and relevance
 
-`GET /api/v1/search/articles` embeds the query with the same Gemini model, asks Ahnlich for the nearest vectors (cosine), and hydrates authoritative rows from PostgreSQL in vector-rank order. The cursor is an opaque rank offset — keyset semantics over a similarity ranking, never offset pagination over SQL. Related articles work the same way, excluding the source article. The home feed's "Relevant" sort embeds the user's followed pair symbols as the query; with no pairs it falls back to latest.
+`GET /api/v1/search/articles` embeds the query with the same Gemini model, asks Ahnlich for the nearest vectors (cosine), and hydrates authoritative rows from PostgreSQL in vector-rank order. The cursor is an opaque rank offset — keyset semantics over a similarity ranking, never offset pagination over SQL. Clustering and related lookup retrieve the source article's stored vector by `article_id` and search Ahnlich without calling Gemini. Related lookup returns existing cluster members when the article has not been indexed yet. The home feed's "Relevant" sort embeds the user's followed pair symbols as the query; with no pairs it falls back to latest.
 
 ### Notifications
 
