@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/ai"
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/circuitbreaker"
 	"github.com/deven96/ahnlich/sdk/ahnlich-client-go/grpc/algorithm/algorithms"
 	dbquery "github.com/deven96/ahnlich/sdk/ahnlich-client-go/grpc/db/query"
 	dbserver "github.com/deven96/ahnlich/sdk/ahnlich-client-go/grpc/db/server"
@@ -46,8 +47,8 @@ type ahnlichStore struct {
 }
 
 // NewClient dials Ahnlich DB once; Gemini embeds text and the store keeps the vectors.
-func NewClient(addr string, embedder ai.Embedder) (Client, error) {
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+func NewClient(addr string, embedder ai.Embedder, circuit circuitbreaker.Controller) (Client, error) {
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithUnaryInterceptor(circuitInterceptor(circuit, "ahnlich:"+addr)))
 	if err != nil {
 		return nil, fmt.Errorf("create Ahnlich client for %q: %w", addr, err)
 	}
@@ -55,13 +56,13 @@ func NewClient(addr string, embedder ai.Embedder) (Client, error) {
 }
 
 // NewIndexer returns the indexing half of the client.
-func NewIndexer(addr string, embedder ai.Embedder) (Indexer, error) {
-	return NewClient(addr, embedder)
+func NewIndexer(addr string, embedder ai.Embedder, circuit circuitbreaker.Controller) (Indexer, error) {
+	return NewClient(addr, embedder, circuit)
 }
 
 // NewSearcher returns the search half of the client.
-func NewSearcher(addr string, embedder ai.Embedder) (Searcher, error) {
-	return NewClient(addr, embedder)
+func NewSearcher(addr string, embedder ai.Embedder, circuit circuitbreaker.Controller) (Searcher, error) {
+	return NewClient(addr, embedder, circuit)
 }
 
 func (store *ahnlichStore) StoreArticle(ctx context.Context, article Article) error {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/clustering/models"
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/circuitbreaker"
 	"github.com/Rahmannugar/macro-terminal/server/internal/vector"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -29,6 +30,7 @@ type Repository interface {
 	ClaimBatch(ctx context.Context, limit int32) ([]models.ClaimedJob, error)
 	Complete(ctx context.Context, id uuid.UUID) error
 	Fail(ctx context.Context, id uuid.UUID, maxAttempts int32, cause string) error
+	Defer(ctx context.Context, id uuid.UUID, delay time.Duration, cause string) error
 	FailPermanently(ctx context.Context, id uuid.UUID, cause string) error
 	Article(ctx context.Context, id uuid.UUID) (models.Article, error)
 	ClusterOfArticle(ctx context.Context, articleID uuid.UUID) (uuid.UUID, error)
@@ -107,6 +109,7 @@ type cycleStats struct {
 	skipped         int
 	failedBackoff   int
 	failedPermanent int
+	deferred        int
 }
 
 func (job *Job) cycle(ctx context.Context) error {
@@ -400,6 +403,11 @@ func withinWindow(anchor, other time.Time) bool {
 }
 
 func (job *Job) fail(ctx context.Context, work models.ClaimedJob, stats *cycleStats, cause error) error {
+	if paused, ok := circuitbreaker.Paused(cause); ok {
+		stats.deferred++
+		job.logger.InfoContext(ctx, "Story clustering waiting for vector service", "event", "clustering.deferred", "outbox_id", work.ID.String(), "article_id", work.ArticleID.String(), "reason", paused.Reason, "retry_after_seconds", paused.After.Seconds())
+		return job.repository.Defer(ctx, work.ID, paused.After, truncate(cause.Error(), maxCauseLength))
+	}
 	if work.Attempts >= maxAttempts {
 		stats.failedPermanent++
 	} else {
@@ -428,6 +436,7 @@ func (job *Job) logCycle(ctx context.Context, stats cycleStats) {
 		"skipped", stats.skipped,
 		"failed_backoff", stats.failedBackoff,
 		"failed_permanent", stats.failedPermanent,
+		"deferred", stats.deferred,
 	)
 }
 

@@ -13,6 +13,7 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/Rahmannugar/macro-terminal/server/internal/hydration/models"
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/circuitbreaker"
 	"github.com/Rahmannugar/macro-terminal/server/internal/ingestion"
 	"github.com/Rahmannugar/macro-terminal/server/internal/normalization"
 	sourcemodels "github.com/Rahmannugar/macro-terminal/server/internal/sources/models"
@@ -36,13 +37,14 @@ type Repository interface {
 	ClaimBatch(ctx context.Context, limit int32) ([]models.ClaimedJob, error)
 	Complete(ctx context.Context, id uuid.UUID) error
 	Fail(ctx context.Context, id uuid.UUID, maxAttempts int32, cause string) error
+	Defer(ctx context.Context, id uuid.UUID, delay time.Duration, cause string) error
 	FailPermanently(ctx context.Context, id uuid.UUID, cause string) error
 	ContentTarget(ctx context.Context, id uuid.UUID) (models.ContentTarget, error)
 	StoreContent(ctx context.Context, id uuid.UUID, content string) (int64, error)
 }
 
 type Fetcher interface {
-	Fetch(ctx context.Context, configuration sourcemodels.SourceConfigurationWithSource) (ingestion.Result, error)
+	FetchArticle(ctx context.Context, configuration sourcemodels.SourceConfigurationWithSource) (ingestion.Result, error)
 }
 
 type Job struct {
@@ -95,6 +97,7 @@ type cycleStats struct {
 	hydrated        int64
 	failedBackoff   int
 	failedPermanent int
+	deferred        int
 }
 
 func (job *Job) cycle(ctx context.Context) error {
@@ -181,9 +184,12 @@ func (job *Job) process(
 			truncate(err.Error(), maxCauseLength))
 	}
 
-	result, err := job.fetcher.Fetch(ctx, request)
+	result, err := job.fetcher.FetchArticle(ctx, request)
 	if err != nil {
 		err = publisherFailure(target.ArticleURL, err)
+		if _, paused := circuitbreaker.Paused(err); paused {
+			return job.backoff(ctx, work, stats, err)
+		}
 		var failure ingestion.Failure
 		if errors.As(err, &failure) && !failure.Retryable() {
 			stats.failedPermanent++
@@ -248,6 +254,11 @@ func (job *Job) backoff(
 	stats *cycleStats,
 	cause error,
 ) error {
+	if pause, ok := circuitbreaker.Paused(cause); ok {
+		stats.deferred++
+		job.logger.InfoContext(ctx, "Article fetching paused for publisher", "event", "hydration.deferred", "outbox_id", work.ID.String(), "article_id", work.ArticleID.String(), "reason", pause.Reason, "dependency_scope", pause.Scope, "retry_after_seconds", pause.After.Seconds())
+		return job.repository.Defer(ctx, work.ID, pause.After, truncate(cause.Error(), maxCauseLength))
+	}
 	stats.failedBackoff++
 	job.logger.WarnContext(ctx,
 		"Content hydration attempt failed",
@@ -272,11 +283,17 @@ func (failure *publisherError) Error() string {
 	action := "returned an HTTP error"
 	switch failure.status {
 	case 401:
-		action = "requires authentication"
+		action = "rejected the request"
 	case 403:
 		action = "denied access"
 	case 429:
 		action = "throttled the request"
+	}
+	if failure.reason == "publisher_browser_challenge" {
+		action = "requires a browser check"
+	}
+	if failure.reason == "publisher_authentication_required" {
+		action = "requires authentication"
 	}
 	return fmt.Sprintf("publisher %s %s (HTTP %d)", failure.host, action, failure.status)
 }
@@ -291,11 +308,15 @@ func publisherFailure(articleURL string, cause error) error {
 	reason := "publisher_error"
 	switch status.HTTPStatus() {
 	case 401:
-		reason = "publisher_authentication_required"
+		reason = "publisher_unauthorized"
 	case 403:
 		reason = "publisher_access_denied"
 	case 429:
 		reason = "publisher_throttled"
+	}
+	var classified interface{ FailureReason() string }
+	if errors.As(cause, &classified) && classified.FailureReason() != "" {
+		reason = classified.FailureReason()
 	}
 	parsed, _ := url.Parse(articleURL)
 	host := "unknown"
@@ -329,6 +350,7 @@ func (job *Job) logCycle(ctx context.Context, stats cycleStats) {
 		"hydrated", stats.hydrated,
 		"failed_backoff", stats.failedBackoff,
 		"failed_permanent", stats.failedPermanent,
+		"deferred", stats.deferred,
 	)
 }
 

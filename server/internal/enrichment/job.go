@@ -29,6 +29,7 @@ type Repository interface {
 	ClaimBatch(ctx context.Context, limit int32) ([]models.ClaimedJob, error)
 	Complete(ctx context.Context, id uuid.UUID) error
 	Fail(ctx context.Context, id uuid.UUID, maxAttempts int32, cause string) error
+	Defer(ctx context.Context, id uuid.UUID, delay time.Duration, cause string) error
 	FailPermanently(ctx context.Context, id uuid.UUID, cause string) error
 	Article(ctx context.Context, id uuid.UUID) (models.Article, error)
 	StoreEnrichment(ctx context.Context, articleID uuid.UUID, model string, result json.RawMessage) (bool, error)
@@ -111,6 +112,7 @@ type cycleStats struct {
 	skippedExisting int
 	failedBackoff   int
 	failedPermanent int
+	deferred        int
 }
 
 func (job *Job) cycle(ctx context.Context) error {
@@ -282,6 +284,14 @@ func (job *Job) failBatch(
 	cause error,
 ) error {
 	for _, item := range articles {
+		if deferred, ok := ai.ProviderDeferral(cause); ok {
+			stats.deferred++
+			job.logger.InfoContext(ctx, "AI enrichment waiting for provider", "event", "ai.enrichment.deferred", "outbox_id", item.work.ID.String(), "article_id", item.article.ID.String(), "reason", deferred.Reason, "retry_after_seconds", deferred.Delay.Seconds())
+			if err := job.repository.Defer(ctx, item.work.ID, deferred.Delay, truncate(cause.Error(), maxCauseLength)); err != nil {
+				return err
+			}
+			continue
+		}
 		if item.work.Attempts >= maxAttempts {
 			stats.failedPermanent++
 		} else {
@@ -330,6 +340,7 @@ func (job *Job) logCycle(ctx context.Context, stats *cycleStats) {
 		"skipped_existing", stats.skippedExisting,
 		"failed_backoff", stats.failedBackoff,
 		"failed_permanent", stats.failedPermanent,
+		"deferred", stats.deferred,
 	)
 }
 

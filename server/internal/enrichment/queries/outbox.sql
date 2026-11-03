@@ -92,3 +92,12 @@ ON CONFLICT (article_id) DO NOTHING;
 SELECT id, article_id, model, result
 FROM article_enrichments
 WHERE article_id = $1;
+
+-- name: DeferEnrichmentJob :exec
+UPDATE outbox
+SET status = 'pending',
+    attempts = GREATEST(0, attempts - 1),
+    available_at = now() + make_interval(secs => sqlc.arg(delay_seconds)::double precision),
+    last_error = sqlc.arg(cause),
+    updated_at = now()
+WHERE id = sqlc.arg(id) AND status = 'processing';

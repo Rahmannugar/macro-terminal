@@ -180,7 +180,7 @@ func (embedder *geminiEmbedder) postJSON(
 	if response.StatusCode != http.StatusOK {
 		failure := quotaFailure(response.StatusCode, errorMessage(body), time.Now())
 		reason := "provider_error"
-		if deferred, ok := EmbeddingDeferral(failure); ok {
+		if deferred, ok := ProviderDeferral(failure); ok {
 			reason = deferred.Reason
 			if delay := embeddingRetryAfter(response.Header.Get("Retry-After"), body); delay > deferred.Delay {
 				deferred.Delay = delay

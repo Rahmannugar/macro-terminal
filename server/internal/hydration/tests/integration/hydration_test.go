@@ -4,6 +4,7 @@ package integration_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/common/ids"
 	hydrationrepositories "github.com/Rahmannugar/macro-terminal/server/internal/hydration/repositories"
@@ -72,6 +73,24 @@ func TestContentClaimStoreComplete(t *testing.T) {
 	work := claimed[0]
 	if work.ArticleID != articleID || work.Attempts != 1 {
 		t.Fatalf("claimed = %+v, want the article on attempt 1", work)
+	}
+	if err := repository.Defer(t.Context(), work.ID, time.Minute, "publisher paused"); err != nil {
+		t.Fatal(err)
+	}
+	var attempts int32
+	var available time.Time
+	if err := pool.QueryRow(t.Context(), `SELECT attempts,available_at FROM outbox WHERE id=$1`, work.ID).Scan(&attempts, &available); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 0 || !available.After(time.Now().Add(50*time.Second)) {
+		t.Fatalf("deferral attempts=%d available=%s", attempts, available)
+	}
+	if _, err := pool.Exec(t.Context(), `UPDATE outbox SET available_at=now() WHERE id=$1`, work.ID); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err = repository.ClaimBatch(t.Context(), 16)
+	if err != nil || len(claimed) != 1 || claimed[0].Attempts != 1 {
+		t.Fatalf("claim after deferral=%v error=%v", claimed, err)
 	}
 
 	target, err := repository.ContentTarget(t.Context(), work.ArticleID)

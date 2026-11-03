@@ -1,26 +1,19 @@
 package ai
 
 import (
+	"errors"
+	"net"
 	"net/http"
 	"strings"
-	"sync"
-	"time"
-)
 
-const (
-	quotaCooldown   = time.Minute
-	serviceCooldown = 30 * time.Second
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/circuitbreaker"
 )
 
 type failoverTransport struct {
-	next    http.RoundTripper
-	keys    [2]string
-	mu      sync.Mutex
-	blocked [2]time.Time
-	now     func() time.Time
+	next http.RoundTripper
+	keys [2]string
 }
 
-// WithBackupKey gives Gemini requests one attempt with an independent key when the first project is throttled or unavailable.
 func WithBackupKey(client *http.Client, primary, backup string) *http.Client {
 	primary = strings.TrimSpace(primary)
 	backup = strings.TrimSpace(backup)
@@ -28,50 +21,44 @@ func WithBackupKey(client *http.Client, primary, backup string) *http.Client {
 		return client
 	}
 	copy := *client
-	// Gemini operations set their own request deadlines; the client timeout must not cut off the backup attempt.
+	// Each operation owns the deadline shared by both provider attempts.
 	copy.Timeout = 0
 	next := copy.Transport
 	if next == nil {
 		next = http.DefaultTransport
 	}
-	copy.Transport = &failoverTransport{
-		next: next,
-		keys: [2]string{primary, backup},
-		now:  time.Now,
-	}
+	copy.Transport = &failoverTransport{next: next, keys: [2]string{primary, backup}}
 	return &copy
 }
 
 func (transport *failoverTransport) RoundTrip(request *http.Request) (*http.Response, error) {
-	first := transport.available(-1)
-	if first < 0 {
-		return nil, &DeferredError{Reason: "provider_cooldown", Delay: quotaCooldown}
-	}
-	response, err := transport.send(request, first, false)
+	response, err := transport.send(request, 0, false)
+	retry := err == nil && retryableStatus(response.StatusCode)
 	if err != nil {
+		pause, paused := circuitbreaker.Paused(err)
+		var network net.Error
+		if paused {
+			retry = pause.Reason != "circuit_store_unavailable"
+		} else {
+			retry = errors.As(err, &network)
+		}
+	}
+	if !retry || (request.Body != nil && request.GetBody == nil) {
 		return response, err
 	}
-	if !retryableStatus(response.StatusCode) {
-		return response, nil
+	if contextErr := request.Context().Err(); contextErr != nil {
+		if response != nil {
+			_ = response.Body.Close()
+		}
+		return nil, contextErr
 	}
-	transport.cooldown(first, response.StatusCode)
-	second := transport.available(first)
-	if err := request.Context().Err(); err != nil {
+	if response != nil {
 		_ = response.Body.Close()
-		return nil, err
 	}
-	if second < 0 || (request.Body != nil && request.GetBody == nil) {
-		return response, nil
-	}
-	_ = response.Body.Close()
-	response, err = transport.send(request, second, true)
-	if err == nil && retryableStatus(response.StatusCode) {
-		transport.cooldown(second, response.StatusCode)
-	}
-	return response, err
+	return transport.send(request, 1, true)
 }
 
-func (transport *failoverTransport) send(request *http.Request, keyIndex int, replay bool) (*http.Response, error) {
+func (transport *failoverTransport) send(request *http.Request, index int, replay bool) (*http.Response, error) {
 	copy := request.Clone(request.Context())
 	if replay && request.Body != nil {
 		body, err := request.GetBody()
@@ -83,32 +70,8 @@ func (transport *failoverTransport) send(request *http.Request, keyIndex int, re
 	if copy.Header == nil {
 		copy.Header = make(http.Header)
 	}
-	copy.Header.Set("x-goog-api-key", transport.keys[keyIndex])
+	copy.Header.Set("x-goog-api-key", transport.keys[index])
 	return transport.next.RoundTrip(copy)
 }
 
-func (transport *failoverTransport) available(exclude int) int {
-	transport.mu.Lock()
-	defer transport.mu.Unlock()
-	now := transport.now()
-	for index := range transport.keys {
-		if index != exclude && !now.Before(transport.blocked[index]) {
-			return index
-		}
-	}
-	return -1
-}
-
-func (transport *failoverTransport) cooldown(index, status int) {
-	duration := serviceCooldown
-	if status == http.StatusTooManyRequests {
-		duration = quotaCooldown
-	}
-	transport.mu.Lock()
-	transport.blocked[index] = transport.now().Add(duration)
-	transport.mu.Unlock()
-}
-
-func retryableStatus(status int) bool {
-	return status == http.StatusTooManyRequests || status == http.StatusServiceUnavailable
-}
+func retryableStatus(status int) bool { return status == 429 || status == 408 || status >= 500 }

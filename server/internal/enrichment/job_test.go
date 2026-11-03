@@ -13,6 +13,7 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/ai"
 	"github.com/Rahmannugar/macro-terminal/server/internal/enrichment/models"
 	entitymodels "github.com/Rahmannugar/macro-terminal/server/internal/entities/models"
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/circuitbreaker"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -35,6 +36,7 @@ type fakeRepository struct {
 	completed    []uuid.UUID
 	failures     []failureRecord
 	permanents   []failureRecord
+	deferred     []failureRecord
 }
 
 func (repository *fakeRepository) EnqueueMissingArticles(context.Context, int32) (int64, error) {
@@ -140,6 +142,21 @@ func newTestJob(repository *fakeRepository, enricher *fakeEnricher) *Job {
 		true,
 		testLogger(),
 	)
+}
+
+func TestCycleDefersPausedProviderAtFinalAttempt(t *testing.T) {
+	articleID := uuid.New()
+	repository := &fakeRepository{
+		claimed:  []models.ClaimedJob{{ID: uuid.New(), ArticleID: articleID, Attempts: 8}},
+		articles: map[uuid.UUID]models.Article{articleID: {ID: articleID, Title: "Fed holds rates", Content: "The Federal Reserve kept rates unchanged."}},
+	}
+	enricher := &fakeEnricher{err: &circuitbreaker.PauseError{Scope: "gemini:test", Reason: "provider_unavailable", After: time.Minute}}
+	if err := newTestJob(repository, enricher).cycle(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(repository.deferred) != 1 || len(repository.failures) != 0 || len(repository.permanents) != 0 || repository.storedCalls != 0 {
+		t.Fatalf("deferred=%v failures=%v permanent=%v writes=%d", repository.deferred, repository.failures, repository.permanents, repository.storedCalls)
+	}
 }
 
 func TestCycleEnrichesClaimedArticle(t *testing.T) {
@@ -327,4 +344,9 @@ func TestWakeNeverBlocksWhenACycleIsAlreadyPending(t *testing.T) {
 	if len(job.wake) != 1 {
 		t.Fatalf("wake buffer = %d, want a single absorbed signal", len(job.wake))
 	}
+}
+
+func (repository *fakeRepository) Defer(_ context.Context, id uuid.UUID, _ time.Duration, cause string) error {
+	repository.deferred = append(repository.deferred, failureRecord{id: id, cause: cause})
+	return nil
 }

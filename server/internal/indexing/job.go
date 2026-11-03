@@ -236,7 +236,7 @@ func (job *Job) cycle(ctx context.Context) error {
 }
 
 func (job *Job) fail(ctx context.Context, work models.ClaimedJob, stats *cycleStats, cause error) error {
-	if deferred, ok := ai.EmbeddingDeferral(cause); ok {
+	if deferred, ok := ai.ProviderDeferral(cause); ok {
 		stats.deferred++
 		job.logger.InfoContext(ctx, "Article indexing waiting for embedding allowance", "event", "indexing.deferred",
 			"outbox_id", work.ID.String(), "article_id", work.ArticleID.String(), "reason", deferred.Reason,

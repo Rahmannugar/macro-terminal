@@ -8,24 +8,24 @@ import (
 	"testing"
 )
 
-func TestBackupKeyHandlesProviderOverloadAndCooldown(t *testing.T) {
+func TestBackupKeyRetriesProviderOverloadWithIndependentKey(t *testing.T) {
 	var keys []string
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	client := &http.Client{Transport: embeddingRoundTrip(func(request *http.Request) (*http.Response, error) {
 		keys = append(keys, request.Header.Get("x-goog-api-key"))
 		body, err := io.ReadAll(request.Body)
+		_ = request.Body.Close()
 		if err != nil || string(body) != `{"request":"same"}` {
 			t.Errorf("request body = %q, error = %v", body, err)
 		}
-		if keys[len(keys)-1] == "primary" {
-			writer.WriteHeader(http.StatusServiceUnavailable)
-			return
+		status := http.StatusOK
+		if request.Header.Get("x-goog-api-key") == "primary" {
+			status = http.StatusServiceUnavailable
 		}
-		writer.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-	client := WithBackupKey(server.Client(), "primary", "backup")
+		return &http.Response{StatusCode: status, Body: http.NoBody, Header: make(http.Header), Request: request}, nil
+	})}
+	client = WithBackupKey(client, "primary", "backup")
 	for range 2 {
-		request, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL, bytes.NewBufferString(`{"request":"same"}`))
+		request, err := http.NewRequestWithContext(t.Context(), http.MethodPost, "https://example.com/model", bytes.NewBufferString(`{"request":"same"}`))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -38,8 +38,8 @@ func TestBackupKeyHandlesProviderOverloadAndCooldown(t *testing.T) {
 			t.Fatalf("status = %d, want 200", response.StatusCode)
 		}
 	}
-	if len(keys) != 3 || keys[0] != "primary" || keys[1] != "backup" || keys[2] != "backup" {
-		t.Fatalf("key order = %v, want primary, backup, backup", keys)
+	if len(keys) != 4 || keys[0] != "primary" || keys[1] != "backup" || keys[2] != "primary" || keys[3] != "backup" {
+		t.Fatalf("key order = %v, want primary/backup attempts without a local cooldown", keys)
 	}
 }
 

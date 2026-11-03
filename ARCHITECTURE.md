@@ -136,6 +136,7 @@ Every package under `server/internal/` and what it owns:
 | `database` | pgx pool construction, LISTEN/NOTIFY session |
 | `cache` | Redis client (Streams, short-lived cache) |
 | `infra/safehttp` | SSRF-hardened HTTP transport for all outbound fetches |
+| `infra/circuitbreaker` | Redis-backed dependency pauses, leased recovery probes, and circuit transitions |
 | `ingestion` | Source adapters (RSS, API, web selectors), fetcher, retry/backoff, circuit breaker, cadence runner |
 | `normalization` | Feed/web/calendar payloads → canonical article candidates; URL canonicalization and deduplication |
 | `mapping` | Immutable per-pass dictionary; longest-phrase-first word-boundary matching onto entities and pairs |
@@ -165,7 +166,7 @@ Every package under `server/internal/` and what it owns:
 ### Ingestion
 
 1. The cadence runner lists due source configurations (cadence compared against `last_run_at`, persisted so a restart never refetches work that just ran). Configuration changes wake it through LISTEN/NOTIFY; the minute tick is the recovery path.
-2. The matching adapter (RSS, API, or web selectors) fetches through the SSRF-hardened transport: browser user-agent for web article pages, retries with backoff and `Retry-After`, a per-host circuit breaker so one failing provider never blocks the rest of the pass.
+2. The matching adapter (RSS, API, or web selectors) fetches through the SSRF-hardened transport: browser user-agent for web article pages, retries with backoff and `Retry-After`, Redis-backed circuits grouped by host, credential reference, and feed/article operation. Throttling pauses requests immediately; repeated article access refusals produce a longer pause. Open circuits defer article work without consuming failure attempts, and one leased probe tests recovery.
 3. Normalization turns the payload into canonical candidates: tracking parameters stripped, relative links resolved, in-batch duplicates collapsed, invalid and homepage-only URLs rejected.
 4. Mapping runs a single immutable dictionary per pass (entities + knowledge terms + pairs; case-insensitive, word-boundary, longest-phrase-first). Mapped candidates are persisted; unmapped ones go to a queue without blocking the pass.
 5. Persistence is idempotent: a refetch is a no-op on identity, refreshes metadata, and keeps the original publication date.
@@ -181,6 +182,10 @@ Feed entries arrive as teasers. The hydration job re-fetches the article page an
 A stored article with no enrichment is discovered by the enrichment cycle, claimed with skip-locked semantics, and sent to Gemini in batches of up to ten. Only known entity codes are kept; every list is trimmed, deduplicated, and capped. AI never writes links or touches the unmapped queue.
 
 Once enrichment is stored, the indexing cycle embeds the article with Gemini and writes the vector into the Ahnlich store with `article_id` and `published_at` predicates. Input is bounded by UTF-8 bytes and batches by a conservative token allowance. API and worker attempts, including backup-key attempts, reserve a shared rolling allowance in Redis before calling Gemini. Quota deferrals reschedule indexing without consuming its failure attempts; completed chunks remain stored. A stale vector for the same article is deleted before the new one is stored, so a rebuild can never duplicate. Index-loss recovery (`task reindex`) reopens completed and failed jobs.
+
+Gemini circuits share Redis state across the API and worker, scoped by model operation and a hash of the credential. A paused primary key is skipped before reserving embedding allowance; a configured backup key may be tried once. Ahnlich has independent circuits per RPC method, so working reads do not hide failed writes. Quota responses pause immediately and honor provider retry times; five consecutive availability failures within ten minutes open a one-minute pause, increasing on failed recovery up to thirty minutes. Publisher access-refusal pauses start at thirty minutes. Only one leased request tests each paused dependency. Late outcomes cannot close a newer pause, cancelled callers release their probe, and unavailable Redis state temporarily stops external work. Invalid credentials and oversized vector responses are surfaced as request/configuration failures rather than availability outages.
+
+Hydration, enrichment, indexing, and clustering persist paused work back to the outbox without using a failure attempt. `circuit.opened`, `circuit.probing`, `circuit.closed`, and `circuit.state_unavailable` logs identify dependency scope; transitions include retry timing. `hydration.deferred`, `ai.enrichment.deferred`, `indexing.deferred`, and `clustering.deferred` distinguish waiting from failed work. Pauses reduce repeated calls but do not grant publisher access or increase provider quotas. No new environment settings or database migration are required.
 
 ### Search, related articles, and relevance
 

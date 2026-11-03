@@ -39,7 +39,7 @@ func TestEmbeddingFailoverReservesEachAttempt(t *testing.T) {
 	client = WithBackupKey(WithEmbeddingBudget(client, budget), "primary", "backup")
 	embedder := NewEmbedder(client, "primary", "test")
 	_, err := embedder.Embed(t.Context(), "test input")
-	deferred, ok := EmbeddingDeferral(err)
+	deferred, ok := ProviderDeferral(err)
 	if !ok || deferred.Reason != "local_budget" || calls != 1 || budget.reservations != 2 {
 		t.Fatalf("error=%v calls=%d reservations=%d", err, calls, budget.reservations)
 	}
@@ -66,7 +66,7 @@ func TestQuotaDeferralDistinguishesDailyReset(t *testing.T) {
 		{"Embed content requests per day limit exceeded", "provider_daily_quota", 23*time.Hour + 50*time.Minute + time.Second},
 	} {
 		err := quotaFailure(429, test.message, now)
-		deferred, ok := EmbeddingDeferral(err)
+		deferred, ok := ProviderDeferral(err)
 		if !ok || deferred.Reason != test.reason || deferred.Delay != test.delay {
 			t.Fatalf("message=%s error=%v", test.message, err)
 		}

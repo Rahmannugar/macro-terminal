@@ -98,7 +98,7 @@ func TestBatchDeferralPreservesStoredChunks(t *testing.T) {
 			t.Fatalf("stored article failed: %v", itemErr)
 		}
 		if i >= 3 {
-			if _, ok := ai.EmbeddingDeferral(itemErr); !ok {
+			if _, ok := ai.ProviderDeferral(itemErr); !ok {
 				t.Fatalf("unfinished article %d not deferred: %v", i, itemErr)
 			}
 		}

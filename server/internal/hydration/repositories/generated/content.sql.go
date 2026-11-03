@@ -73,6 +73,27 @@ func (q *Queries) CompleteContentJob(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const deferContentJob = `-- name: DeferContentJob :exec
+UPDATE outbox
+SET status = 'pending',
+    attempts = GREATEST(0, attempts - 1),
+    available_at = now() + make_interval(secs => $1::double precision),
+    last_error = $2,
+    updated_at = now()
+WHERE id = $3 AND status = 'processing'
+`
+
+type DeferContentJobParams struct {
+	DelaySeconds float64
+	Cause        *string
+	ID           uuid.UUID
+}
+
+func (q *Queries) DeferContentJob(ctx context.Context, arg DeferContentJobParams) error {
+	_, err := q.db.Exec(ctx, deferContentJob, arg.DelaySeconds, arg.Cause, arg.ID)
+	return err
+}
+
 const enqueueMissingContentJobs = `-- name: EnqueueMissingContentJobs :execrows
 
 INSERT INTO outbox (id, type, payload)

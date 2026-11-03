@@ -8,6 +8,8 @@ package ingestion
 import (
 	"errors"
 	"time"
+
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/circuitbreaker"
 )
 
 var (
@@ -20,7 +22,7 @@ var (
 	ErrSecretMissing = errors.New("required environment variable is not set")
 	// ErrCircuitOpen means the fetch was skipped because this source kept
 	// failing and its breaker is cooling down.
-	ErrCircuitOpen = errors.New("circuit breaker is open")
+	ErrCircuitOpen = circuitbreaker.ErrOpen
 	// ErrUnsupportedAdapter means the configuration type has no adapter
 	// (known types: api, rss, web).
 	ErrUnsupportedAdapter = errors.New("unsupported source configuration type")
@@ -70,6 +72,7 @@ type fetchError struct {
 	statusCode int
 	retryable  bool
 	retryAfter time.Duration
+	reason     string
 }
 
 func (e *fetchError) Error() string             { return e.cause.Error() }
@@ -77,6 +80,7 @@ func (e *fetchError) Unwrap() error             { return e.cause }
 func (e *fetchError) Retryable() bool           { return e.retryable }
 func (e *fetchError) RetryAfter() time.Duration { return e.retryAfter }
 func (e *fetchError) HTTPStatus() int           { return e.statusCode }
+func (e *fetchError) FailureReason() string     { return e.reason }
 
 func retryable(err error) bool {
 	var failure Failure

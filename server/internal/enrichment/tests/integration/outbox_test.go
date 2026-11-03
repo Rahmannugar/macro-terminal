@@ -74,6 +74,20 @@ func TestEnrichmentOutboxLifecycle(t *testing.T) {
 	if completed == uuid.Nil {
 		t.Fatal("article A row was not claimed")
 	}
+	if err := repository.Defer(t.Context(), completed, time.Minute, "provider paused"); err != nil {
+		t.Fatal(err)
+	}
+	deferredStatus, deferredAttempts, deferredCause, deferredUntil := outboxRow(t, pool, completed)
+	if deferredStatus != "pending" || deferredAttempts != 0 || deferredCause != "provider paused" || !deferredUntil.After(time.Now().Add(50*time.Second)) {
+		t.Fatalf("deferred row = %s/%d/%q/%s", deferredStatus, deferredAttempts, deferredCause, deferredUntil)
+	}
+	if _, err := pool.Exec(t.Context(), `UPDATE outbox SET available_at=now() WHERE id=$1`, completed); err != nil {
+		t.Fatal(err)
+	}
+	resumed, err := repository.ClaimBatch(t.Context(), 16)
+	if err != nil || len(resumed) != 1 || resumed[0].ID != completed || resumed[0].Attempts != 1 {
+		t.Fatalf("claim after deferral = %v error=%v", resumed, err)
+	}
 	if err := repository.Complete(t.Context(), completed); err != nil {
 		t.Fatalf("complete: %v", err)
 	}

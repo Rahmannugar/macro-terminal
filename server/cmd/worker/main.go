@@ -25,6 +25,7 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/indexing"
 	indexingrepositories "github.com/Rahmannugar/macro-terminal/server/internal/indexing/repositories"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/circuitbreaker"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/database"
 	emaildelivery "github.com/Rahmannugar/macro-terminal/server/internal/infra/emaildelivery"
 	emaildeliveryrepositories "github.com/Rahmannugar/macro-terminal/server/internal/infra/emaildelivery/repositories"
@@ -116,13 +117,14 @@ func run() (runError error) {
 		return fmt.Errorf("ping Redis: %w", err)
 	}
 	resourceStore := cache.NewJSONStore(redisClient)
+	dependencyCircuits := circuitbreaker.New(redisClient, logger)
 
 	sourceRepository := sourcesrepositories.NewSourceRepository(databasePool)
 	entityRepository := entityrepositories.NewEntityRepository(databasePool)
 	candleRepository := marketrepositories.NewCandleRepository(databasePool)
 	sourceFetcher := ingestion.NewFetcher(
 		telemetry.NewHTTPClient(providerFetchTimeout),
-		ingestion.NewDefaultBreaker(),
+		dependencyCircuits,
 		logger,
 	)
 	ingestionRunner := ingestion.NewRunner(
@@ -149,7 +151,7 @@ func run() (runError error) {
 	enrichmentJob := enrichment.NewJob(
 		enrichmentrepositories.NewOutboxRepository(databasePool, resourceStore),
 		entityRepository,
-		ai.NewClient(ai.WithBackupKey(telemetry.NewHTTPClient(providerFetchTimeout), cfg.AI.APIKey, cfg.AI.BackupAPIKey), cfg.AI.APIKey, cfg.AI.Model),
+		ai.NewClient(ai.WithBackupKey(ai.WithProviderCircuit(telemetry.NewHTTPClient(providerFetchTimeout), dependencyCircuits), cfg.AI.APIKey, cfg.AI.BackupAPIKey), cfg.AI.APIKey, cfg.AI.Model),
 		cfg.AI.Model,
 		cfg.AI.APIKey != "",
 		logger,
@@ -160,9 +162,10 @@ func run() (runError error) {
 	if vectorEnabled {
 		articleVectors, err = vector.NewClient(
 			cfg.Ahnlich.DBAddr,
-			ai.NewEmbedder(ai.WithBackupKey(ai.WithEmbeddingBudget(telemetry.NewHTTPClient(providerFetchTimeout),
-				ratelimit.NewEmbeddingBudget(redisClient, cfg.AI.EmbeddingModel, ai.EmbeddingTokenBudget)),
+			ai.NewEmbedder(ai.WithBackupKey(ai.WithProviderCircuit(ai.WithEmbeddingBudget(telemetry.NewHTTPClient(providerFetchTimeout),
+				ratelimit.NewEmbeddingBudget(redisClient, cfg.AI.EmbeddingModel, ai.EmbeddingTokenBudget)), dependencyCircuits),
 				cfg.AI.APIKey, cfg.AI.BackupAPIKey), cfg.AI.APIKey, cfg.AI.EmbeddingModel),
+			dependencyCircuits,
 		)
 		if err != nil {
 			return fmt.Errorf("configure article vectors: %w", err)

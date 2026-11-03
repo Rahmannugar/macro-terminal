@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/hydration/models"
 	hydrationdb "github.com/Rahmannugar/macro-terminal/server/internal/hydration/repositories/generated"
@@ -81,6 +82,10 @@ func (repository *Repository) FailPermanently(ctx context.Context, id uuid.UUID,
 		return fmt.Errorf("fail content job permanently: %w", err)
 	}
 	return nil
+}
+
+func (repository *Repository) Defer(ctx context.Context, id uuid.UUID, delay time.Duration, cause string) error {
+	return repository.queries.DeferContentJob(ctx, hydrationdb.DeferContentJobParams{ID: id, DelaySeconds: delay.Seconds(), Cause: &cause})
 }
 
 func (repository *Repository) ContentTarget(ctx context.Context, id uuid.UUID) (models.ContentTarget, error) {

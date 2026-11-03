@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/circuitbreaker"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/safehttp"
 	"github.com/Rahmannugar/macro-terminal/server/internal/sources/models"
 	"github.com/google/uuid"
@@ -56,7 +57,7 @@ func newTestFetcher(t *testing.T, handler http.HandlerFunc) (*Fetcher, *httptest
 	}))
 	t.Cleanup(server.Close)
 
-	fetcher := newFetcher(server.Client(), NewBreaker(5, time.Minute), discardLogger())
+	fetcher := newFetcher(server.Client(), &fakeCircuit{}, discardLogger())
 	// The address policy refuses loopback fixtures; tests reach them
 	// through the injected client instead.
 	fetcher.checkDestination = nil
@@ -101,7 +102,7 @@ func TestFetcherDoesNotRetryBlockedDestinations(t *testing.T) {
 		attempts.Add(1)
 		return nil, fmt.Errorf("dial tcp: %w", safehttp.ErrBlockedAddress)
 	})
-	fetcher := newFetcher(blocked, NewBreaker(5, time.Minute), discardLogger())
+	fetcher := newFetcher(blocked, &fakeCircuit{}, discardLogger())
 	fetcher.checkDestination = nil
 
 	_, err := fetcher.Fetch(context.Background(), testConfiguration("rss", `{"url":"https://example.com/feed"}`))
@@ -178,22 +179,11 @@ func TestFetcherRetriesTemporaryFailures(t *testing.T) {
 }
 
 func TestFetcherHonorsRetryAfter(t *testing.T) {
-	var failures atomic.Int64
-	fetcher, server, _, delays := newTestFetcher(t, func(w http.ResponseWriter, _ *http.Request) {
-		if failures.Add(1) == 1 {
-			w.Header().Set("Retry-After", "7")
-			w.WriteHeader(http.StatusTooManyRequests)
-			return
-		}
-		_, _ = w.Write([]byte(`{"ok":true}`))
-	})
-
-	configuration := testConfiguration("api", `{"url":"`+server.URL+`/api"}`)
-	if _, err := fetcher.Fetch(context.Background(), configuration); err != nil {
-		t.Fatalf("Fetch: %v", err)
-	}
-	if len(*delays) != 1 || (*delays)[0] != 7*time.Second {
-		t.Fatalf("delays = %v, want [7s] (provider Retry-After beats backoff)", *delays)
+	fetcher, server, requests, delays := newTestFetcher(t, func(w http.ResponseWriter, _ *http.Request) { w.Header().Set("Retry-After", "120"); w.WriteHeader(429) })
+	_, err := fetcher.Fetch(t.Context(), testConfiguration("api", `{"url":"`+server.URL+`/api"}`))
+	pause, ok := circuitbreaker.Paused(err)
+	if !ok || pause.After != 2*time.Minute || requests.Load() != 1 || len(*delays) != 0 {
+		t.Fatalf("pause=%v requests=%d sleeps=%v", err, requests.Load(), *delays)
 	}
 }
 
@@ -201,7 +191,8 @@ func TestFetcherGivesUpAfterMaxAttempts(t *testing.T) {
 	fetcher, server, requests, _ := newTestFetcher(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	})
-	fetcher.breaker = NewBreaker(1, time.Minute)
+	circuit := &fakeCircuit{}
+	fetcher.breaker = circuit
 
 	configuration := testConfiguration("api", `{"url":"`+server.URL+`/api"}`)
 	_, err := fetcher.Fetch(context.Background(), configuration)
@@ -215,8 +206,8 @@ func TestFetcherGivesUpAfterMaxAttempts(t *testing.T) {
 	if requests.Load() != 3 {
 		t.Fatalf("requests = %d, want 3", requests.Load())
 	}
-	if fetcher.breaker.Allow(configuration.ID.String()) {
-		t.Fatalf("exhausted retries must record a breaker failure")
+	if len(circuit.outcomes) != 3 || !circuit.outcomes[2].Failed {
+		t.Fatalf("outcomes=%v", circuit.outcomes)
 	}
 }
 
@@ -338,8 +329,9 @@ func TestFetcherOpenCircuitSkipsProvider(t *testing.T) {
 	})
 
 	configuration := testConfiguration("api", `{"url":"`+server.URL+`/api"}`)
-	fetcher.breaker = NewBreaker(1, time.Minute)
-	fetcher.breaker.RecordFailure(configuration.ID.String())
+	circuit := &fakeCircuit{}
+	fetcher.breaker = circuit
+	circuit.acquireErr = &circuitbreaker.PauseError{Scope: "test", Reason: "provider_unavailable", After: time.Minute}
 
 	_, err := fetcher.Fetch(context.Background(), configuration)
 	if !isCircuitOpen(err) {

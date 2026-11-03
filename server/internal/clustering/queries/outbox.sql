@@ -84,3 +84,12 @@ WHERE id = $1
 SELECT id, title, coalesce(content, '') AS content, published_at
 FROM articles
 WHERE id = $1;
+
+-- name: DeferClusteringJob :exec
+UPDATE outbox
+SET status = 'pending',
+    attempts = GREATEST(0, attempts - 1),
+    available_at = now() + make_interval(secs => sqlc.arg(delay_seconds)::double precision),
+    last_error = sqlc.arg(cause),
+    updated_at = now()
+WHERE id = sqlc.arg(id) AND status = 'processing';

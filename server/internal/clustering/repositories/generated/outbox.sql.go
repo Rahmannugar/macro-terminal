@@ -73,6 +73,27 @@ func (q *Queries) CompleteOutboxJob(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const deferClusteringJob = `-- name: DeferClusteringJob :exec
+UPDATE outbox
+SET status = 'pending',
+    attempts = GREATEST(0, attempts - 1),
+    available_at = now() + make_interval(secs => $1::double precision),
+    last_error = $2,
+    updated_at = now()
+WHERE id = $3 AND status = 'processing'
+`
+
+type DeferClusteringJobParams struct {
+	DelaySeconds float64
+	Cause        *string
+	ID           uuid.UUID
+}
+
+func (q *Queries) DeferClusteringJob(ctx context.Context, arg DeferClusteringJobParams) error {
+	_, err := q.db.Exec(ctx, deferClusteringJob, arg.DelaySeconds, arg.Cause, arg.ID)
+	return err
+}
+
 const enqueueMissingClusterJobs = `-- name: EnqueueMissingClusterJobs :execrows
 INSERT INTO outbox (id, type, payload)
 SELECT gen_random_uuid(),

@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/circuitbreaker"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/safehttp"
 	"github.com/Rahmannugar/macro-terminal/server/internal/sources/models"
 	"go.opentelemetry.io/otel"
@@ -56,7 +57,7 @@ type HTTPDoer interface {
 // the circuit breaker.
 type Fetcher struct {
 	client      HTTPDoer
-	breaker     *Breaker
+	breaker     circuitbreaker.Controller
 	logger      *slog.Logger
 	tracer      trace.Tracer
 	maxAttempts int
@@ -74,11 +75,11 @@ type Fetcher struct {
 }
 
 // NewFetcher builds a fetcher on telemetry's traced HTTP client.
-func NewFetcher(client HTTPDoer, breaker *Breaker, logger *slog.Logger) *Fetcher {
+func NewFetcher(client HTTPDoer, breaker circuitbreaker.Controller, logger *slog.Logger) *Fetcher {
 	return newFetcher(client, breaker, logger)
 }
 
-func newFetcher(client HTTPDoer, breaker *Breaker, logger *slog.Logger) *Fetcher {
+func newFetcher(client HTTPDoer, breaker circuitbreaker.Controller, logger *slog.Logger) *Fetcher {
 	return &Fetcher{
 		client:      client,
 		breaker:     breaker,
@@ -114,6 +115,14 @@ func (fetcher *Fetcher) Fetch(
 	ctx context.Context,
 	configuration models.SourceConfigurationWithSource,
 ) (Result, error) {
+	return fetcher.fetch(ctx, configuration, "source_fetch")
+}
+
+func (fetcher *Fetcher) FetchArticle(ctx context.Context, configuration models.SourceConfigurationWithSource) (Result, error) {
+	return fetcher.fetch(ctx, configuration, "article_content")
+}
+
+func (fetcher *Fetcher) fetch(ctx context.Context, configuration models.SourceConfigurationWithSource, purpose string) (Result, error) {
 	fetchContext, span := fetcher.tracer.Start(ctx, "ingestion.fetch",
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
@@ -129,24 +138,21 @@ func (fetcher *Fetcher) Fetch(
 	}
 	interval := configurationInterval(configuration.Config)
 
-	key := configuration.ID.String()
-	if !fetcher.breaker.Allow(key) {
-		return Result{}, ErrCircuitOpen
-	}
-
 	var lastErr error
 	for attempt := 1; attempt <= fetcher.maxAttempts; attempt++ {
 		if spacingErr := fetcher.waitHostSpacing(fetchContext, request.URL.Host, interval); spacingErr != nil {
 			return Result{}, spacingErr
 		}
-		result, attemptErr := fetcher.attempt(fetchContext, request, configuration)
+		result, attemptErr := fetcher.attempt(fetchContext, request, configuration, purpose)
 		if attemptErr == nil {
 			result.Attempts = attempt
 			result.FetchedAt = fetcher.now()
-			fetcher.breaker.RecordSuccess(key)
 			return result, nil
 		}
 		lastErr = attemptErr
+		if _, paused := circuitbreaker.Paused(attemptErr); paused {
+			return Result{}, attemptErr
+		}
 		if fetchContext.Err() != nil {
 			return Result{}, fetchContext.Err()
 		}
@@ -158,7 +164,6 @@ func (fetcher *Fetcher) Fetch(
 		}
 	}
 	span.RecordError(lastErr)
-	fetcher.breaker.RecordFailure(key)
 	return Result{}, lastErr
 }
 
@@ -166,7 +171,21 @@ func (fetcher *Fetcher) attempt(
 	ctx context.Context,
 	request *http.Request,
 	configuration models.SourceConfigurationWithSource,
+	purpose string,
 ) (Result, error) {
+	scope := providerScope(request, configuration, purpose)
+	permit, err := fetcher.breaker.Acquire(ctx, scope, circuitbreaker.DefaultPolicy())
+	if err != nil {
+		return Result{}, err
+	}
+	outcome := circuitbreaker.Outcome{Neutral: true}
+	defer func() {
+		reportCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
+		defer cancel()
+		if err := fetcher.breaker.Finish(reportCtx, permit, outcome); err != nil {
+			fetcher.logger.ErrorContext(reportCtx, "Could not record provider circuit outcome", "event", "circuit.state_unavailable", "dependency_scope", scope, "error", err)
+		}
+	}()
 	attemptRequest := request.Clone(ctx)
 	// A POST body is consumed by the previous attempt; rebuild it from the
 	// saved snapshot so every retry sends the identical payload.
@@ -188,6 +207,7 @@ func (fetcher *Fetcher) attempt(
 				retryable: false,
 			}
 		}
+		outcome = circuitbreaker.Outcome{Failed: true, Reason: "provider_transport_error"}
 		return Result{}, &fetchError{
 			cause:     fmt.Errorf("request failed: %w", err),
 			retryable: true,
@@ -197,12 +217,17 @@ func (fetcher *Fetcher) attempt(
 
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes))
 	if err != nil {
+		if ctx.Err() == nil {
+			outcome = circuitbreaker.Outcome{Failed: true, Reason: "provider_response_error"}
+		}
 		return Result{}, &fetchError{
 			cause:     fmt.Errorf("read response: %w", err),
 			retryable: true,
 		}
 	}
 
+	outcome = providerOutcome(response.StatusCode, parseRetryAfter(response.Header.Get("Retry-After"), fetcher.now()), purpose)
+	reason := providerFailureReason(response, body)
 	switch {
 	case response.StatusCode >= 200 && response.StatusCode < 300:
 		adapter, err := AdapterFor(configuration.Type)
@@ -224,19 +249,60 @@ func (fetcher *Fetcher) attempt(
 		response.StatusCode == http.StatusTooEarly ||
 		response.StatusCode == http.StatusTooManyRequests ||
 		response.StatusCode >= http.StatusInternalServerError:
-		return Result{}, &fetchError{
+		failure := &fetchError{
 			cause:      fmt.Errorf("provider returned status %d", response.StatusCode),
 			statusCode: response.StatusCode,
 			retryable:  true,
 			retryAfter: parseRetryAfter(response.Header.Get("Retry-After"), fetcher.now()),
+			reason:     reason,
 		}
+		if response.StatusCode == http.StatusTooManyRequests {
+			return Result{}, &circuitbreaker.PauseError{Scope: scope, Reason: "publisher_throttled", After: outcome.Pause, Cause: failure}
+		}
+		return Result{}, failure
 	default:
 		return Result{}, &fetchError{
 			cause:      fmt.Errorf("provider returned status %d", response.StatusCode),
 			statusCode: response.StatusCode,
 			retryable:  false,
+			reason:     reason,
 		}
 	}
+}
+
+func providerScope(request *http.Request, configuration models.SourceConfigurationWithSource, purpose string) string {
+	var document struct {
+		BearerEnv string `json:"bearer_env"`
+		APIKeyEnv string `json:"api_key_env"`
+	}
+	_ = json.Unmarshal(configuration.Config, &document)
+	return "ingestion:" + purpose + ":" + strings.ToLower(request.URL.Hostname()) + ":" + document.BearerEnv + ":" + document.APIKeyEnv
+}
+
+func providerOutcome(status int, retryAfter time.Duration, purpose string) circuitbreaker.Outcome {
+	switch {
+	case status >= 200 && status < 400:
+		return circuitbreaker.Outcome{}
+	case status == 429:
+		return circuitbreaker.Outcome{Failed: true, Immediate: true, Pause: max(retryAfter, time.Minute), Reason: "publisher_throttled"}
+	case (status == 401 || status == 403) && purpose == "article_content":
+		return circuitbreaker.Outcome{Failed: true, Pause: 30 * time.Minute, Reason: "publisher_access_blocked"}
+	case status >= 500 || status == 408 || status == 425:
+		return circuitbreaker.Outcome{Failed: true, Reason: "provider_unavailable"}
+	default:
+		return circuitbreaker.Outcome{Neutral: true}
+	}
+}
+
+func providerFailureReason(response *http.Response, body []byte) string {
+	lower := strings.ToLower(string(body))
+	if (response.StatusCode == 401 || response.StatusCode == 403) && (strings.Contains(lower, "captcha-delivery.com") || strings.Contains(lower, "please enable javascript") || strings.Contains(lower, "please enable js")) {
+		return "publisher_browser_challenge"
+	}
+	if response.StatusCode == 401 && response.Header.Get("WWW-Authenticate") != "" {
+		return "publisher_authentication_required"
+	}
+	return ""
 }
 
 func (fetcher *Fetcher) retryDelay(attempt int, err error) time.Duration {

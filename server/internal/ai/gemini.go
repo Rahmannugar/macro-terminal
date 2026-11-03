@@ -144,6 +144,13 @@ func (client *geminiClient) generate(ctx context.Context, requestBody generateRe
 		return generateResponse{}, fmt.Errorf("read provider response: %w", err)
 	}
 	if response.StatusCode != http.StatusOK {
+		if response.StatusCode == 429 {
+			failure := quotaFailure(429, errorMessage(body), time.Now())
+			if deferred, ok := ProviderDeferral(failure); ok {
+				deferred.Delay = max(deferred.Delay, embeddingRetryAfter(response.Header.Get("Retry-After"), body))
+			}
+			return generateResponse{}, failure
+		}
 		return generateResponse{}, fmt.Errorf("provider returned %d: %s", response.StatusCode, errorMessage(body))
 	}
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/enrichment/models"
 	enrichmentdb "github.com/Rahmannugar/macro-terminal/server/internal/enrichment/repositories/generated"
@@ -138,4 +139,8 @@ func (repository *OutboxRepository) StoreEnrichment(
 		})
 	}
 	return rows > 0, nil
+}
+
+func (repository *OutboxRepository) Defer(ctx context.Context, id uuid.UUID, delay time.Duration, cause string) error {
+	return repository.queries.DeferEnrichmentJob(ctx, enrichmentdb.DeferEnrichmentJobParams{ID: id, DelaySeconds: delay.Seconds(), Cause: &cause})
 }

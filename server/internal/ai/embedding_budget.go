@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/circuitbreaker"
 )
 
 // Reserve accounts for embedding work across processes before contacting the provider.
@@ -98,14 +100,19 @@ type DeferredError struct {
 
 func (failure *DeferredError) Error() string {
 	if failure.Detail != "" {
-		return fmt.Sprintf("embedding deferred: %s; retry after %s: %s", failure.Reason, failure.Delay.Round(time.Second), failure.Detail)
+		return fmt.Sprintf("provider deferred: %s; retry after %s: %s", failure.Reason, failure.Delay.Round(time.Second), failure.Detail)
 	}
-	return fmt.Sprintf("embedding deferred: %s; retry after %s", failure.Reason, failure.Delay.Round(time.Second))
+	return fmt.Sprintf("provider deferred: %s; retry after %s", failure.Reason, failure.Delay.Round(time.Second))
 }
 
-func EmbeddingDeferral(err error) (*DeferredError, bool) {
+func ProviderDeferral(err error) (*DeferredError, bool) {
 	var failure *DeferredError
 	ok := errors.As(err, &failure)
+	if !ok {
+		if pause, paused := circuitbreaker.Paused(err); paused {
+			return &DeferredError{Reason: pause.Reason, Delay: pause.After}, true
+		}
+	}
 	return failure, ok
 }
 
@@ -129,5 +136,5 @@ func quotaFailure(status int, message string, now time.Time) error {
 		}
 		reason = "provider_daily_quota"
 	}
-	return &DeferredError{Reason: reason, Delay: delay, Detail: message}
+	return &DeferredError{Reason: reason, Delay: delay, Detail: "provider returned 429: " + message}
 }

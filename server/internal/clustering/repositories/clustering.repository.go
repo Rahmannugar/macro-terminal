@@ -193,3 +193,7 @@ func timeValue(value pgtype.Timestamptz) *time.Time {
 	}
 	return &value.Time
 }
+
+func (repository *Repository) Defer(ctx context.Context, id uuid.UUID, delay time.Duration, cause string) error {
+	return repository.queries.DeferClusteringJob(ctx, clusteringdb.DeferClusteringJobParams{ID: id, DelaySeconds: delay.Seconds(), Cause: &cause})
+}

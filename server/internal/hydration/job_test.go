@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/hydration/models"
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/circuitbreaker"
 	"github.com/Rahmannugar/macro-terminal/server/internal/ingestion"
 	sourcemodels "github.com/Rahmannugar/macro-terminal/server/internal/sources/models"
 	"github.com/google/uuid"
@@ -34,6 +35,21 @@ type fakeRepository struct {
 	completed  []uuid.UUID
 	failures   []failureRecord
 	permanents []failureRecord
+	deferred   []failureRecord
+}
+
+func TestOpenPublisherCircuitDefersWithoutFailingJob(t *testing.T) {
+	articleID, workID := uuid.New(), uuid.New()
+	target := configuredTarget("")
+	repository := &fakeRepository{claimed: []models.ClaimedJob{{ID: workID, ArticleID: articleID, Attempts: 8}}, targets: map[uuid.UUID]models.ContentTarget{articleID: target}}
+	fetcher := &fakeFetcher{err: &circuitbreaker.PauseError{Scope: "publisher", Reason: "publisher_throttled", After: time.Minute}}
+	job := NewJob(repository, fetcher, slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)))
+	if err := job.cycle(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(repository.deferred) != 1 || len(repository.failures) != 0 || len(repository.permanents) != 0 {
+		t.Fatalf("deferred=%v failures=%v permanent=%v", repository.deferred, repository.failures, repository.permanents)
+	}
 }
 
 func (repository *fakeRepository) EnqueueMissingContentJobs(context.Context, int32) (int64, error) {
@@ -61,6 +77,11 @@ func (repository *fakeRepository) Fail(_ context.Context, id uuid.UUID, maxAttem
 
 func (repository *fakeRepository) FailPermanently(_ context.Context, id uuid.UUID, cause string) error {
 	repository.permanents = append(repository.permanents, failureRecord{id: id, cause: cause})
+	return nil
+}
+
+func (repository *fakeRepository) Defer(_ context.Context, id uuid.UUID, _ time.Duration, cause string) error {
+	repository.deferred = append(repository.deferred, failureRecord{id: id, cause: cause})
 	return nil
 }
 
@@ -92,7 +113,7 @@ type fakeFetcher struct {
 	seen []sourcemodels.SourceConfigurationWithSource
 }
 
-func (fetcher *fakeFetcher) Fetch(_ context.Context, configuration sourcemodels.SourceConfigurationWithSource) (ingestion.Result, error) {
+func (fetcher *fakeFetcher) FetchArticle(_ context.Context, configuration sourcemodels.SourceConfigurationWithSource) (ingestion.Result, error) {
 	fetcher.seen = append(fetcher.seen, configuration)
 	if fetcher.err != nil {
 		return ingestion.Result{}, fetcher.err
@@ -115,7 +136,7 @@ func TestPublisherErrorsRemainDistinctFromExtractionFailures(t *testing.T) {
 		reason  string
 		message string
 	}{
-		{401, "publisher_authentication_required", "requires authentication"},
+		{401, "publisher_unauthorized", "rejected the request"},
 		{403, "publisher_access_denied", "denied access"},
 		{429, "publisher_throttled", "throttled"},
 	} {

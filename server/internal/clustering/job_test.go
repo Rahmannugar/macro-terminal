@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Rahmannugar/macro-terminal/server/internal/clustering/models"
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/circuitbreaker"
 	"github.com/Rahmannugar/macro-terminal/server/internal/vector"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -32,6 +33,7 @@ type linkRecord struct {
 }
 
 type fakeRepository struct {
+	deferred    []failureRecord
 	claimed     []models.ClaimedJob
 	claimCalls  int
 	articles    map[uuid.UUID]models.Article
@@ -144,6 +146,21 @@ func newTestJob(repository *fakeRepository, searcher *fakeSearcher) *Job {
 
 func singleWork(repository *fakeRepository, articleID uuid.UUID) {
 	repository.claimed = []models.ClaimedJob{{ID: uuid.New(), ArticleID: articleID, Attempts: 1}}
+}
+
+func TestCycleDefersPausedVectorServiceAtFinalAttempt(t *testing.T) {
+	articleID := uuid.New()
+	published := time.Now()
+	repository := &fakeRepository{articles: map[uuid.UUID]models.Article{articleID: {ID: articleID, Title: "Fed holds rates", PublishedAt: &published}}}
+	singleWork(repository, articleID)
+	repository.claimed[0].Attempts = 8
+	searcher := &fakeSearcher{err: &circuitbreaker.PauseError{Scope: "ahnlich:test", Reason: "vector_service_unavailable", After: time.Minute}}
+	if err := newTestJob(repository, searcher).cycle(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(repository.deferred) != 1 || len(repository.failures) != 0 || len(repository.permanents) != 0 || len(repository.completed) != 0 {
+		t.Fatalf("deferred=%v failures=%v permanent=%v completed=%v", repository.deferred, repository.failures, repository.permanents, repository.completed)
+	}
 }
 
 func linkedTo(repository *fakeRepository, clusterID uuid.UUID) []uuid.UUID {
@@ -420,4 +437,9 @@ func TestRunDisabledNeverClaimsWork(t *testing.T) {
 	if !bytes.Contains(logs.Bytes(), []byte("missing_config")) {
 		t.Errorf("logs = %s, want the missing_config skip", logs.String())
 	}
+}
+
+func (repository *fakeRepository) Defer(_ context.Context, id uuid.UUID, _ time.Duration, cause string) error {
+	repository.deferred = append(repository.deferred, failureRecord{id: id, cause: cause})
+	return nil
 }

@@ -60,6 +60,25 @@ func TestClusteringDiscoveryAndClusterLinks(t *testing.T) {
 	if len(claimed) != 1 || claimed[0].ArticleID != indexed || claimed[0].Attempts != 1 {
 		t.Fatalf("claimed = %+v, want only the done-index article on attempt 1", claimed)
 	}
+	if err := repository.Defer(t.Context(), claimed[0].ID, time.Minute, "vector service paused"); err != nil {
+		t.Fatal(err)
+	}
+	var attempts int32
+	var available time.Time
+	var deferredStatus string
+	if err := pool.QueryRow(t.Context(), `SELECT status,attempts,available_at FROM outbox WHERE id=$1`, claimed[0].ID).Scan(&deferredStatus, &attempts, &available); err != nil {
+		t.Fatal(err)
+	}
+	if deferredStatus != "pending" || attempts != 0 || !available.After(time.Now().Add(50*time.Second)) {
+		t.Fatalf("deferral status=%s attempts=%d available=%s", deferredStatus, attempts, available)
+	}
+	if _, err := pool.Exec(t.Context(), `UPDATE outbox SET available_at=now() WHERE id=$1`, claimed[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err = repository.ClaimBatch(t.Context(), 16)
+	if err != nil || len(claimed) != 1 || claimed[0].Attempts != 1 {
+		t.Fatalf("claim after deferral=%v error=%v", claimed, err)
+	}
 
 	if err := repository.Complete(t.Context(), claimed[0].ID); err != nil {
 		t.Fatalf("complete: %v", err)

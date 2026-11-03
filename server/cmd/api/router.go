@@ -24,6 +24,7 @@ import (
 	"github.com/Rahmannugar/macro-terminal/server/internal/explanation"
 	"github.com/Rahmannugar/macro-terminal/server/internal/health"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cache"
+	"github.com/Rahmannugar/macro-terminal/server/internal/infra/circuitbreaker"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/cors"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/ratelimit"
 	"github.com/Rahmannugar/macro-terminal/server/internal/infra/telemetry"
@@ -83,14 +84,16 @@ func newRouter(
 	users.RegisterAdminRoutes(adminGroup, users.NewAdminService(userrepositories.NewUserRepository(database)))
 	adminjobs.RegisterRoutes(adminGroup, adminjobsrepositories.NewJobRepository(database))
 
+	dependencyCircuits := circuitbreaker.New(redisClient, runtime.Logger())
 	var searcher vector.Searcher
 	if cfg.AI.APIKey != "" && cfg.Ahnlich.DBAddr != "" {
 		var err error
 		searcher, err = vector.NewSearcher(
 			cfg.Ahnlich.DBAddr,
-			ai.NewEmbedder(ai.WithBackupKey(ai.WithEmbeddingBudget(telemetry.NewHTTPClient(aiHTTPTimeout),
-				ratelimit.NewEmbeddingBudget(redisClient, cfg.AI.EmbeddingModel, ai.EmbeddingTokenBudget)),
+			ai.NewEmbedder(ai.WithBackupKey(ai.WithProviderCircuit(ai.WithEmbeddingBudget(telemetry.NewHTTPClient(aiHTTPTimeout),
+				ratelimit.NewEmbeddingBudget(redisClient, cfg.AI.EmbeddingModel, ai.EmbeddingTokenBudget)), dependencyCircuits),
 				cfg.AI.APIKey, cfg.AI.BackupAPIKey), cfg.AI.APIKey, cfg.AI.EmbeddingModel),
+			dependencyCircuits,
 		)
 		if err != nil {
 			return nil, err
@@ -139,7 +142,7 @@ func newRouter(
 		calendarrepositories.NewEventRepository(database, resourceStore),
 		clusterRepository,
 		relatedService,
-		ai.NewExplainer(ai.WithBackupKey(telemetry.NewHTTPClient(aiHTTPTimeout), cfg.AI.APIKey, cfg.AI.BackupAPIKey), cfg.AI.APIKey, cfg.AI.ExplanationModel),
+		ai.NewExplainer(ai.WithBackupKey(ai.WithProviderCircuit(telemetry.NewHTTPClient(aiHTTPTimeout), dependencyCircuits), cfg.AI.APIKey, cfg.AI.BackupAPIKey), cfg.AI.APIKey, cfg.AI.ExplanationModel),
 		cache.NewJSONStoreWithTTL(redisClient, explanation.CacheTTL),
 	))
 	return router, nil
