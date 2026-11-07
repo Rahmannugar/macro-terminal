@@ -1,0 +1,31 @@
+{
+  "python": {
+    "url": "https://www.python.org/ftp/python/3.14.10/python-3.14.10-embed-amd64.zip",
+    "filename": "python.zip",
+    "sha256": "90905e64a840557d8c1bc4f5b74db3d7ee85e3ffb217611cac1c7813acea4159"
+  },
+  "numpy": {
+    "url": "https://files.pythonhosted.org/packages/52/9a/e1e512ebc948d5b9dd33b08736760f0ebbed2848fd4eda1f553088a6dcee/numpy-2.5.4-cp314-cp314-win_amd64.whl",
+    "filename": "numpy.whl",
+    "sha256": "2ca144f15135b6212a5c47b1e2aeca6e412f102f95a2d5d88d8aec77eb255de3"
+  },
+  "metatrader5": {
+    "url": "https://files.pythonhosted.org/packages/bd/7e/5f1ca5f564c7d7552c9706c976de05b594b61d82ae09a189c69662230fbc/metatrader5-5.0.6231-cp314-cp314-win_amd64.whl",
+    "filename": "metatrader5.whl",
+    "sha256": "9a63f026072479298be0d0cbc1a878d4f659aff2e18280a4128843dbb425841b"
+  },
+  "mt4": {
+    "url": "https://download.mql5.com/cdn/web/metaquotes.software.corp/mt4/mt4oldsetup.exe",
+    "filename": "mt4setup.exe",
+    "sha256": "19b1a0dbe21a3cc5e38957105a869153fd29a677c1f992303dd96eb2ad18eabd"
+  },
+  "mt5": {
+    "url": "https://download.terminal.free/cdn/web/metaquotes.ltd/mt5/mt5setup.exe?utm_source=www.metatrader5.com&utm_campaign=download",
+    "filename": "mt5setup.exe",
+    "sha256": "c8c0a73f86c58974df62fb48f8256a099d6698518cf2defc2b3f169773729e22"
+  },
+  "webview2": {
+    "url": "https://go.microsoft.com/fwlink/p/?LinkId=2124703",
+    "filename": "webview2setup.exe"
+  }
+}

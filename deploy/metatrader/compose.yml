@@ -1,0 +1,76 @@
+name: macro-terminal-connectivity
+
+x-runtime: &runtime
+  image: macro-terminal-metatrader-wine:0.1.0
+  build:
+    context: .
+  init: true
+  restart: unless-stopped
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  pids_limit: 256
+  cpus: 1.0
+  tmpfs:
+    - /tmp:rw,nosuid,nodev,size=256m,mode=1777
+  shm_size: 128m
+  stop_grace_period: 30s
+  logging:
+    driver: json-file
+    options:
+      max-size: 5m
+      max-file: "2"
+  healthcheck:
+    test: ["CMD", "python3", "/opt/metatrader/runtime.py", "health"]
+    interval: 20s
+    timeout: 5s
+    retries: 3
+    start_period: 30s
+
+services:
+  mt4:
+    <<: *runtime
+    environment:
+      MACRO_TERMINAL_PLATFORM: mt4
+    mem_limit: 1536m
+    memswap_limit: 1536m
+    volumes:
+      - mt4-data:/data
+      - type: bind
+        source: ../secrets/mt4
+        target: /run/secrets
+        read_only: true
+        bind:
+          create_host_path: false
+    ports:
+      - "127.0.0.1:15904:5900"
+    networks:
+      - mt4
+  mt5:
+    <<: *runtime
+    environment:
+      MACRO_TERMINAL_PLATFORM: mt5
+    mem_limit: 2048m
+    memswap_limit: 2048m
+    volumes:
+      - mt5-data:/data
+      - type: bind
+        source: ../secrets/mt5
+        target: /run/secrets
+        read_only: true
+        bind:
+          create_host_path: false
+    ports:
+      - "127.0.0.1:15905:5900"
+    networks:
+      - mt5
+
+volumes:
+  mt4-data:
+  mt5-data:
+
+networks:
+  mt4:
+  mt5:

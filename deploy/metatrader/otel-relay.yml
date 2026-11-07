@@ -1,0 +1,47 @@
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: ${env:MACRO_TERMINAL_CONNECTIVITY_OTLP_BIND}
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 80
+    spike_limit_mib: 16
+  batch:
+    send_batch_size: 64
+    send_batch_max_size: 128
+    timeout: 1s
+exporters:
+  otlp_http/production:
+    endpoint: ${env:MACRO_TERMINAL_CONNECTIVITY_OTLP_UPSTREAM}
+    timeout: 3s
+    retry_on_failure:
+      max_elapsed_time: 30s
+    sending_queue:
+      queue_size: 32
+service:
+  telemetry:
+    logs:
+      level: warn
+    metrics:
+      level: basic
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp_http/production]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp_http/production]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp_http/production]
